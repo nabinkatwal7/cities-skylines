@@ -25,7 +25,6 @@ type Manager struct {
 	Seed        int64
 	terrainTex  rl.Texture2D
 	waterTex    rl.Texture2D
-	treeModel   rl.Model
 	uploadIdx   int
 }
 
@@ -50,13 +49,23 @@ func (m *Manager) GenerateData() {
 }
 
 func (m *Manager) LoadAssets() error {
-	model := rl.LoadModel("assets/tree/leaftree.obj")
-	if rl.IsModelValid(model) {
-		m.treeModel = model
-		m.Trees.Model = model
-	} else {
-		rl.UnloadModel(model)
-		return fmt.Errorf("failed to load tree model")
+	treeFiles := []string{
+		"assets/tree/tree_oak.fbx",
+		"assets/tree/tree_pine.fbx",
+		"assets/tree/tree_default.fbx",
+		"assets/tree/tree_palm.fbx",
+	}
+	m.Trees.Models = make([]rl.Model, 0, len(treeFiles))
+	for _, f := range treeFiles {
+		model := rl.LoadModel(f)
+		if rl.IsModelValid(model) {
+			m.Trees.Models = append(m.Trees.Models, model)
+		} else {
+			rl.UnloadModel(model)
+		}
+	}
+	if len(m.Trees.Models) == 0 {
+		return fmt.Errorf("failed to load any tree models")
 	}
 
 	grassTex := rl.LoadTexture("assets/grass.png")
@@ -176,8 +185,8 @@ func (m *Manager) Unload() {
 	if m.Water != nil {
 		m.Water.Unload()
 	}
-	if m.treeModel.MeshCount > 0 {
-		rl.UnloadModel(m.treeModel)
+	for _, model := range m.Trees.Models {
+		rl.UnloadModel(model)
 	}
 	rl.UnloadTexture(m.terrainTex)
 	rl.UnloadTexture(m.waterTex)
