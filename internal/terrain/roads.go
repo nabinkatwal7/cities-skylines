@@ -15,6 +15,21 @@ const (
 	RoadGravel
 )
 
+const laneW = float32(3.0)
+
+func roadLanes(rt RoadType) int {
+	switch rt {
+	case RoadOneWay:
+		return 1
+	case RoadTwoLane, RoadGravel:
+		return 2
+	case RoadFourLane:
+		return 4
+	default:
+		return 2
+	}
+}
+
 type RoadNode struct {
 	ID              uint32
 	X, Z            float32
@@ -95,6 +110,11 @@ func (rm *RoadManager) NearestNode(x, z float32) (uint32, bool) {
 	return bestIdx, bestDist < 400
 }
 
+func drawQuad(a, b rl.Vector3, c, d rl.Vector3, col rl.Color) {
+	rl.DrawTriangle3D(a, b, c, col)
+	rl.DrawTriangle3D(c, b, d, col)
+}
+
 func (rm *RoadManager) Draw(h *Heightmap) {
 	for _, seg := range rm.Segments {
 		na := &rm.Nodes[seg.NodeA]
@@ -107,23 +127,69 @@ func (rm *RoadManager) Draw(h *Heightmap) {
 			continue
 		}
 
-		perX := -dz / length
-		perZ := dx / length
-		half := float32(3.0)
-		px := perX * half
-		pz := perZ * half
+		nx := dx / length
+		nz := dz / length
+		perX := -nz
+		perZ := nx
 
-		ha := h.WorldHeight(na.X, na.Z) + 0.15
-		hb := h.WorldHeight(nb.X, nb.Z) + 0.15
+		lanes := roadLanes(seg.RoadType)
 
-		a0 := rl.NewVector3(na.X-px, ha, na.Z-pz)
-		a1 := rl.NewVector3(na.X+px, ha, na.Z+pz)
-		b0 := rl.NewVector3(nb.X-px, hb, nb.Z-pz)
-		b1 := rl.NewVector3(nb.X+px, hb, nb.Z+pz)
+		steps := int(length / 2)
+		if steps < 1 {
+			steps = 1
+		}
 
-		col := rl.NewColor(80, 80, 80, 255)
-		rl.DrawTriangle3D(a0, a1, b0, col)
-		rl.DrawTriangle3D(b0, a1, b1, col)
+		asphalt := rl.NewColor(70, 70, 70, 255)
+		center := rl.NewColor(220, 200, 60, 255)
+		edge := rl.NewColor(200, 200, 200, 255)
+
+		for si := 0; si < steps; si++ {
+			t0 := float32(si) / float32(steps)
+			t1 := float32(si+1) / float32(steps)
+
+			x0 := na.X + dx*t0
+			z0 := na.Z + dz*t0
+			h0 := h.WorldHeight(x0, z0) + 0.15
+
+			x1 := na.X + dx*t1
+			z1 := na.Z + dz*t1
+			h1 := h.WorldHeight(x1, z1) + 0.15
+
+			for li := 0; li < lanes; li++ {
+				offset := (float32(li) - float32(lanes-1)*0.5) * laneW
+				ll := offset - laneW*0.5 + 0.1
+				lr := offset + laneW*0.5 - 0.1
+				al := rl.NewVector3(x0+perX*ll, h0, z0+perZ*ll)
+				ar := rl.NewVector3(x0+perX*lr, h0, z0+perZ*lr)
+				bl := rl.NewVector3(x1+perX*ll, h1, z1+perZ*ll)
+				br := rl.NewVector3(x1+perX*lr, h1, z1+perZ*lr)
+				drawQuad(al, ar, bl, br, asphalt)
+			}
+
+			for li := 0; li < lanes-1; li++ {
+				offset := (float32(li) - float32(lanes-1)*0.5 + 1) * laneW
+				gap := float32(0.15)
+				cl := rl.NewVector3(x0+perX*(offset-gap), h0, z0+perZ*(offset-gap))
+				cr := rl.NewVector3(x0+perX*(offset+gap), h0, z0+perZ*(offset+gap))
+				ncl := rl.NewVector3(x1+perX*(offset-gap), h1, z1+perZ*(offset-gap))
+				ncr := rl.NewVector3(x1+perX*(offset+gap), h1, z1+perZ*(offset+gap))
+				drawQuad(cl, cr, ncl, ncr, center)
+			}
+
+			total := float32(lanes) * laneW
+			half := total * 0.5
+			eW := float32(0.2)
+			el1 := rl.NewVector3(x0-perX*half, h0, z0-perZ*half)
+			el2 := rl.NewVector3(x0-perX*(half-eW), h0, z0-perZ*(half-eW))
+			nel1 := rl.NewVector3(x1-perX*half, h1, z1-perZ*half)
+			nel2 := rl.NewVector3(x1-perX*(half-eW), h1, z1-perZ*(half-eW))
+			drawQuad(el1, el2, nel1, nel2, edge)
+			er1 := rl.NewVector3(x0+perX*(half-eW), h0, z0+perZ*(half-eW))
+			er2 := rl.NewVector3(x0+perX*half, h0, z0+perZ*half)
+			ner1 := rl.NewVector3(x1+perX*(half-eW), h1, z1+perZ*(half-eW))
+			ner2 := rl.NewVector3(x1+perX*half, h1, z1+perZ*half)
+			drawQuad(er1, er2, ner1, ner2, edge)
+		}
 	}
 }
 
