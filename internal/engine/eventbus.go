@@ -1,5 +1,7 @@
 package engine
 
+import "sync"
+
 type EventPriority int
 
 const (
@@ -17,88 +19,125 @@ type queuedEvent struct {
 
 type EventCallback func(data any)
 
+type listener struct {
+	callback EventCallback
+	once     bool
+	id       uint64
+}
+
 type EventBus struct {
-	listeners    map[string]map[EventCallback]struct{}
-	onceListeners map[EventCallback]struct{}
-	queues       map[EventPriority][]queuedEvent
-	processing   bool
+	mu         sync.Mutex
+	listeners  map[string][]listener
+	nextID     uint64
+	queues     map[EventPriority][]queuedEvent
+	processing bool
 }
 
 func NewEventBus() *EventBus {
 	return &EventBus{
-		listeners:    make(map[string]map[EventCallback]struct{}),
-		onceListeners: make(map[EventCallback]struct{}),
-		queues:       make(map[EventPriority][]queuedEvent),
+		listeners: make(map[string][]listener),
+		queues:    make(map[EventPriority][]queuedEvent),
 	}
 }
 
 func (eb *EventBus) On(event string, callback EventCallback) func() {
-	if _, ok := eb.listeners[event]; !ok {
-		eb.listeners[event] = make(map[EventCallback]struct{})
-	}
-	eb.listeners[event][callback] = struct{}{}
-	return func() { eb.Off(event, callback) }
+	eb.mu.Lock()
+	defer eb.mu.Unlock()
+	id := eb.nextID
+	eb.nextID++
+	eb.listeners[event] = append(eb.listeners[event], listener{callback: callback, once: false, id: id})
+	return func() { eb.remove(event, id) }
 }
 
 func (eb *EventBus) Once(event string, callback EventCallback) {
-	eb.onceListeners[callback] = struct{}{}
-	eb.On(event, callback)
+	eb.mu.Lock()
+	defer eb.mu.Unlock()
+	id := eb.nextID
+	eb.nextID++
+	eb.listeners[event] = append(eb.listeners[event], listener{callback: callback, once: true, id: id})
 }
 
-func (eb *EventBus) Off(event string, callback EventCallback) {
-	if listeners, ok := eb.listeners[event]; ok {
-		delete(listeners, callback)
-		delete(eb.onceListeners, callback)
+func (eb *EventBus) remove(event string, id uint64) {
+	eb.mu.Lock()
+	defer eb.mu.Unlock()
+	listeners := eb.listeners[event]
+	for i, l := range listeners {
+		if l.id == id {
+			eb.listeners[event] = append(listeners[:i], listeners[i+1:]...)
+			return
+		}
 	}
 }
 
 func (eb *EventBus) Emit(event string, data any) {
-	listeners, ok := eb.listeners[event]
-	if !ok {
-		return
-	}
-	for cb := range listeners {
-		cb(data)
-		if _, isOnce := eb.onceListeners[cb]; isOnce {
-			delete(eb.onceListeners, cb)
-			delete(listeners, cb)
+	eb.mu.Lock()
+	listeners := make([]listener, len(eb.listeners[event]))
+	copy(listeners, eb.listeners[event])
+	eb.mu.Unlock()
+
+	var toRemove []uint64
+	for _, l := range listeners {
+		l.callback(data)
+		if l.once {
+			toRemove = append(toRemove, l.id)
 		}
+	}
+
+	if len(toRemove) > 0 {
+		eb.mu.Lock()
+		remaining := eb.listeners[event][:0]
+		for _, l := range eb.listeners[event] {
+			remove := false
+			for _, id := range toRemove {
+				if l.id == id {
+					remove = true
+					break
+				}
+			}
+			if !remove {
+				remaining = append(remaining, l)
+			}
+		}
+		eb.listeners[event] = remaining
+		eb.mu.Unlock()
 	}
 }
 
 func (eb *EventBus) QueueEvent(event string, data any, priority EventPriority) {
+	eb.mu.Lock()
+	defer eb.mu.Unlock()
 	eb.queues[priority] = append(eb.queues[priority], queuedEvent{event, data, priority})
 }
 
 func (eb *EventBus) ProcessQueue() {
+	eb.mu.Lock()
 	if eb.processing {
+		eb.mu.Unlock()
 		return
 	}
 	eb.processing = true
 
+	allQueues := make([][]queuedEvent, 4)
+	for i := PriorityCritical; i <= PriorityLow; i++ {
+		allQueues[i] = eb.queues[i]
+		delete(eb.queues, i)
+	}
+	eb.processing = false
+	eb.mu.Unlock()
+
 	order := []EventPriority{PriorityCritical, PriorityHigh, PriorityNormal, PriorityLow}
 	for _, prio := range order {
-		queue := eb.queues[prio]
-		if len(queue) == 0 {
-			continue
-		}
-		for len(queue) > 0 {
-			qe := queue[0]
-			queue = queue[1:]
+		for _, qe := range allQueues[prio] {
 			eb.Emit(qe.event, qe.data)
 		}
-		eb.queues[prio] = queue
 	}
-
-	eb.processing = false
 }
 
 func (eb *EventBus) Clear() {
+	eb.mu.Lock()
+	defer eb.mu.Unlock()
 	for k := range eb.listeners {
 		delete(eb.listeners, k)
-	}
-	for k := range eb.onceListeners {
-		delete(eb.onceListeners, k)
 	}
 	for k := range eb.queues {
 		delete(eb.queues, k)

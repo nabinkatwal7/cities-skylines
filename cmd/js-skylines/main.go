@@ -4,6 +4,8 @@ import (
 	"time"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
+
+	"github.com/katwate/js-skylines/internal/terrain"
 )
 
 const (
@@ -12,26 +14,48 @@ const (
 )
 
 type Game struct {
-	camera rl.Camera3D
+	camera   rl.Camera3D
 	gridSize int32
+	terrain  *terrain.Manager
 }
 
 func NewGame() *Game {
+	cam := rl.Camera3D{
+		Position:   rl.NewVector3(0, 80, 80),
+		Target:     rl.NewVector3(0, 0, 0),
+		Up:         rl.NewVector3(0, 1, 0),
+		Fovy:       60,
+		Projection: rl.CameraPerspective,
+	}
+
+	t := terrain.NewManager(time.Now().UnixNano())
+	t.Generate()
+
 	return &Game{
-		camera: rl.Camera3D{
-			Position:   rl.NewVector3(50, 50, 50),
-			Target:     rl.NewVector3(0, 0, 0),
-			Up:         rl.NewVector3(0, 1, 0),
-			Fovy:       60,
-			Projection: rl.CameraPerspective,
-		},
+		camera:   cam,
 		gridSize: 40,
+		terrain:  t,
 	}
 }
 
 func (g *Game) Update() {
-	rl.UpdateCamera(&g.camera, rl.CameraOrbital)
-	g.camera.Up = rl.NewVector3(0, 1, 0)
+	speed := float32(20.0)
+	if rl.IsKeyDown(rl.KeyW) {
+		g.camera.Position.Z -= speed
+		g.camera.Target.Z -= speed
+	}
+	if rl.IsKeyDown(rl.KeyS) {
+		g.camera.Position.Z += speed
+		g.camera.Target.Z += speed
+	}
+	if rl.IsKeyDown(rl.KeyA) {
+		g.camera.Position.X -= speed
+		g.camera.Target.X -= speed
+	}
+	if rl.IsKeyDown(rl.KeyD) {
+		g.camera.Position.X += speed
+		g.camera.Target.X += speed
+	}
 }
 
 func (g *Game) Draw() {
@@ -40,18 +64,13 @@ func (g *Game) Draw() {
 
 	rl.BeginMode3D(g.camera)
 
+	g.terrain.Draw()
 	rl.DrawGrid(g.gridSize, 2.0)
-
-	rl.DrawCube(rl.NewVector3(0, 0.5, 0), 2, 1, 2, rl.Brown)
-	rl.DrawCube(rl.NewVector3(3, 0.5, 0), 2, 1, 2, rl.Gray)
-	rl.DrawCube(rl.NewVector3(-3, 0.5, 0), 2, 1, 2, rl.Red)
-	rl.DrawCube(rl.NewVector3(0, 0.5, 3), 2, 1, 2, rl.Yellow)
-	rl.DrawCube(rl.NewVector3(0, 0.5, -3), 1, 1, 1, rl.Green)
 
 	rl.EndMode3D()
 
 	rl.DrawFPS(10, 10)
-	rl.DrawText("JS Skylines - Go Edition", 10, 30, 20, rl.Black)
+	rl.DrawText("Ciities Skylines", 10, 30, 20, rl.Black)
 
 	rl.EndDrawing()
 }
@@ -64,15 +83,12 @@ func main() {
 	rl.SetTargetFPS(60)
 
 	game := NewGame()
-	lastTime := time.Now()
 
 	for !rl.WindowShouldClose() {
-		dt := time.Since(lastTime).Seconds()
-		lastTime = time.Now()
-
-		_ = dt
-
+		game.terrain.Update(float64(rl.GetFrameTime()))
 		game.Update()
 		game.Draw()
 	}
+
+	game.terrain.Unload()
 }

@@ -1372,7 +1372,7 @@ The terrain engine is responsible for:
 
 ---
 
-## 2.1 World Structure
+## 2.1 World Structure ✅
 
 The map is represented as a square terrain composed of evenly spaced vertices.
 
@@ -1410,7 +1410,7 @@ Only vertex heights change during terraforming.
 
 ---
 
-## 2.2 Coordinate System
+## 2.2 Coordinate System ✅
 
 The terrain uses world-space coordinates.
 
@@ -1442,7 +1442,7 @@ Water samples terrain.
 
 ---
 
-## 2.3 Heightmap
+## 2.3 Heightmap ✅
 
 Terrain elevation is stored as a heightmap.
 
@@ -1466,7 +1466,7 @@ Slope is calculated dynamically.
 
 ---
 
-## 2.4 Terrain Chunks
+## 2.4 Terrain Chunks ✅
 
 The terrain is divided into chunks.
 
@@ -1494,7 +1494,7 @@ Only modified chunks rebuild.
 
 ---
 
-## 2.5 Terrain LOD
+## 2.5 Terrain LOD ✅
 
 Different terrain meshes exist depending on camera distance.
 
@@ -1524,7 +1524,7 @@ Far terrain is heavily simplified.
 
 ---
 
-## 2.6 Terrain Generation
+## 2.6 Terrain Generation ✅
 
 New maps are generated procedurally.
 
@@ -1572,7 +1572,7 @@ The same seed always produces the same terrain.
 
 ---
 
-## 2.7 Noise Layers
+## 2.7 Noise Layers ✅
 
 Terrain uses multiple blended noise maps.
 
@@ -1602,7 +1602,7 @@ Each layer contributes different frequencies.
 
 ---
 
-## 2.8 River Generation
+## 2.8 River Generation ✅
 
 Rivers follow terrain gradients.
 
@@ -1638,7 +1638,7 @@ River paths affect:
 
 ---
 
-## 2.9 Water Bodies
+## 2.9 Water Bodies ✅
 
 Water is simulated independently of terrain.
 
@@ -1666,7 +1666,7 @@ Current
 
 ---
 
-## 2.10 Water Simulation
+## 2.10 Water Simulation ✅
 
 Water behaves as a dynamic fluid.
 
@@ -1699,7 +1699,7 @@ Water continuously seeks equilibrium.
 
 ---
 
-## 2.11 Flooding
+## 2.11 Flooding ✅
 
 Flooding occurs when water exceeds terrain elevation.
 
