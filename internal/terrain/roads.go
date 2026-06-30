@@ -51,7 +51,6 @@ type RoadManager struct {
 	Segments []RoadSegment
 	Models   []rl.Model
 	NextID   uint32
-	roadTex  rl.Texture2D
 }
 
 func NewRoadManager() *RoadManager {
@@ -93,14 +92,6 @@ func (rm *RoadManager) AddSegment(a, b uint32, rt RoadType) uint32 {
 	return id
 }
 
-func (rm *RoadManager) Prepare() {
-	img := rl.GenImageCellular(128, 128, 8)
-	rl.ImageColorTint(img, rl.NewColor(80, 80, 80, 255))
-	rl.ImageColorBrightness(img, -20)
-	rm.roadTex = rl.LoadTextureFromImage(img)
-	rl.UnloadImage(img)
-}
-
 func (rm *RoadManager) UploadGPU(h *Heightmap) {
 	rm.Models = make([]rl.Model, len(rm.Segments))
 	for i, seg := range rm.Segments {
@@ -125,61 +116,114 @@ func (rm *RoadManager) buildSegmentMesh(h *Heightmap, seg RoadSegment) rl.Model 
 	perZ := nx
 
 	lanes := roadLanes(seg.RoadType)
+	m := lanes + lanes - 1
+	if lanes == 1 {
+		m = 1
+	}
+
 	ha := h.WorldHeight(na.X, na.Z) + 0.15
 	hb := h.WorldHeight(nb.X, nb.Z) + 0.15
 
-	triCount := lanes * 2
-	vertCount := lanes * 4
+	verts := make([]float32, 0, m*4*3)
+	colors := make([]uint8, 0, m*4*4)
+	indices := make([]uint16, 0, m*6)
 
-	verts := make([]float32, 0, vertCount*3)
-	normals := make([]float32, 0, vertCount*3)
-	texcoords := make([]float32, 0, vertCount*2)
-	indices := make([]uint16, 0, triCount*3)
+	asphalt := rl.NewColor(70, 70, 70, 255)
+	centerLine := rl.NewColor(220, 200, 60, 255)
+	edgeLine := rl.NewColor(200, 200, 200, 255)
 
 	for li := 0; li < lanes; li++ {
 		offset := (float32(li) - float32(lanes-1)*0.5) * laneWidth
-		lpx := perX * (offset - laneWidth*0.5)
-		lpz := perZ * (offset - laneWidth*0.5)
-		rpx := perX * (offset + laneWidth*0.5)
-		rpz := perZ * (offset + laneWidth*0.5)
+		lpx := perX * (offset - laneWidth*0.5 + 0.1)
+		lpz := perZ * (offset - laneWidth*0.5 + 0.1)
+		rpx := perX * (offset + laneWidth*0.5 - 0.1)
+		rpz := perZ * (offset + laneWidth*0.5 - 0.1)
 
-		base := uint16(li * 4)
+		base := uint16(len(verts) / 3)
 		verts = append(verts,
 			na.X+lpx, ha, na.Z+lpz,
 			na.X+rpx, ha, na.Z+rpz,
 			nb.X+lpx, hb, nb.Z+lpz,
 			nb.X+rpx, hb, nb.Z+rpz,
 		)
-		normals = append(normals,
-			0, 1, 0,
-			0, 1, 0,
-			0, 1, 0,
-			0, 1, 0,
+		for i := 0; i < 4; i++ {
+			colors = append(colors, asphalt.R, asphalt.G, asphalt.B, asphalt.A)
+		}
+		indices = append(indices, base, base+2, base+1, base+1, base+2, base+3)
+	}
+
+	for li := 0; li < lanes-1; li++ {
+		offset := (float32(li) - float32(lanes-1)*0.5 + 1) * laneWidth
+		left := offset - 0.15
+		right := offset + 0.15
+		lpx := perX * left
+		lpz := perZ * left
+		rpx := perX * right
+		rpz := perZ * right
+
+		base := uint16(len(verts) / 3)
+		verts = append(verts,
+			na.X+lpx, ha, na.Z+lpz,
+			na.X+rpx, ha, na.Z+rpz,
+			nb.X+lpx, hb, nb.Z+lpz,
+			nb.X+rpx, hb, nb.Z+rpz,
 		)
-		texcoords = append(texcoords,
-			0, 0,
-			1, 0,
-			0, length/4.0,
-			1, length/4.0,
+		col := centerLine
+		for i := 0; i < 4; i++ {
+			colors = append(colors, col.R, col.G, col.B, col.A)
+		}
+		indices = append(indices, base, base+2, base+1, base+1, base+2, base+3)
+	}
+
+	{
+		totalWidth := float32(lanes) * laneWidth
+		half := totalWidth * 0.5
+
+		lpx := perX * -(half)
+		lpz := perZ * -(half)
+		rpx := perX * -(half - 0.2)
+		rpz := perZ * -(half - 0.2)
+
+		base := uint16(len(verts) / 3)
+		verts = append(verts,
+			na.X+lpx, ha, na.Z+lpz,
+			na.X+rpx, ha, na.Z+rpz,
+			nb.X+lpx, hb, nb.Z+lpz,
+			nb.X+rpx, hb, nb.Z+rpz,
 		)
+		col := edgeLine
+		for i := 0; i < 4; i++ {
+			colors = append(colors, col.R, col.G, col.B, col.A)
+		}
+		indices = append(indices, base, base+2, base+1, base+1, base+2, base+3)
+
+		lpx = perX * (half - 0.2)
+		lpz = perZ * (half - 0.2)
+		rpx = perX * half
+		rpz = perZ * half
+
+		base = uint16(len(verts) / 3)
+		verts = append(verts,
+			na.X+lpx, ha, na.Z+lpz,
+			na.X+rpx, ha, na.Z+rpz,
+			nb.X+lpx, hb, nb.Z+lpz,
+			nb.X+rpx, hb, nb.Z+rpz,
+		)
+		for i := 0; i < 4; i++ {
+			colors = append(colors, col.R, col.G, col.B, col.A)
+		}
 		indices = append(indices, base, base+2, base+1, base+1, base+2, base+3)
 	}
 
 	mesh := rl.Mesh{
-		VertexCount:   int32(vertCount),
-		TriangleCount: int32(triCount),
+		VertexCount:   int32(len(verts) / 3),
+		TriangleCount: int32(len(indices) / 3),
 		Vertices:      &verts[0],
-		Normals:       &normals[0],
-		Texcoords:     &texcoords[0],
+		Colors:        &colors[0],
 		Indices:       &indices[0],
 	}
 	rl.UploadMesh(&mesh, false)
-	model := rl.LoadModelFromMesh(mesh)
-	mats := model.GetMaterials()
-	if len(mats) > 0 {
-		rl.SetMaterialTexture(&mats[0], rl.MapAlbedo, rm.roadTex)
-	}
-	return model
+	return rl.LoadModelFromMesh(mesh)
 }
 
 func (rm *RoadManager) Draw(h *Heightmap) {
@@ -200,7 +244,4 @@ func (rm *RoadManager) Unload() {
 		}
 	}
 	rm.Models = nil
-	if rm.roadTex.ID != 0 {
-		rl.UnloadTexture(rm.roadTex)
-	}
 }
