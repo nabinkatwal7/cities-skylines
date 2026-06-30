@@ -24,7 +24,6 @@ type Manager struct {
 	Models      []rl.Model
 	Seed        int64
 	terrainTex  rl.Texture2D
-	waterTex    rl.Texture2D
 	uploadIdx   int
 }
 
@@ -49,32 +48,17 @@ func (m *Manager) GenerateData() {
 }
 
 func (m *Manager) LoadAssets() error {
-	treeFiles := []string{
-		"assets/tree/tree_oak.fbx",
-		"assets/tree/tree_pine.fbx",
-		"assets/tree/tree_default.fbx",
-		"assets/tree/tree_palm.fbx",
-	}
-	m.Trees.Models = make([]rl.Model, 0, len(treeFiles))
-	for _, f := range treeFiles {
-		model := rl.LoadModel(f)
-		if rl.IsModelValid(model) {
-			m.Trees.Models = append(m.Trees.Models, model)
-		} else {
-			rl.UnloadModel(model)
-		}
-	}
-	if len(m.Trees.Models) == 0 {
-		return fmt.Errorf("failed to load any tree models")
+	model := rl.LoadModel("assets/tree/leaftree.obj")
+	if rl.IsModelValid(model) {
+		m.Trees.Model = model
+	} else {
+		rl.UnloadModel(model)
+		return fmt.Errorf("failed to load tree model")
 	}
 
 	grassTex := rl.LoadTexture("assets/grass.png")
 	if grassTex.ID != 0 {
 		m.terrainTex = grassTex
-	}
-	waterTex := rl.LoadTexture("assets/water.png")
-	if waterTex.ID != 0 {
-		m.waterTex = waterTex
 	}
 	return nil
 }
@@ -86,14 +70,6 @@ func (m *Manager) PrepareUpload() {
 		rl.ImageColorBrightness(grassImg, -15)
 		m.terrainTex = rl.LoadTextureFromImage(grassImg)
 		rl.UnloadImage(grassImg)
-	}
-
-	if m.waterTex.ID == 0 {
-		waterImg := rl.GenImageCellular(256, 256, 8)
-		rl.ImageColorTint(waterImg, rl.NewColor(20, 100, 180, 180))
-		rl.ImageColorBrightness(waterImg, 10)
-		m.waterTex = rl.LoadTextureFromImage(waterImg)
-		rl.UnloadImage(waterImg)
 	}
 
 	m.Models = make([]rl.Model, len(m.Chunks))
@@ -116,13 +92,6 @@ func (m *Manager) UploadNextBatch(count int) bool {
 	m.uploadIdx = end
 
 	if m.uploadIdx >= len(m.Chunks) {
-		if m.Water != nil {
-			m.Water.UploadGPU()
-			mats := m.Water.Model.GetMaterials()
-			if len(mats) > 0 && m.waterTex.ID != 0 {
-				rl.SetMaterialTexture(&mats[0], rl.MapAlbedo, m.waterTex)
-			}
-		}
 		return true
 	}
 	return false
@@ -182,14 +151,10 @@ func (m *Manager) Unload() {
 	for _, model := range m.Models {
 		rl.UnloadModel(model)
 	}
-	if m.Water != nil {
-		m.Water.Unload()
-	}
-	for _, model := range m.Trees.Models {
-		rl.UnloadModel(model)
+	if m.Trees.Model.MeshCount > 0 {
+		rl.UnloadModel(m.Trees.Model)
 	}
 	rl.UnloadTexture(m.terrainTex)
-	rl.UnloadTexture(m.waterTex)
 	m.Models = nil
 }
 

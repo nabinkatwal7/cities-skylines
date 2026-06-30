@@ -21,12 +21,7 @@ type WaterCell struct {
 }
 
 type WaterSystem struct {
-	Grid         [WaterGridSize][WaterGridSize]WaterCell
-	Model        rl.Model
-	vertices     []float32
-	normals      []float32
-	texcoords    []float32
-	indices      []uint16
+	Grid [WaterGridSize][WaterGridSize]WaterCell
 }
 
 func NewWaterSystem() *WaterSystem {
@@ -123,78 +118,10 @@ func (ws *WaterSystem) IsWet(worldX, worldZ float32) bool {
 	return ws.Grid[z][x].Height > 0.01
 }
 
-func (ws *WaterSystem) UploadGPU() {
-	verts := WaterGridSize * WaterGridSize
-	quads := (WaterGridSize - 1) * (WaterGridSize - 1)
-	scale := WorldSize / float32(WaterGridSize-1)
-
-	ws.vertices = make([]float32, verts*3)
-	ws.normals = make([]float32, verts*3)
-	ws.texcoords = make([]float32, verts*2)
-	ws.indices = make([]uint16, quads*6)
-
-	waterY := float32(SeaLevel*MaxHeight + 0.1)
-
-	idx := 0
-	for z := 0; z < WaterGridSize; z++ {
-		for x := 0; x < WaterGridSize; x++ {
-			worldX := float32(x)*scale - WorldSize/2
-			worldZ := float32(z)*scale - WorldSize/2
-
-			ws.vertices[idx*3] = worldX
-			ws.vertices[idx*3+1] = waterY
-			ws.vertices[idx*3+2] = worldZ
-
-			ws.normals[idx*3] = 0
-			ws.normals[idx*3+1] = 1
-			ws.normals[idx*3+2] = 0
-
-			ws.texcoords[idx*2] = float32(x) / float32(WaterGridSize-1) * 8
-			ws.texcoords[idx*2+1] = float32(z) / float32(WaterGridSize-1) * 8
-
-			idx++
-		}
-	}
-
-	qi := 0
-	for z := 0; z < WaterGridSize-1; z++ {
-		for x := 0; x < WaterGridSize-1; x++ {
-			a := z*WaterGridSize + x
-			b := z*WaterGridSize + x + 1
-			c := (z+1)*WaterGridSize + x
-			d := (z+1)*WaterGridSize + x + 1
-			ws.indices[qi*6] = uint16(a)
-			ws.indices[qi*6+1] = uint16(c)
-			ws.indices[qi*6+2] = uint16(b)
-			ws.indices[qi*6+3] = uint16(b)
-			ws.indices[qi*6+4] = uint16(c)
-			ws.indices[qi*6+5] = uint16(d)
-			qi++
-		}
-	}
-
-	mesh := rl.Mesh{
-		VertexCount:   int32(verts),
-		TriangleCount: int32(quads * 2),
-		Vertices:      &ws.vertices[0],
-		Normals:       &ws.normals[0],
-		Texcoords:     &ws.texcoords[0],
-		Indices:       &ws.indices[0],
-	}
-
-	rl.UploadMesh(&mesh, false)
-	ws.Model = rl.LoadModelFromMesh(mesh)
-}
-
 func (ws *WaterSystem) Draw() {
-	if ws.Model.MeshCount == 0 {
-		return
-	}
-	rl.DrawModel(ws.Model, rl.NewVector3(0, 0, 0), 1, rl.White)
+	h := float32(SeaLevel*MaxHeight + 0.1)
+	rl.DrawPlane(rl.NewVector3(0, h, 0), rl.NewVector2(WorldSize, WorldSize), rl.NewColor(30, 120, 210, 160))
 }
 
 func (ws *WaterSystem) Unload() {
-	if ws.Model.MeshCount > 0 {
-		rl.UnloadModel(ws.Model)
-	}
 }

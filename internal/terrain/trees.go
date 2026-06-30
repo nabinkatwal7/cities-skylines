@@ -39,7 +39,7 @@ type TreeSystem struct {
 	Trees    []Tree
 	MaxTrees int
 	seed     int64
-	Models   []rl.Model
+	Model    rl.Model
 	colorMap map[TreeSpecies]rl.Color
 }
 
@@ -149,6 +149,10 @@ func (ts *TreeSystem) RemoveNear(x, z, radius float32) {
 
 func (ts *TreeSystem) Draw(h *Heightmap, camX, camZ float32) {
 	maxDist := float32(400)
+	if ts.Model.MeshCount == 0 {
+		ts.drawFallback(h, camX, camZ, maxDist)
+		return
+	}
 	for _, t := range ts.Trees {
 		state := ts.getState(t)
 		if state == TreeDead {
@@ -160,29 +164,33 @@ func (ts *TreeSystem) Draw(h *Heightmap, camX, camZ float32) {
 			continue
 		}
 		height := h.WorldHeight(t.X, t.Z)
-		var model rl.Model
-		if int(t.Species) < len(ts.Models) && ts.Models[t.Species].MeshCount > 0 {
-			model = ts.Models[t.Species]
-		} else if len(ts.Models) > 0 && ts.Models[0].MeshCount > 0 {
-			model = ts.Models[0]
-		} else {
-			ts.drawFallbackTree(t, height)
-			continue
-		}
-		scale := t.Scale * 0.8
+		col := ts.colorMap[t.Species]
+		scale := t.Scale * 0.4
 		pos := rl.NewVector3(t.X, height+scale*0.5, t.Z)
 		axis := rl.NewVector3(0, 1, 0)
-		rl.DrawModelEx(model, pos, axis, t.Yaw*57.3, rl.NewVector3(scale, scale, scale), rl.White)
+		rl.DrawModelEx(ts.Model, pos, axis, t.Yaw*57.3, rl.NewVector3(scale, scale, scale), col)
 	}
 }
 
-func (ts *TreeSystem) drawFallbackTree(t Tree, height float32) {
-	scale := t.Scale
-	col := ts.colorMap[t.Species]
-	rl.DrawCube(rl.NewVector3(t.X, height+scale*0.5, t.Z), 0.2*scale, scale, 0.2*scale, rl.NewColor(101, 67, 33, 255))
-	crownSize := scale * 0.8
-	crownY := height + scale + crownSize*0.3
-	rl.DrawCube(rl.NewVector3(t.X, crownY, t.Z), crownSize, crownSize*0.6, crownSize, col)
+func (ts *TreeSystem) drawFallback(h *Heightmap, camX, camZ, maxDist float32) {
+	for _, t := range ts.Trees {
+		state := ts.getState(t)
+		if state == TreeDead {
+			continue
+		}
+		dx := t.X - camX
+		dz := t.Z - camZ
+		if dx*dx+dz*dz > maxDist*maxDist {
+			continue
+		}
+		height := h.WorldHeight(t.X, t.Z)
+		scale := t.Scale
+		col := ts.colorMap[t.Species]
+		rl.DrawCube(rl.NewVector3(t.X, height+scale*0.5, t.Z), 0.2*scale, scale, 0.2*scale, rl.NewColor(101, 67, 33, 255))
+		crownSize := scale * 0.8
+		crownY := height + scale + crownSize*0.3
+		rl.DrawCube(rl.NewVector3(t.X, crownY, t.Z), crownSize, crownSize*0.6, crownSize, col)
+	}
 }
 
 func (ts *TreeSystem) getState(t Tree) TreeState {
