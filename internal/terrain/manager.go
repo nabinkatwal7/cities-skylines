@@ -19,6 +19,7 @@ type Manager struct {
 	Terraform   *TerraformSystem
 	Trees       *TreeSystem
 	Resources   *ResourceSystem
+	Roads       *RoadManager
 	Connections *ConnectionSystem
 	Chunks      []*Chunk
 	Models      []rl.Model
@@ -41,6 +42,16 @@ func (m *Manager) GenerateData() {
 	m.Trees.Generate(m.Heightmap, m.Water)
 	m.Resources = NewResourceSystem(m.Seed, m.Heightmap)
 	m.Connections = NewConnectionSystem()
+	m.Roads = NewRoadManager()
+	m.Roads.Prepare()
+	n0 := m.Roads.AddNode(-50, -50)
+	n1 := m.Roads.AddNode(-50, 50)
+	n2 := m.Roads.AddNode(50, 50)
+	n3 := m.Roads.AddNode(50, -50)
+	m.Roads.AddSegment(n0, n1, RoadTwoLane)
+	m.Roads.AddSegment(n1, n2, RoadTwoLane)
+	m.Roads.AddSegment(n2, n3, RoadTwoLane)
+	m.Roads.AddSegment(n3, n0, RoadTwoLane)
 	m.Chunks = BuildChunks(m.Heightmap)
 	for _, c := range m.Chunks {
 		BuildChunkMesh(c)
@@ -123,6 +134,7 @@ func (m *Manager) Update(dt float64) {
 	if m.Water != nil {
 		m.Water.Update(dt)
 	}
+
 	if m.Trees != nil {
 		m.Trees.Update(dt)
 	}
@@ -145,6 +157,9 @@ func (m *Manager) Draw(camX, camZ float32) {
 	if m.Water != nil {
 		m.Water.Draw()
 	}
+	if m.Roads != nil {
+		m.Roads.Draw(m.Heightmap)
+	}
 }
 
 func (m *Manager) Unload() {
@@ -153,6 +168,9 @@ func (m *Manager) Unload() {
 	}
 	if m.Trees.Model.MeshCount > 0 {
 		rl.UnloadModel(m.Trees.Model)
+	}
+	if m.Roads != nil {
+		m.Roads.Unload()
 	}
 	rl.UnloadTexture(m.terrainTex)
 	m.Models = nil
