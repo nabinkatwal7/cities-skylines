@@ -120,6 +120,35 @@ func (rm *RoadManager) NearestNode(x, z float32) (uint32, bool) {
 	return bestIdx, bestDist < 400
 }
 
+func (rm *RoadManager) HasNearbyRoad(x, z, maxDist float32) bool {
+	for _, seg := range rm.Segments {
+		na := &rm.Nodes[seg.NodeA]
+		nb := &rm.Nodes[seg.NodeB]
+		dx := nb.X - na.X
+		dz := nb.Z - na.Z
+		l := float32(math.Sqrt(float64(dx*dx + dz*dz)))
+		if l < 0.01 {
+			continue
+		}
+		t := ((x-na.X)*dx + (z-na.Z)*dz) / (l * l)
+		if t < 0 {
+			t = 0
+		}
+		if t > 1 {
+			t = 1
+		}
+		px := na.X + dx*t
+		pz := na.Z + dz*t
+		dx2 := x - px
+		dz2 := z - pz
+		d := dx2*dx2 + dz2*dz2
+		if d < maxDist*maxDist {
+			return true
+		}
+	}
+	return false
+}
+
 func (rm *RoadManager) Rebuild(h *Heightmap) {
 	for _, model := range rm.Models {
 		if model.MeshCount > 0 {

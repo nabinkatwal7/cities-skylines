@@ -21,6 +21,7 @@ type Manager struct {
 	Resources   *ResourceSystem
 	Roads       *RoadManager
 	Zones       *ZoneManager
+	Buildings   *BuildingManager
 	Connections *ConnectionSystem
 	Chunks      []*Chunk
 	Models      []rl.Model
@@ -45,7 +46,8 @@ func (m *Manager) GenerateData() {
 	m.Connections = NewConnectionSystem()
 	m.Roads = NewRoadManager()
 	m.Roads.LoadAssets()
-	m.Zones = NewZoneManager(64, 64)
+	m.Zones = NewZoneManager(128, 128)
+	m.Buildings = NewBuildingManager()
 	n0 := m.Roads.AddNode(-50, -50)
 	n1 := m.Roads.AddNode(-50, 50)
 	n2 := m.Roads.AddNode(50, 50)
@@ -144,9 +146,11 @@ func (m *Manager) Update(dt float64) {
 	if m.Water != nil {
 		m.Water.Update(dt)
 	}
-
 	if m.Trees != nil {
 		m.Trees.Update(dt)
+	}
+	if m.Buildings != nil {
+		m.Buildings.Update(m.Zones, m.Heightmap, m.Roads)
 	}
 }
 
@@ -172,6 +176,9 @@ func (m *Manager) Draw(camX, camZ float32) {
 	}
 	if m.Zones != nil {
 		m.Zones.Draw(m.Heightmap)
+	}
+	if m.Buildings != nil {
+		m.Buildings.Draw(m.Heightmap, m.Zones)
 	}
 }
 
