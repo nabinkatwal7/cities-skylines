@@ -146,13 +146,14 @@ func main() {
 		}
 
 		if rl.IsMouseButtonPressed(rl.MouseButtonLeft) && mouseOnTerrain && !rl.IsKeyDown(rl.KeyLeftShift) {
+			cx := clamp(worldX, -240, 240)
+			cz := clamp(worldZ, -240, 240)
 			if !bld.active {
 				bld.active = true
-				bld.startNode = t.Roads.AddNode(worldX, worldZ)
+				bld.startNode = t.Roads.AddNode(cx, cz)
 			} else {
-				endNode := t.Roads.AddNode(worldX, worldZ)
+				endNode := t.Roads.AddNode(cx, cz)
 				t.Roads.AddSegment(bld.startNode, endNode, bld.roadType)
-				t.Roads.Rebuild(t.Heightmap)
 				bld.startNode = endNode
 			}
 		}
@@ -188,6 +189,16 @@ func main() {
 	}
 
 	t.Unload()
+}
+
+func clamp(v, min, max float32) float32 {
+	if v < min {
+		return min
+	}
+	if v > max {
+		return max
+	}
+	return v
 }
 
 func roadTypeName(rt terrain.RoadType) string {

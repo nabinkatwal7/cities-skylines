@@ -43,6 +43,18 @@ func (h *Heightmap) GetInterpolated(worldX, worldZ float32) float32 {
 	tz := (worldZ + WorldSize/2) / WorldSize * float32(HeightmapSize-1)
 	x0 := int(tx)
 	z0 := int(tz)
+	if x0 < 0 {
+		x0 = 0
+	}
+	if z0 < 0 {
+		z0 = 0
+	}
+	if x0 >= HeightmapSize {
+		x0 = HeightmapSize - 1
+	}
+	if z0 >= HeightmapSize {
+		z0 = HeightmapSize - 1
+	}
 	x1 := min(x0+1, HeightmapSize-1)
 	z1 := min(z0+1, HeightmapSize-1)
 
