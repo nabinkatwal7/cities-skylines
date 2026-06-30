@@ -237,6 +237,34 @@ func (rm *RoadManager) Draw(h *Heightmap) {
 	}
 }
 
+func (rm *RoadManager) NearestNode(x, z float32) (uint32, bool) {
+	if len(rm.Nodes) == 0 {
+		return 0, false
+	}
+	best := uint32(0)
+	bestDist := float32(math.MaxFloat32)
+	for _, n := range rm.Nodes {
+		dx := n.X - x
+		dz := n.Z - z
+		d := dx*dx + dz*dz
+		if d < bestDist {
+			bestDist = d
+			best = n.ID
+		}
+	}
+	return best, bestDist < 400
+}
+
+func (rm *RoadManager) Rebuild(h *Heightmap) {
+	for _, model := range rm.Models {
+		if model.MeshCount > 0 {
+			rl.UnloadModel(model)
+		}
+	}
+	rm.Models = nil
+	rm.UploadGPU(h)
+}
+
 func (rm *RoadManager) Unload() {
 	for _, model := range rm.Models {
 		if model.MeshCount > 0 {
