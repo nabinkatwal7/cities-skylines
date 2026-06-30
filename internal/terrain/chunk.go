@@ -1,5 +1,7 @@
 package terrain
 
+import "math"
+
 const (
 	ChunkSize = 33
 	ChunksPerSide = (HeightmapSize - 1) / (ChunkSize - 1)
@@ -89,13 +91,13 @@ func BuildChunkMesh(c *Chunk) *MeshData {
 			hd := c.Heights[max(0, lz-1)][lx] * MaxHeight
 			hu := c.Heights[min(vertsPerSide-1, lz+1)][lx] * MaxHeight
 
-			scale2 := scale
-			nx := (hl - hr) / (2 * scale2)
-			nz := (hd - hu) / (2 * scale2)
-			len := float32(1.0 / (nx*nx + 1 + nz*nz))
-			md.Normals[idx*3] = nx
-			md.Normals[idx*3+1] = 1.0 / len
-			md.Normals[idx*3+2] = nz
+			nx := hl - hr
+			nz := hd - hu
+			ny := 2.0 * scale
+			invLen := 1.0 / float32(math.Sqrt(float64(nx*nx+ny*ny+nz*nz)))
+			md.Normals[idx*3] = nx * invLen
+			md.Normals[idx*3+1] = ny * invLen
+			md.Normals[idx*3+2] = nz * invLen
 
 			idx++
 		}

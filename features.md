@@ -1716,7 +1716,7 @@ Citizens evacuate flooded areas.
 
 ---
 
-## 2.12 Terraforming
+## 2.12 Terraforming ✅
 
 Players may alter terrain at runtime.
 
@@ -1740,7 +1740,7 @@ Terraforming immediately updates:
 
 ---
 
-## 2.13 Buildability
+## 2.13 Buildability ✅
 
 Every terrain cell maintains a buildability score.
 
@@ -1780,7 +1780,7 @@ Cliff
 
 ---
 
-## 2.14 Terrain Slope
+## 2.14 Terrain Slope ✅
 
 Slope determines construction limits.
 
@@ -1796,7 +1796,7 @@ Extreme slopes prohibit zoning.
 
 ---
 
-## 2.15 Tree System
+## 2.15 Tree System ✅
 
 Trees are independent simulation entities.
 
@@ -1823,7 +1823,7 @@ Trees influence:
 
 ---
 
-## 2.16 Tree Growth
+## 2.16 Tree Growth ✅
 
 Trees grow over time.
 
@@ -1853,7 +1853,7 @@ Dead trees may decay naturally or burn.
 
 ---
 
-## 2.17 Tree Removal
+## 2.17 Tree Removal ✅
 
 Removing trees:
 
@@ -1866,7 +1866,7 @@ Large-scale deforestation affects the environment.
 
 ---
 
-## 2.18 Natural Resources
+## 2.18 Natural Resources ✅
 
 Resource maps exist independently from terrain.
 
@@ -1893,7 +1893,7 @@ Resources are visible only in resource overlays.
 
 ---
 
-## 2.19 Resource Depletion
+## 2.19 Resource Depletion ✅
 
 Ore and oil deplete over time.
 
@@ -1923,7 +1923,7 @@ Fertile land does not deplete.
 
 ---
 
-## 2.20 Outside Connections
+## 2.20 Outside Connections ✅
 
 The terrain contains fixed entry points.
 
@@ -1945,7 +1945,7 @@ They define:
 
 ---
 
-## 2.21 Terrain Serialization
+## 2.21 Terrain Serialization ✅
 
 Saved terrain includes:
 
@@ -1963,7 +1963,7 @@ Only simulation data is stored.
 
 ---
 
-## 2.22 Performance Optimization
+## 2.22 Performance Optimization ✅
 
 Terrain updates are incremental.
 

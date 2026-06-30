@@ -17,11 +17,12 @@ const (
 )
 
 type Tree struct {
-	X, Z   float32
+	X, Z    float32
 	Species TreeSpecies
 	Age     float32
 	Health  float32
 	Scale   float32
+	Yaw     float32
 }
 
 type TreeState int
@@ -38,6 +39,7 @@ type TreeSystem struct {
 	Trees    []Tree
 	MaxTrees int
 	seed     int64
+	Model    rl.Model
 	colorMap map[TreeSpecies]rl.Color
 }
 
@@ -74,8 +76,8 @@ func (ts *TreeSystem) Generate(h *Heightmap, water *WaterSystem) {
 			}
 
 			if water != nil && water.IsWet(
-				float64(x)/float64(HeightmapSize-1)*WorldSize-WorldSize/2,
-				float64(z)/float64(HeightmapSize-1)*WorldSize-WorldSize/2,
+				float32(float64(x)/float64(HeightmapSize-1)*WorldSize-WorldSize/2),
+				float32(float64(z)/float64(HeightmapSize-1)*WorldSize-WorldSize/2),
 			) {
 				continue
 			}
@@ -85,9 +87,9 @@ func (ts *TreeSystem) Generate(h *Heightmap, water *WaterSystem) {
 				continue
 			}
 
-			density := 1.0
+			density := float64(1.0)
 			if hVal > 0.5 {
-				density = 1.0 - (hVal-0.5)/0.2
+				density = float64(1.0 - (hVal-0.5)/0.2)
 			}
 			if rng.Float64() > density {
 				continue
@@ -115,6 +117,7 @@ func (ts *TreeSystem) Generate(h *Heightmap, water *WaterSystem) {
 				Age:     rng.Float32() * 100,
 				Health:  0.8 + rng.Float32()*0.2,
 				Scale:   0.5 + rng.Float32()*1.0,
+				Yaw:     rng.Float32() * 6.2832,
 			})
 		}
 	}
@@ -144,27 +147,50 @@ func (ts *TreeSystem) RemoveNear(x, z, radius float32) {
 	ts.Trees = remaining
 }
 
-func (ts *TreeSystem) Draw(h *Heightmap) {
+func (ts *TreeSystem) Draw(h *Heightmap, camX, camZ float32) {
+	maxDist := float32(400)
+	if ts.Model.MeshCount == 0 {
+		ts.drawFallback(h, camX, camZ, maxDist)
+		return
+	}
 	for _, t := range ts.Trees {
 		state := ts.getState(t)
 		if state == TreeDead {
 			continue
 		}
+		dx := t.X - camX
+		dz := t.Z - camZ
+		if dx*dx+dz*dz > maxDist*maxDist {
+			continue
+		}
+		height := h.WorldHeight(t.X, t.Z)
+		col := ts.colorMap[t.Species]
+		scale := t.Scale * 0.4
+		pos := rl.NewVector3(t.X, height+scale*0.5, t.Z)
+		axis := rl.NewVector3(0, 1, 0)
+		rl.DrawModelEx(ts.Model, pos, axis, t.Yaw*57.3, rl.NewVector3(scale, scale, scale), col)
+	}
+}
 
-		worldX := t.X
-		worldZ := t.Z
-		height := h.WorldHeight(worldX, worldZ)
-
+func (ts *TreeSystem) drawFallback(h *Heightmap, camX, camZ, maxDist float32) {
+	for _, t := range ts.Trees {
+		state := ts.getState(t)
+		if state == TreeDead {
+			continue
+		}
+		dx := t.X - camX
+		dz := t.Z - camZ
+		if dx*dx+dz*dz > maxDist*maxDist {
+			continue
+		}
+		height := h.WorldHeight(t.X, t.Z)
 		scale := t.Scale
 		col := ts.colorMap[t.Species]
 
-		trunkColor := rl.NewColor(101, 67, 33, 255)
-
-		rl.DrawCube(rl.NewVector3(worldX, height+scale*0.5, worldZ), 0.2*scale, scale, 0.2*scale, trunkColor)
-
+		rl.DrawCube(rl.NewVector3(t.X, height+scale*0.5, t.Z), 0.2*scale, scale, 0.2*scale, rl.NewColor(101, 67, 33, 255))
 		crownSize := scale * 0.8
 		crownY := height + scale + crownSize*0.3
-		rl.DrawCube(rl.NewVector3(worldX, crownY, worldZ), crownSize, crownSize*0.6, crownSize, col)
+		rl.DrawCube(rl.NewVector3(t.X, crownY, t.Z), crownSize, crownSize*0.6, crownSize, col)
 	}
 }
 

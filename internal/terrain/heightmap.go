@@ -39,8 +39,8 @@ func (h *Heightmap) Set(x, z int, val float32) {
 }
 
 func (h *Heightmap) GetInterpolated(worldX, worldZ float32) float32 {
-	tx := worldX / WorldSize * float32(HeightmapSize-1)
-	tz := worldZ / WorldSize * float32(HeightmapSize-1)
+	tx := (worldX + WorldSize/2) / WorldSize * float32(HeightmapSize-1)
+	tz := (worldZ + WorldSize/2) / WorldSize * float32(HeightmapSize-1)
 	x0 := int(tx)
 	z0 := int(tz)
 	x1 := min(x0+1, HeightmapSize-1)

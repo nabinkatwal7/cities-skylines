@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	WaterGridSize = 257
+	WaterGridSize = 129
 	SeaLevel      = 0.05
 	LakeThreshold = 0.25
 )
@@ -21,10 +21,11 @@ type WaterCell struct {
 }
 
 type WaterSystem struct {
-	Grid    [WaterGridSize][WaterGridSize]WaterCell
-	Mesh    rl.Mesh
-	Model   rl.Model
-	Dirty   bool
+	Grid       [WaterGridSize][WaterGridSize]WaterCell
+	Mesh       rl.Mesh
+	Model      rl.Model
+	Dirty      bool
+	rebuildTimer float64
 }
 
 func NewWaterSystem() *WaterSystem {
@@ -52,7 +53,6 @@ func (ws *WaterSystem) Init(h *Heightmap) {
 	}
 
 	ws.carveLake(h)
-	ws.buildMesh()
 }
 
 func (ws *WaterSystem) carveLake(h *Heightmap) {
@@ -110,7 +110,11 @@ func (ws *WaterSystem) Update(dt float64) {
 		}
 	}
 
-	ws.Dirty = true
+	ws.rebuildTimer += dt
+	if ws.rebuildTimer >= 0.25 {
+		ws.Dirty = true
+		ws.rebuildTimer = 0
+	}
 }
 
 func (ws *WaterSystem) IsWet(worldX, worldZ float32) bool {
@@ -173,7 +177,7 @@ func (ws *WaterSystem) buildMesh() {
 		}
 	}
 
-	ws.Mesh = rl.Mesh{
+	mesh := rl.Mesh{
 		VertexCount:   int32(verts),
 		TriangleCount: int32(quads * 2),
 		Vertices:      &vertices[0],
@@ -181,12 +185,12 @@ func (ws *WaterSystem) buildMesh() {
 		Texcoords:     &texcoords[0],
 		Indices:       &indices[0],
 	}
-	rl.UploadMesh(&ws.Mesh, false)
 
 	if ws.Model.MeshCount > 0 {
 		rl.UnloadModel(ws.Model)
 	}
-	ws.Model = rl.LoadModelFromMesh(ws.Mesh)
+	ws.Model = rl.LoadModelFromMesh(mesh)
+	clearModelMeshData(&ws.Model)
 	ws.Dirty = false
 }
 
@@ -199,6 +203,10 @@ func (ws *WaterSystem) Draw() {
 	}
 	waterColor := rl.NewColor(30, 120, 200, 180)
 	rl.DrawModel(ws.Model, rl.NewVector3(0, 0, 0), 1, waterColor)
+}
+
+func (ws *WaterSystem) UploadGPU() {
+	ws.buildMesh()
 }
 
 func (ws *WaterSystem) Unload() {
