@@ -2,6 +2,7 @@ package terrain
 
 import (
 	"math"
+	"unsafe"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
@@ -49,11 +50,20 @@ type RoadSegment struct {
 type RoadManager struct {
 	Nodes    []RoadNode
 	Segments []RoadSegment
+	Models   []rl.Model
 	NextID   uint32
+	roadTex  rl.Texture2D
 }
 
 func NewRoadManager() *RoadManager {
 	return &RoadManager{}
+}
+
+func (rm *RoadManager) LoadAssets() {
+	tex := rl.LoadTexture("assets/road.jpg")
+	if tex.ID != 0 {
+		rm.roadTex = tex
+	}
 }
 
 func (rm *RoadManager) AddNode(x, z float32) uint32 {
@@ -110,61 +120,185 @@ func (rm *RoadManager) NearestNode(x, z float32) (uint32, bool) {
 	return bestIdx, bestDist < 400
 }
 
-func drawQuad(a, b rl.Vector3, c, d rl.Vector3, col rl.Color) {
-	rl.DrawTriangle3D(a, b, c, col)
-	rl.DrawTriangle3D(c, b, d, col)
+func (rm *RoadManager) Rebuild(h *Heightmap) {
+	for _, model := range rm.Models {
+		if model.MeshCount > 0 {
+			rl.UnloadModel(model)
+		}
+	}
+	rm.Models = nil
+	rm.UploadGPU(h)
+}
+
+func (rm *RoadManager) UploadGPU(h *Heightmap) {
+	rm.Models = make([]rl.Model, len(rm.Segments))
+	for i, seg := range rm.Segments {
+		rm.Models[i] = rm.buildSurfaceMesh(h, seg)
+	}
+}
+
+func (rm *RoadManager) buildSurfaceMesh(h *Heightmap, seg RoadSegment) rl.Model {
+	na := &rm.Nodes[seg.NodeA]
+	nb := &rm.Nodes[seg.NodeB]
+
+	dx := nb.X - na.X
+	dz := nb.Z - na.Z
+	length := float32(math.Sqrt(float64(dx*dx + dz*dz)))
+	if length < 0.01 {
+		return rl.Model{}
+	}
+
+	perX := -dz / length
+	perZ := dx / length
+	lanes := roadLanes(seg.RoadType)
+	total := float32(lanes) * laneW
+	half := total * 0.5
+
+	steps := int(length / 2)
+	if steps < 1 {
+		steps = 1
+	}
+
+	vertCount := (steps + 1) * 2
+	triCount := steps * 2
+
+	verts := make([]float32, 0, vertCount*3)
+	normals := make([]float32, 0, vertCount*3)
+	texcoords := make([]float32, 0, vertCount*2)
+	indices := make([]uint16, 0, triCount*3)
+
+	for si := 0; si <= steps; si++ {
+		t := float32(si) / float32(steps)
+		x := na.X + dx*t
+		z := na.Z + dz*t
+		hgt := h.WorldHeight(x, z) + 0.15
+
+		u := float32(si) / 4.0
+		verts = append(verts, x-perX*half, hgt, z-perZ*half)
+		verts = append(verts, x+perX*half, hgt, z+perZ*half)
+		normals = append(normals, 0, 1, 0, 0, 1, 0)
+		texcoords = append(texcoords, 0, u, 1, u)
+	}
+
+	for si := 0; si < steps; si++ {
+		base := uint16(si * 2)
+		indices = append(indices, base, base+2, base+1, base+1, base+2, base+3)
+	}
+
+	mesh := rl.Mesh{
+		VertexCount:   int32(vertCount),
+		TriangleCount: int32(triCount),
+		Vertices:      &verts[0],
+		Normals:       &normals[0],
+		Texcoords:     &texcoords[0],
+		Indices:       (*uint16)(unsafe.Pointer(&indices[0])),
+	}
+	rl.UploadMesh(&mesh, false)
+	model := rl.LoadModelFromMesh(mesh)
+	mats := model.GetMaterials()
+	if len(mats) > 0 && rm.roadTex.ID != 0 {
+		rl.SetMaterialTexture(&mats[0], rl.MapAlbedo, rm.roadTex)
+	}
+	return model
 }
 
 func (rm *RoadManager) Draw(h *Heightmap) {
+	if rm.roadTex.ID == 0 {
+		rm.drawFallback(h)
+		return
+	}
+	if len(rm.Models) == 0 {
+		rm.UploadGPU(h)
+	}
+	for _, model := range rm.Models {
+		if model.MeshCount > 0 {
+			rl.DrawModel(model, rl.NewVector3(0, 0, 0), 1, rl.White)
+		}
+	}
+	rm.drawMarkings(h)
+}
+
+func (rm *RoadManager) drawFallback(h *Heightmap) {
 	for _, seg := range rm.Segments {
 		na := &rm.Nodes[seg.NodeA]
 		nb := &rm.Nodes[seg.NodeB]
 
 		dx := nb.X - na.X
 		dz := nb.Z - na.Z
-		length := float32(math.Sqrt(float64(dx*dx + dz*dz)))
-		if length < 0.01 {
+		l := float32(math.Sqrt(float64(dx*dx + dz*dz)))
+		if l < 0.01 {
 			continue
 		}
 
-		nx := dx / length
-		nz := dz / length
-		perX := -nz
-		perZ := nx
-
+		perX := -dz / l
+		perZ := dx / l
 		lanes := roadLanes(seg.RoadType)
+		total := float32(lanes) * laneW
+		half := total * 0.5
+		col := rl.NewColor(80, 80, 80, 255)
 
-		steps := int(length / 2)
+		steps := int(l / 2)
 		if steps < 1 {
 			steps = 1
 		}
-
-		asphalt := rl.NewColor(70, 70, 70, 255)
-		center := rl.NewColor(220, 200, 60, 255)
-		edge := rl.NewColor(200, 200, 200, 255)
-
 		for si := 0; si < steps; si++ {
 			t0 := float32(si) / float32(steps)
 			t1 := float32(si+1) / float32(steps)
-
 			x0 := na.X + dx*t0
 			z0 := na.Z + dz*t0
 			h0 := h.WorldHeight(x0, z0) + 0.15
-
 			x1 := na.X + dx*t1
 			z1 := na.Z + dz*t1
 			h1 := h.WorldHeight(x1, z1) + 0.15
 
-			for li := 0; li < lanes; li++ {
-				offset := (float32(li) - float32(lanes-1)*0.5) * laneW
-				ll := offset - laneW*0.5 + 0.1
-				lr := offset + laneW*0.5 - 0.1
-				al := rl.NewVector3(x0+perX*ll, h0, z0+perZ*ll)
-				ar := rl.NewVector3(x0+perX*lr, h0, z0+perZ*lr)
-				bl := rl.NewVector3(x1+perX*ll, h1, z1+perZ*ll)
-				br := rl.NewVector3(x1+perX*lr, h1, z1+perZ*lr)
-				drawQuad(al, ar, bl, br, asphalt)
-			}
+			al := rl.NewVector3(x0-perX*half, h0, z0-perZ*half)
+			ar := rl.NewVector3(x0+perX*half, h0, z0+perZ*half)
+			bl := rl.NewVector3(x1-perX*half, h1, z1-perZ*half)
+			br := rl.NewVector3(x1+perX*half, h1, z1+perZ*half)
+			rl.DrawTriangle3D(al, ar, bl, col)
+			rl.DrawTriangle3D(bl, ar, br, col)
+		}
+	}
+}
+
+func drawQuad(a, b, c, d rl.Vector3, col rl.Color) {
+	rl.DrawTriangle3D(a, b, c, col)
+	rl.DrawTriangle3D(c, b, d, col)
+}
+
+func (rm *RoadManager) drawMarkings(h *Heightmap) {
+	center := rl.NewColor(220, 200, 60, 255)
+	edge := rl.NewColor(200, 200, 200, 255)
+
+	for _, seg := range rm.Segments {
+		na := &rm.Nodes[seg.NodeA]
+		nb := &rm.Nodes[seg.NodeB]
+
+		dx := nb.X - na.X
+		dz := nb.Z - na.Z
+		l := float32(math.Sqrt(float64(dx*dx + dz*dz)))
+		if l < 0.01 {
+			continue
+		}
+
+		perX := -dz / l
+		perZ := dx / l
+		lanes := roadLanes(seg.RoadType)
+
+		steps := int(l / 2)
+		if steps < 1 {
+			steps = 1
+		}
+
+		for si := 0; si < steps; si++ {
+			t0 := float32(si) / float32(steps)
+			t1 := float32(si+1) / float32(steps)
+			x0 := na.X + dx*t0
+			z0 := na.Z + dz*t0
+			h0 := h.WorldHeight(x0, z0) + 0.15
+			x1 := na.X + dx*t1
+			z1 := na.Z + dz*t1
+			h1 := h.WorldHeight(x1, z1) + 0.15
 
 			for li := 0; li < lanes-1; li++ {
 				offset := (float32(li) - float32(lanes-1)*0.5 + 1) * laneW
@@ -194,4 +328,13 @@ func (rm *RoadManager) Draw(h *Heightmap) {
 }
 
 func (rm *RoadManager) Unload() {
+	for _, model := range rm.Models {
+		if model.MeshCount > 0 {
+			rl.UnloadModel(model)
+		}
+	}
+	rm.Models = nil
+	if rm.roadTex.ID != 0 {
+		rl.UnloadTexture(rm.roadTex)
+	}
 }

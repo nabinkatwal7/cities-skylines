@@ -43,6 +43,7 @@ func (m *Manager) GenerateData() {
 	m.Resources = NewResourceSystem(m.Seed, m.Heightmap)
 	m.Connections = NewConnectionSystem()
 	m.Roads = NewRoadManager()
+	m.Roads.LoadAssets()
 	n0 := m.Roads.AddNode(-50, -50)
 	n1 := m.Roads.AddNode(-50, 50)
 	n2 := m.Roads.AddNode(50, 50)

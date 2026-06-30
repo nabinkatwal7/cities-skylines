@@ -154,6 +154,7 @@ func main() {
 			} else {
 				endNode := t.Roads.AddNode(cx, cz)
 				t.Roads.AddSegment(bld.startNode, endNode, bld.roadType)
+				t.Roads.Rebuild(t.Heightmap)
 				bld.startNode = endNode
 			}
 		}
