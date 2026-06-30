@@ -83,8 +83,10 @@ func BuildChunkMesh(c *Chunk) *MeshData {
 			md.Vertices[idx*3+1] = h
 			md.Vertices[idx*3+2] = worldZ - WorldSize/2
 
-			md.TexCoords[idx*2] = float32(lx) / float32(vertsPerSide-1)
-			md.TexCoords[idx*2+1] = float32(lz) / float32(vertsPerSide-1)
+			gx := (c.IndexX*(ChunkSize-1) + lx)
+			gz := (c.IndexZ*(ChunkSize-1) + lz)
+			md.TexCoords[idx*2] = float32(gx) / float32(HeightmapSize-1) * 64
+			md.TexCoords[idx*2+1] = float32(gz) / float32(HeightmapSize-1) * 64
 
 			hl := c.Heights[lz][max(0, lx-1)] * MaxHeight
 			hr := c.Heights[lz][min(vertsPerSide-1, lx+1)] * MaxHeight

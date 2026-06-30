@@ -2,6 +2,7 @@ package terrain
 
 import (
 	"fmt"
+	"unsafe"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
@@ -53,10 +54,20 @@ func (m *Manager) LoadAssets() error {
 	if rl.IsModelValid(model) {
 		m.treeModel = model
 		m.Trees.Model = model
-		return nil
+	} else {
+		rl.UnloadModel(model)
+		return fmt.Errorf("failed to load tree model")
 	}
-	rl.UnloadModel(model)
-	return fmt.Errorf("failed to load tree model")
+
+	grassTex := rl.LoadTexture("assets/grass.png")
+	if grassTex.ID != 0 {
+		m.terrainTex = grassTex
+	}
+	waterTex := rl.LoadTexture("assets/water.png")
+	if waterTex.ID != 0 {
+		m.waterTex = waterTex
+	}
+	return nil
 }
 
 func (m *Manager) PrepareUpload() {
@@ -99,7 +110,7 @@ func (m *Manager) UploadNextBatch(count int) bool {
 		if m.Water != nil {
 			m.Water.UploadGPU()
 			mats := m.Water.Model.GetMaterials()
-			if len(mats) > 0 {
+			if len(mats) > 0 && m.waterTex.ID != 0 {
 				rl.SetMaterialTexture(&mats[0], rl.MapAlbedo, m.waterTex)
 			}
 		}
@@ -188,8 +199,9 @@ func chunkToModel(c *Chunk) rl.Model {
 		Vertices:      &md.Vertices[0],
 		Normals:       &md.Normals[0],
 		Texcoords:     &md.TexCoords[0],
-		Indices:       &md.Indices[0],
+		Indices:       (*uint16)(unsafe.Pointer(&md.Indices[0])),
 	}
+	rl.UploadMesh(&mesh, false)
 	return rl.LoadModelFromMesh(mesh)
 }
 

@@ -8,7 +8,7 @@ import (
 
 const (
 	WaterGridSize = 129
-	SeaLevel      = 0.05
+	SeaLevel      = 0.15
 	LakeThreshold = 0.25
 )
 
@@ -21,15 +21,16 @@ type WaterCell struct {
 }
 
 type WaterSystem struct {
-	Grid       [WaterGridSize][WaterGridSize]WaterCell
-	Mesh       rl.Mesh
-	Model      rl.Model
-	Dirty      bool
-	rebuildTimer float64
+	Grid         [WaterGridSize][WaterGridSize]WaterCell
+	Model        rl.Model
+	vertices     []float32
+	normals      []float32
+	texcoords    []float32
+	indices      []uint16
 }
 
 func NewWaterSystem() *WaterSystem {
-	return &WaterSystem{Dirty: true}
+	return &WaterSystem{}
 }
 
 func (ws *WaterSystem) Init(h *Heightmap) {
@@ -109,12 +110,6 @@ func (ws *WaterSystem) Update(dt float64) {
 			}
 		}
 	}
-
-	ws.rebuildTimer += dt
-	if ws.rebuildTimer >= 0.25 {
-		ws.Dirty = true
-		ws.rebuildTimer = 0
-	}
 }
 
 func (ws *WaterSystem) IsWet(worldX, worldZ float32) bool {
@@ -128,33 +123,34 @@ func (ws *WaterSystem) IsWet(worldX, worldZ float32) bool {
 	return ws.Grid[z][x].Height > 0.01
 }
 
-func (ws *WaterSystem) buildMesh() {
+func (ws *WaterSystem) UploadGPU() {
 	verts := WaterGridSize * WaterGridSize
 	quads := (WaterGridSize - 1) * (WaterGridSize - 1)
 	scale := WorldSize / float32(WaterGridSize-1)
 
-	vertices := make([]float32, verts*3)
-	normals := make([]float32, verts*3)
-	texcoords := make([]float32, verts*2)
-	indices := make([]uint16, quads*6)
+	ws.vertices = make([]float32, verts*3)
+	ws.normals = make([]float32, verts*3)
+	ws.texcoords = make([]float32, verts*2)
+	ws.indices = make([]uint16, quads*6)
+
+	waterY := float32(SeaLevel*MaxHeight + 0.1)
 
 	idx := 0
 	for z := 0; z < WaterGridSize; z++ {
 		for x := 0; x < WaterGridSize; x++ {
 			worldX := float32(x)*scale - WorldSize/2
 			worldZ := float32(z)*scale - WorldSize/2
-			h := ws.Grid[z][x].Height * MaxHeight
 
-			vertices[idx*3] = worldX
-			vertices[idx*3+1] = h + 0.1
-			vertices[idx*3+2] = worldZ
+			ws.vertices[idx*3] = worldX
+			ws.vertices[idx*3+1] = waterY
+			ws.vertices[idx*3+2] = worldZ
 
-			normals[idx*3] = 0
-			normals[idx*3+1] = 1
-			normals[idx*3+2] = 0
+			ws.normals[idx*3] = 0
+			ws.normals[idx*3+1] = 1
+			ws.normals[idx*3+2] = 0
 
-			texcoords[idx*2] = float32(x) / float32(WaterGridSize-1)
-			texcoords[idx*2+1] = float32(z) / float32(WaterGridSize-1)
+			ws.texcoords[idx*2] = float32(x) / float32(WaterGridSize-1) * 8
+			ws.texcoords[idx*2+1] = float32(z) / float32(WaterGridSize-1) * 8
 
 			idx++
 		}
@@ -167,12 +163,12 @@ func (ws *WaterSystem) buildMesh() {
 			b := z*WaterGridSize + x + 1
 			c := (z+1)*WaterGridSize + x
 			d := (z+1)*WaterGridSize + x + 1
-			indices[qi*6] = uint16(a)
-			indices[qi*6+1] = uint16(c)
-			indices[qi*6+2] = uint16(b)
-			indices[qi*6+3] = uint16(b)
-			indices[qi*6+4] = uint16(c)
-			indices[qi*6+5] = uint16(d)
+			ws.indices[qi*6] = uint16(a)
+			ws.indices[qi*6+1] = uint16(c)
+			ws.indices[qi*6+2] = uint16(b)
+			ws.indices[qi*6+3] = uint16(b)
+			ws.indices[qi*6+4] = uint16(c)
+			ws.indices[qi*6+5] = uint16(d)
 			qi++
 		}
 	}
@@ -180,33 +176,21 @@ func (ws *WaterSystem) buildMesh() {
 	mesh := rl.Mesh{
 		VertexCount:   int32(verts),
 		TriangleCount: int32(quads * 2),
-		Vertices:      &vertices[0],
-		Normals:       &normals[0],
-		Texcoords:     &texcoords[0],
-		Indices:       &indices[0],
+		Vertices:      &ws.vertices[0],
+		Normals:       &ws.normals[0],
+		Texcoords:     &ws.texcoords[0],
+		Indices:       &ws.indices[0],
 	}
 
-	if ws.Model.MeshCount > 0 {
-		rl.UnloadModel(ws.Model)
-	}
+	rl.UploadMesh(&mesh, false)
 	ws.Model = rl.LoadModelFromMesh(mesh)
-	clearModelMeshData(&ws.Model)
-	ws.Dirty = false
 }
 
 func (ws *WaterSystem) Draw() {
-	if ws.Dirty {
-		ws.buildMesh()
-	}
 	if ws.Model.MeshCount == 0 {
 		return
 	}
-	waterColor := rl.NewColor(30, 120, 200, 180)
-	rl.DrawModel(ws.Model, rl.NewVector3(0, 0, 0), 1, waterColor)
-}
-
-func (ws *WaterSystem) UploadGPU() {
-	ws.buildMesh()
+	rl.DrawModel(ws.Model, rl.NewVector3(0, 0, 0), 1, rl.White)
 }
 
 func (ws *WaterSystem) Unload() {
