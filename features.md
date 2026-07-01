@@ -1,29 +1,3 @@
-## 3.12 Lane Connectivity
-
-Every incoming lane connects to one or more outgoing lanes.
-
-Example:
-
-```text
-Incoming Lane
-
-↓
-
-Left
-
-↓
-
-Straight
-
-↓
-
-Right
-```
-
-These connections form the navigation graph used by vehicles.
-
----
-
 ## 3.13 Road Hierarchy
 
 Roads are classified by importance.

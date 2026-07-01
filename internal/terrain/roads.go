@@ -1817,6 +1817,62 @@ func (rm *RoadManager) FindPath(startNode, endNode uint32, vehicleType int) []ui
 	return path
 }
 
+type LanePathStep struct {
+	SegIdx  int
+	LaneIdx int32
+}
+
+func (rm *RoadManager) FindLanePath(startNode, endNode uint32, startLane, endLane int32) []LanePathStep {
+	nodePath := rm.FindPath(startNode, endNode, 0)
+	if len(nodePath) < 2 {
+		return nil
+	}
+
+	type segLane struct {
+		seg  int
+		lane int32
+	}
+	path := make([]segLane, 0, len(nodePath)-1)
+
+	curLane := startLane
+	for ni := 0; ni < len(nodePath)-1; ni++ {
+		fromNode := nodePath[ni]
+		toNode := nodePath[ni+1]
+
+		var segIdx int
+		var found bool
+		for _, sid := range rm.Nodes[fromNode].Connected {
+			s := rm.Segments[sid]
+			if (s.NodeA == fromNode && s.NodeB == toNode) || (s.NodeA == toNode && s.NodeB == fromNode) {
+				segIdx = int(sid)
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil
+		}
+
+		path = append(path, segLane{seg: segIdx, lane: curLane})
+
+		routes := rm.JunctionLaneRoutes(toNode)
+		nextLane := curLane
+		for _, rc := range routes {
+			if int(rc.FromSegIdx) == segIdx && rc.FromLane == curLane {
+				nextLane = rc.ToLane
+				break
+			}
+		}
+		curLane = nextLane
+	}
+
+	result := make([]LanePathStep, len(path))
+	for i, sl := range path {
+		result[i] = LanePathStep{SegIdx: sl.seg, LaneIdx: sl.lane}
+	}
+	return result
+}
+
 func (rm *RoadManager) Unload() {
 	for _, model := range rm.Models {
 		if model.MeshCount > 0 {
