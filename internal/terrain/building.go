@@ -32,14 +32,6 @@ func NewBuildingManager() *BuildingManager {
 }
 
 func (bm *BuildingManager) LoadAssets() {
-	m := rl.LoadModel("assets/building/my_panel16_14.obj")
-	if rl.IsModelValid(m) {
-		bm.models[ZoneResidentialHigh] = m
-	}
-	m = rl.LoadModel("assets/building/tiny/house.obj")
-	if rl.IsModelValid(m) {
-		bm.models[ZoneResidentialLow] = m
-	}
 }
 
 func (bm *BuildingManager) Update(zm *ZoneManager, h *Heightmap, roads *RoadManager) {
@@ -239,7 +231,7 @@ func (bm *BuildingManager) NearestInfo(wx, wz float32, radius float32) string {
 	return fmt.Sprintf("%s Lvl %s%s", name, lvl, extra)
 }
 
-func (bm *BuildingManager) Draw(h *Heightmap, zm *ZoneManager) {
+func (bm *BuildingManager) Draw(h *Heightmap, zm *ZoneManager, isNight bool) {
 	for _, b := range bm.Buildings {
 		hy := h.WorldHeight(b.X, b.Z)
 		col := ZoneColor(b.Type)
@@ -286,7 +278,11 @@ func (bm *BuildingManager) Draw(h *Heightmap, zm *ZoneManager) {
 			rl.DrawCube(rl.NewVector3(b.X, roofY, b.Z), b.Width*0.9, roofH*0.9, b.Depth*0.9, roofCol)
 		}
 
+		isLit := isNight
 		wCol := rl.NewColor(200, 220, 240, 200)
+		if isLit {
+			wCol = rl.NewColor(255, 220, 120, 220)
+		}
 		ww := b.Width * 0.12
 		wd := b.Depth * 0.12
 		nx := int(b.Width / 2.5)
@@ -308,7 +304,9 @@ func (bm *BuildingManager) Draw(h *Heightmap, zm *ZoneManager) {
 					yoff := float32(layer)*2.5 + 1.5
 					if yoff+1 < baseH {
 						col2 := wCol
-						if (b.Seed+int32(wi+wj+layer))%2 == 0 {
+						if isLit && (b.Seed+int32(wi+wj+layer))%3 != 0 {
+							col2 = rl.NewColor(255, 200, 80, 200)
+						} else if !isLit && (b.Seed+int32(wi+wj+layer))%2 == 0 {
 							col2 = rl.NewColor(120, 140, 160, 200)
 						}
 						rl.DrawCube(rl.NewVector3(b.X+wx, winY+yoff-baseH*0.5+1.25, b.Z+wz), ww, 1.5, wd, col2)

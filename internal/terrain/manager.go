@@ -27,6 +27,7 @@ type Manager struct {
 	Chunks      []*Chunk
 	Models      []rl.Model
 	Seed        int64
+	Night       bool
 	terrainTex  rl.Texture2D
 	uploadIdx   int
 }
@@ -73,9 +74,6 @@ func (m *Manager) GenerateData() {
 }
 
 func (m *Manager) LoadAssets() error {
-	if m.Buildings != nil {
-		m.Buildings.LoadAssets()
-	}
 	model := rl.LoadModel("assets/tree/leaftree.obj")
 	if rl.IsModelValid(model) {
 		m.Trees.Model = model
@@ -89,6 +87,9 @@ func (m *Manager) LoadAssets() error {
 		m.terrainTex = grassTex
 	}
 	return nil
+}
+
+func (m *Manager) LoadBuildingAssets() {
 }
 
 func (m *Manager) PrepareUpload() {
@@ -183,7 +184,7 @@ func (m *Manager) Draw(camX, camZ float32) {
 		m.Zones.Draw(m.Heightmap)
 	}
 	if m.Buildings != nil {
-		m.Buildings.Draw(m.Heightmap, m.Zones)
+		m.Buildings.Draw(m.Heightmap, m.Zones, m.Night)
 	}
 	if m.Services != nil {
 		m.Services.Draw(m.Heightmap)

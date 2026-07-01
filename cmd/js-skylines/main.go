@@ -23,6 +23,22 @@ type economy struct {
 	taxTimer   int32
 }
 
+var timeOfDay = 1 // 0=dawn, 1=day, 2=dusk, 3=night
+
+func skyColor() rl.Color {
+	switch timeOfDay {
+	case 0:
+		return rl.NewColor(200, 140, 100, 255)
+	case 1:
+		return rl.NewColor(135, 206, 235, 255)
+	case 2:
+		return rl.NewColor(180, 100, 80, 255)
+	case 3:
+		return rl.NewColor(20, 20, 40, 255)
+	}
+	return rl.RayWhite
+}
+
 const (
 	screenWidth  = 1280
 	screenHeight = 720
@@ -42,6 +58,8 @@ func main() {
 	}
 	t.PrepareUpload()
 
+	buildingAssetsLoaded := false
+
 	cam := rl.Camera3D{
 		Position:   rl.NewVector3(100, 80, 100),
 		Target:     rl.NewVector3(0, 0, 0),
@@ -60,11 +78,20 @@ func main() {
 
 	for !rl.WindowShouldClose() {
 		if !uploaded {
-			done := t.UploadNextBatch(16)
 			rl.BeginDrawing()
 			rl.ClearBackground(rl.DarkGray)
 			pct := t.UploadProgress()
 			text := fmt.Sprintf("Loading terrain... %d / %d", pct.Done, pct.Total)
+			if !buildingAssetsLoaded {
+				text = "Loading building models..."
+				rl.DrawText(text, screenWidth/2-120, screenHeight/2-10, 20, rl.White)
+				rl.EndDrawing()
+				t.LoadBuildingAssets()
+				buildingAssetsLoaded = true
+				continue
+			}
+			done := t.UploadNextBatch(16)
+			text = fmt.Sprintf("Loading terrain... %d / %d", pct.Done, pct.Total)
 			if done {
 				uploaded = true
 			}
@@ -151,6 +178,10 @@ func main() {
 			bld.zoneMode = false
 			bld.active = false
 		}
+		if rl.IsKeyPressed(rl.KeyT) {
+			timeOfDay = (timeOfDay + 1) % 4
+		}
+		t.Night = timeOfDay == 3
 
 		worldX := float32(0)
 		worldZ := float32(0)
@@ -209,7 +240,7 @@ func main() {
 		}
 
 		rl.BeginDrawing()
-		rl.ClearBackground(rl.NewColor(135, 206, 235, 255))
+		rl.ClearBackground(skyColor())
 		rl.BeginMode3D(cam)
 		t.Draw(cam.Position.X, cam.Position.Z)
 		if !bld.zoneMode && bld.active && mouseOnTerrain {
@@ -247,7 +278,7 @@ func main() {
 			rl.DrawText(fmt.Sprintf("ROAD BUILDING: place road (L-click) | R=change type | Esc=cancel | TAB=zones"), 10, helpY, 15, rl.Green)
 			rl.DrawText(fmt.Sprintf("Road type: %s", roadTypeName(bld.roadType)), 10, helpY+20, 15, rl.Gray)
 		} else {
-			rl.DrawText(fmt.Sprintf("L-click=build road | TAB=zone mode | F=parks | WASD=pan | Scroll=zoom | R-drag=orbit"), 10, helpY, 15, rl.White)
+			rl.DrawText(fmt.Sprintf("L-click=build road | TAB=zone mode | F=parks | T=time | WASD=pan | Scroll=zoom | R-drag=orbit"), 10, helpY, 15, rl.White)
 		}
 		if mouseOnTerrain {
 			rl.DrawText(fmt.Sprintf("(%.1f, %.1f)", worldX, worldZ), screenWidth-200, 50, 15, rl.Gray)
