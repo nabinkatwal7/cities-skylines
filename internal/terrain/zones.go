@@ -42,13 +42,45 @@ func (zm *ZoneManager) cellZ(worldZ float32) int {
 	return int((worldZ + WorldSize/2) / WorldSize * float32(zm.height-1))
 }
 
-func (zm *ZoneManager) SetZone(worldX, worldZ float32, zt ZoneType) {
+const maxZoneDepth = 4
+
+func (zm *ZoneManager) CanZone(worldX, worldZ float32, roads *RoadManager) bool {
+	cellSize := WorldSize / float32(zm.width)
+	for dz := -maxZoneDepth; dz <= maxZoneDepth; dz++ {
+		for dx := -maxZoneDepth; dx <= maxZoneDepth; dx++ {
+			checkX := worldX + float32(dx)*cellSize
+			checkZ := worldZ + float32(dz)*cellSize
+			if roads.HasNearbyRoad(checkX, checkZ, cellSize*1.5) {
+				cx := zm.cellX(worldX)
+				cz := zm.cellZ(worldZ)
+				if abs(dx) <= maxZoneDepth && abs(dz) <= maxZoneDepth {
+					_ = cx
+					_ = cz
+				}
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (zm *ZoneManager) SetZone(worldX, worldZ float32, zt ZoneType, roads *RoadManager) {
 	x := zm.cellX(worldX)
 	z := zm.cellZ(worldZ)
 	if x < 0 || x >= zm.width || z < 0 || z >= zm.height {
 		return
 	}
+	if !zm.CanZone(worldX, worldZ, roads) {
+		return
+	}
 	zm.Cells[z][x].Type = zt
+}
+
+func abs(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
 }
 
 func ZoneTypeName(zt ZoneType) string {
@@ -87,6 +119,15 @@ func ZoneColor(zt ZoneType) rl.Color {
 	default:
 		return rl.Color{}
 	}
+}
+
+func (zm *ZoneManager) CellTypeAt(worldX, worldZ float32) ZoneType {
+	x := zm.cellX(worldX)
+	z := zm.cellZ(worldZ)
+	if x < 0 || x >= zm.width || z < 0 || z >= zm.height {
+		return ZoneNone
+	}
+	return zm.Cells[z][x].Type
 }
 
 func (zm *ZoneManager) Draw(h *Heightmap) {

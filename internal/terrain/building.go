@@ -16,6 +16,10 @@ type Building struct {
 	UpgradeTimer int32
 	Workers      int32
 	Residents    int32
+	Abandoned    bool
+	AbandonTimer int32
+	HasRoad      bool
+	CellX, CellZ int
 }
 
 type BuildingManager struct {
@@ -70,6 +74,9 @@ func (bm *BuildingManager) Update(zm *ZoneManager, h *Heightmap, roads *RoadMana
 					Level:     1,
 					Residents: res,
 					Workers:   workers,
+					HasRoad:   true,
+					CellX:     x,
+					CellZ:     z,
 				})
 				bm.nextSeed++
 			}
@@ -77,6 +84,31 @@ func (bm *BuildingManager) Update(zm *ZoneManager, h *Heightmap, roads *RoadMana
 	}
 	for i := range bm.Buildings {
 		b := &bm.Buildings[i]
+		if b.Abandoned {
+			b.AbandonTimer++
+			if b.AbandonTimer > 1800 {
+				if b.CellX >= 0 && b.CellX < zm.width && b.CellZ >= 0 && b.CellZ < zm.height {
+					zm.Cells[b.CellZ][b.CellX].Density = 0
+				}
+				b.Z = -99999
+				b.X = -99999
+				b.Residents = 0
+				b.Workers = 0
+			}
+			continue
+		}
+
+		cellSize := WorldSize / float32(zm.width)
+		hasRoad := roads.HasNearbyRoad(b.X, b.Z, cellSize*2)
+		b.HasRoad = hasRoad
+		if !hasRoad {
+			b.Abandoned = true
+			b.AbandonTimer = 0
+			b.Residents = 0
+			b.Workers = 0
+			continue
+		}
+
 		if b.Level >= 5 {
 			continue
 		}
@@ -119,6 +151,7 @@ func (bm *BuildingManager) calcDemand(zm *ZoneManager) {
 	indJobs := int32(0)
 	total := 0
 	for _, b := range bm.Buildings {
+		total++
 		switch b.Type {
 		case ZoneResidentialLow, ZoneResidentialHigh:
 			resPop += b.Residents
@@ -133,6 +166,11 @@ func (bm *BuildingManager) calcDemand(zm *ZoneManager) {
 	bm.resDemand = int(availableJobs-resPop) / 2
 	bm.comDemand = int(resPop/2-comJobs) / 2
 	bm.indDemand = int(resPop/3-indJobs) / 3
+	if total == 0 {
+		bm.resDemand = 10
+		bm.comDemand = 5
+		bm.indDemand = 3
+	}
 }
 
 func (bm *BuildingManager) shouldDevelop(cell *ZoneCell) bool {
@@ -197,6 +235,9 @@ func (bm *BuildingManager) Demand() (res, com, ind int) {
 func (bm *BuildingManager) Population() int32 {
 	total := int32(0)
 	for _, b := range bm.Buildings {
+		if b.X < -99998 {
+			continue
+		}
 		total += b.Residents
 	}
 	return total
@@ -206,6 +247,9 @@ func (bm *BuildingManager) NearestInfo(wx, wz float32, radius float32) string {
 	best := float32(radius * radius)
 	idx := -1
 	for i, b := range bm.Buildings {
+		if b.X < -99998 {
+			continue
+		}
 		dx := b.X - wx
 		dz := b.Z - wz
 		d := dx*dx + dz*dz
@@ -224,7 +268,9 @@ func (bm *BuildingManager) NearestInfo(wx, wz float32, radius float32) string {
 		lvl += "I"
 	}
 	extra := ""
-	if b.Residents > 0 {
+	if b.Abandoned {
+		extra = " | ABANDONED"
+	} else if b.Residents > 0 {
 		extra = fmt.Sprintf(" | Pop: %d", b.Residents)
 	} else if b.Workers > 0 {
 		extra = fmt.Sprintf(" | Jobs: %d", b.Workers)
@@ -234,6 +280,9 @@ func (bm *BuildingManager) NearestInfo(wx, wz float32, radius float32) string {
 
 func (bm *BuildingManager) Draw(h *Heightmap, zm *ZoneManager, isNight bool) {
 	for _, b := range bm.Buildings {
+		if b.X < -99998 {
+			continue
+		}
 		hy := h.WorldHeight(b.X, b.Z)
 		col := ZoneColor(b.Type)
 		col.A = 255
@@ -248,6 +297,12 @@ func (bm *BuildingManager) Draw(h *Heightmap, zm *ZoneManager, isNight bool) {
 			pos := rl.NewVector3(b.X, hy+0.5, b.Z)
 			axis := rl.NewVector3(0, 1, 0)
 			rl.DrawModelEx(m, pos, axis, float32(b.Seed)*60, rl.NewVector3(s, s, s), rl.White)
+			continue
+		}
+
+		if b.Abandoned {
+			grey := rl.NewColor(80, 80, 80, 255)
+			rl.DrawCube(rl.NewVector3(b.X, hy+b.Height*0.5*lvlScale, b.Z), b.Width, b.Height*lvlScale, b.Depth, grey)
 			continue
 		}
 

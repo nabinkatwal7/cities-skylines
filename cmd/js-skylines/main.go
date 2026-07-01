@@ -10,12 +10,13 @@ import (
 )
 
 type buildState struct {
-	active    bool
-	startNode uint32
-	roadType  terrain.RoadType
-	zoneType  terrain.ZoneType
-	zoneMode  bool
-	parkMode  bool
+	active      bool
+	startNode   uint32
+	roadType    terrain.RoadType
+	zoneType    terrain.ZoneType
+	zoneMode    bool
+	parkMode    bool
+	removeMode  bool
 }
 
 type economy struct {
@@ -171,11 +172,19 @@ func main() {
 		if rl.IsKeyPressed(rl.KeyTab) {
 			bld.zoneMode = !bld.zoneMode
 			bld.parkMode = false
+			bld.removeMode = false
 			bld.active = false
 		}
 		if rl.IsKeyPressed(rl.KeyF) {
 			bld.parkMode = !bld.parkMode
 			bld.zoneMode = false
+			bld.removeMode = false
+			bld.active = false
+		}
+		if rl.IsKeyPressed(rl.KeyU) {
+			bld.removeMode = !bld.removeMode
+			bld.zoneMode = false
+			bld.parkMode = false
 			bld.active = false
 		}
 		if rl.IsKeyPressed(rl.KeyT) {
@@ -200,6 +209,14 @@ func main() {
 				t.Services.AddPark(worldX, worldZ)
 				eco.money -= 500
 			}
+		} else if bld.removeMode {
+			if rl.IsMouseButtonPressed(rl.MouseButtonLeft) && mouseOnTerrain {
+				idx := t.Roads.NearestSegment(worldX, worldZ)
+				if idx >= 0 {
+					t.Roads.RemoveSegment(idx)
+					t.Roads.Rebuild(t.Heightmap)
+				}
+			}
 		} else if bld.zoneMode {
 			if rl.IsKeyPressed(rl.KeyR) {
 				bld.zoneType = (bld.zoneType + 1) % 7
@@ -208,8 +225,10 @@ func main() {
 				}
 			}
 			if rl.IsMouseButtonPressed(rl.MouseButtonLeft) && mouseOnTerrain && eco.money >= 20 {
-				t.Zones.SetZone(worldX, worldZ, bld.zoneType)
-				eco.money -= 20
+				t.Zones.SetZone(worldX, worldZ, bld.zoneType, t.Roads)
+				if t.Zones.CellTypeAt(worldX, worldZ) == bld.zoneType {
+					eco.money -= 20
+				}
 			}
 		} else {
 			if rl.IsKeyPressed(rl.KeyR) {
@@ -269,16 +288,16 @@ func main() {
 		pop := t.Buildings.Population()
 		rl.DrawText(fmt.Sprintf("Pop: %d", pop), 100, 10, 18, rl.White)
 		helpY := int32(35)
-		if bld.parkMode {
-			rl.DrawText(fmt.Sprintf("PARK MODE: place parks (L-click) | F=toggle off | TAB=roads | $500 each"), 10, helpY, 15, rl.Green)
-		} else if bld.zoneMode {
+		if bld.removeMode {
+			rl.DrawText(fmt.Sprintf("REMOVE MODE: click road to delete | U=toggle off | TAB=zones | F=parks"), 10, helpY, 15, rl.Red)
+		} else if bld.parkMode {
 			rl.DrawText(fmt.Sprintf("ZONE MODE: paint zones (L-click drag) | R=change type | TAB=back to roads"), 10, helpY, 15, rl.Blue)
 			rl.DrawText(fmt.Sprintf("Zone: %s", zoneTypeName(bld.zoneType)), 10, helpY+20, 15, rl.Gray)
 		} else if bld.active {
 			rl.DrawText(fmt.Sprintf("ROAD BUILDING: place road (L-click) | R=change type | Esc=cancel | TAB=zones"), 10, helpY, 15, rl.Green)
 			rl.DrawText(fmt.Sprintf("Road type: %s", roadTypeName(bld.roadType)), 10, helpY+20, 15, rl.Gray)
 		} else {
-			rl.DrawText(fmt.Sprintf("L-click=build road | TAB=zone mode | F=parks | T=time | WASD=pan | Scroll=zoom | R-drag=orbit"), 10, helpY, 15, rl.White)
+			rl.DrawText(fmt.Sprintf("L-click=build road | TAB=zone mode | F=parks | U=remove | T=time | WASD=pan | Scroll=zoom | R-drag=orbit"), 10, helpY, 15, rl.White)
 		}
 		if mouseOnTerrain {
 			rl.DrawText(fmt.Sprintf("(%.1f, %.1f)", worldX, worldZ), screenWidth-200, 50, 15, rl.Gray)

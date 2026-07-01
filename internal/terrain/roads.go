@@ -357,6 +357,97 @@ func (rm *RoadManager) drawMarkings(h *Heightmap) {
 	}
 }
 
+func (rm *RoadManager) AddShortSegment(x1, z1, x2, z2 float32, rt RoadType) {
+	na := rm.AddNode(x1, z1)
+	nb := rm.AddNode(x2, z2)
+	rm.AddSegment(na, nb, rt)
+}
+
+func (rm *RoadManager) NearestSegment(x, z float32) int {
+	bestIdx := -1
+	bestDist := float32(math.MaxFloat32)
+	for i, seg := range rm.Segments {
+		na := &rm.Nodes[seg.NodeA]
+		nb := &rm.Nodes[seg.NodeB]
+		dx := nb.X - na.X
+		dz := nb.Z - na.Z
+		l := float32(math.Sqrt(float64(dx*dx + dz*dz)))
+		if l < 0.01 {
+			continue
+		}
+		t := ((x-na.X)*dx + (z-na.Z)*dz) / (l * l)
+		if t < 0 {
+			t = 0
+		}
+		if t > 1 {
+			t = 1
+		}
+		px := na.X + dx*t
+		pz := na.Z + dz*t
+		dx2 := x - px
+		dz2 := z - pz
+		d := dx2*dx2 + dz2*dz2
+		if d < bestDist {
+			bestDist = d
+			bestIdx = i
+		}
+	}
+	if bestDist > 100 {
+		return -1
+	}
+	return bestIdx
+}
+
+func (rm *RoadManager) RemoveSegment(idx int) {
+	if idx < 0 || idx >= len(rm.Segments) {
+		return
+	}
+	seg := rm.Segments[idx]
+
+	if idx < len(rm.Models) {
+		if rm.Models[idx].MeshCount > 0 {
+			rl.UnloadModel(rm.Models[idx])
+		}
+	}
+
+	na := &rm.Nodes[seg.NodeA]
+	nb := &rm.Nodes[seg.NodeB]
+
+	filter := func(s []uint32, id uint32) []uint32 {
+		out := s[:0]
+		for _, v := range s {
+			if v != id {
+				out = append(out, v)
+			}
+		}
+		return out
+	}
+	na.Connected = filter(na.Connected, seg.ID)
+	nb.Connected = filter(nb.Connected, seg.ID)
+
+	rm.Segments = append(rm.Segments[:idx], rm.Segments[idx+1:]...)
+	rm.Models = append(rm.Models[:idx], rm.Models[idx+1:]...)
+
+	if len(na.Connected) == 0 {
+		rm.removeNodeByIndex(seg.NodeA)
+	}
+	if len(nb.Connected) == 0 {
+		rm.removeNodeByIndex(seg.NodeB)
+	}
+}
+
+func (rm *RoadManager) removeNodeByIndex(idx uint32) {
+	rm.Nodes = append(rm.Nodes[:idx], rm.Nodes[idx+1:]...)
+	for i := range rm.Segments {
+		if rm.Segments[i].NodeA > idx {
+			rm.Segments[i].NodeA--
+		}
+		if rm.Segments[i].NodeB > idx {
+			rm.Segments[i].NodeB--
+		}
+	}
+}
+
 func (rm *RoadManager) Unload() {
 	for _, model := range rm.Models {
 		if model.MeshCount > 0 {
