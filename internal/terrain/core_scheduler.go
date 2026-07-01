@@ -24,17 +24,23 @@ type UpdateTask struct {
 	Name     string
 	Callback func(dt float64)
 	Priority SchedPriority
+	BudgetMs float64
 }
 
 type Scheduler struct {
-	groups  [][]UpdateTask
-	budgets []float64
+	groups    [4][]UpdateTask
+	budgets   [4]float64
+	intervals [4]int32
+	counters  [4]int32
+
+	frameCount int32
+	deferred   []UpdateTask
 }
 
 func NewScheduler() *Scheduler {
 	return &Scheduler{
-		groups:  make([][]UpdateTask, 4),
-		budgets: []float64{3, 5, 10, 20},
+		budgets:   [4]float64{3, 5, 10, 20},
+		intervals: [4]int32{1, 4, 30, 120},
 	}
 }
 
@@ -55,43 +61,73 @@ func (s *Scheduler) Unregister(group UpdateGroup, name string) {
 	}
 }
 
+func (s *Scheduler) SetInterval(group UpdateGroup, interval int32) {
+	s.intervals[group] = interval
+}
+
 func (s *Scheduler) SetBudget(group UpdateGroup, ms float64) {
 	s.budgets[group] = ms
 }
 
 func (s *Scheduler) RunGroup(group UpdateGroup, dt float64) {
-	tasks := s.groups[group]
-	if len(tasks) == 0 {
+	if s.counters[group] < s.intervals[group]-1 {
+		s.counters[group]++
 		return
 	}
+	s.counters[group] = 0
 
-	sortTasks(tasks)
-
+	tasks := s.groups[group]
 	budgetMs := s.budgets[group]
-	start := time.Now()
+	used := 0.0
 
 	for _, task := range tasks {
+		if task.BudgetMs > 0 && used+task.BudgetMs > budgetMs && task.Priority >= SchedPriorityMedium {
+			s.deferred = append(s.deferred, task)
+			continue
+		}
+		taskStart := time.Now()
 		task.Callback(dt)
-		if time.Since(start).Milliseconds() > int64(budgetMs) && task.Priority >= SchedPriorityLow {
+		elapsed := float64(time.Since(taskStart).Microseconds()) / 1000.0
+		used += elapsed
+		if used > budgetMs && task.Priority >= SchedPriorityMedium {
 			break
 		}
 	}
+}
+
+func (s *Scheduler) RunDeferred(dt float64) {
+	if len(s.deferred) == 0 {
+		return
+	}
+	budget := s.budgets[GroupSlow]
+	start := time.Now()
+	var remaining []UpdateTask
+	for _, task := range s.deferred {
+		if float64(time.Since(start).Microseconds())/1000.0 > budget {
+			remaining = append(remaining, task)
+			continue
+		}
+		task.Callback(dt)
+	}
+	s.deferred = remaining
+}
+
+func (s *Scheduler) RunAll(dt float64) {
+	s.frameCount++
+	s.RunGroup(GroupFast, dt)
+	s.RunGroup(GroupMedium, dt)
+	s.RunGroup(GroupSlow, dt)
+	s.RunGroup(GroupVerySlow, dt)
+	s.RunDeferred(dt)
+}
+
+func (s *Scheduler) FrameCount() int32 {
+	return s.frameCount
 }
 
 func (s *Scheduler) Clear() {
 	for i := range s.groups {
 		s.groups[i] = nil
 	}
-}
-
-func sortTasks(tasks []UpdateTask) {
-	for i := 1; i < len(tasks); i++ {
-		key := tasks[i]
-		j := i - 1
-		for j >= 0 && tasks[j].Priority > key.Priority {
-			tasks[j+1] = tasks[j]
-			j--
-		}
-		tasks[j+1] = key
-	}
+	s.deferred = nil
 }

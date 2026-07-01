@@ -1,22 +1,20 @@
 package terrain
 
-
-
 type SimEvent string
 
 const (
-	EventRoadPlaced        SimEvent = "road:placed"
-	EventRoadRemoved       SimEvent = "road:removed"
-	EventRoadUpgraded      SimEvent = "road:upgraded"
-	EventZonePlaced        SimEvent = "zone:placed"
-	EventZoneCleared       SimEvent = "zone:cleared"
-	EventParkPlaced        SimEvent = "park:placed"
-	EventBuildingUpgraded  SimEvent = "building:upgraded"
-	EventBuildingAbandoned SimEvent = "building:abandoned"
+	EventRoadPlaced         SimEvent = "road:placed"
+	EventRoadRemoved        SimEvent = "road:removed"
+	EventRoadUpgraded       SimEvent = "road:upgraded"
+	EventZonePlaced         SimEvent = "zone:placed"
+	EventZoneCleared        SimEvent = "zone:cleared"
+	EventParkPlaced         SimEvent = "park:placed"
+	EventBuildingUpgraded   SimEvent = "building:upgraded"
+	EventBuildingAbandoned  SimEvent = "building:abandoned"
 	EventBuildingDemolished SimEvent = "building:demolished"
 	EventBuildingConstructed SimEvent = "building:constructed"
-	EventDayNightCycle     SimEvent = "time:daynight"
-	EventTaxCollected      SimEvent = "economy:tax"
+	EventDayNightCycle      SimEvent = "time:daynight"
+	EventTaxCollected       SimEvent = "economy:tax"
 )
 
 type SimulationManager struct {
@@ -88,36 +86,43 @@ func (sm *SimulationManager) initScheduler() {
 	sm.scheduler.Register(GroupFast, UpdateTask{
 		Name:     "water",
 		Priority: SchedPriorityHigh,
+		BudgetMs: 1,
 		Callback: func(dt float64) { sm.Water.Update(dt) },
 	})
 	sm.scheduler.Register(GroupFast, UpdateTask{
 		Name:     "trees",
 		Priority: SchedPriorityLow,
+		BudgetMs: 0.5,
 		Callback: func(dt float64) { sm.Trees.Update(dt) },
 	})
 	sm.scheduler.Register(GroupMedium, UpdateTask{
 		Name:     "roads",
-		Priority: SchedPriorityMedium,
+		Priority: SchedPriorityCritical,
+		BudgetMs: 2,
 		Callback: func(dt float64) { sm.Roads.Update(sm.Heightmap) },
 	})
 	sm.scheduler.Register(GroupMedium, UpdateTask{
 		Name:     "vehicles",
-		Priority: SchedPriorityMedium,
+		Priority: SchedPriorityHigh,
+		BudgetMs: 3,
 		Callback: func(dt float64) { sm.Vehicles.Update(sm.Roads, sm.Heightmap) },
 	})
 	sm.scheduler.Register(GroupMedium, UpdateTask{
 		Name:     "transport",
-		Priority: SchedPriorityMedium,
+		Priority: SchedPriorityHigh,
+		BudgetMs: 2,
 		Callback: func(dt float64) { sm.Transport.Update(sm.Roads, sm.Heightmap) },
 	})
 	sm.scheduler.Register(GroupSlow, UpdateTask{
 		Name:     "buildings",
 		Priority: SchedPriorityHigh,
+		BudgetMs: 1,
 		Callback: func(dt float64) { sm.Buildings.Update(sm.Zones, sm.Heightmap, sm.Roads, sm.Districts) },
 	})
-	sm.scheduler.Register(GroupSlow, UpdateTask{
+	sm.scheduler.Register(GroupVerySlow, UpdateTask{
 		Name:     "tax",
 		Priority: SchedPriorityMedium,
+		BudgetMs: 1,
 		Callback: func(dt float64) { sm.collectTax(dt) },
 	})
 }
@@ -142,10 +147,7 @@ func (sm *SimulationManager) InitDefaultRoads() {
 }
 
 func (sm *SimulationManager) Update(dt float64) {
-	sm.scheduler.RunGroup(GroupFast, dt)
-	sm.scheduler.RunGroup(GroupMedium, dt)
-	sm.scheduler.RunGroup(GroupSlow, dt)
-	sm.scheduler.RunGroup(GroupVerySlow, dt)
+	sm.scheduler.RunAll(dt)
 	sm.EventBus.ProcessQueue()
 }
 
