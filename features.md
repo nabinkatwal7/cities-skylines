@@ -1,39 +1,3 @@
-## 3.16 Vehicle AI
-
-Each vehicle continuously updates:
-
-```text
-Desired Speed
-
-↓
-
-Acceleration
-
-↓
-
-Lane Position
-
-↓
-
-Obstacle Detection
-
-↓
-
-Traffic Lights
-
-↓
-
-Intersection Rules
-
-↓
-
-Destination
-```
-
-Vehicles never teleport unless explicitly despawned.
-
----
-
 ## 3.17 Traffic Lights
 
 Traffic lights operate using phases.

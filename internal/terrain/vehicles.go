@@ -352,6 +352,34 @@ func (vm *VehicleManager) applyTrafficRules(v *Vehicle, rm *RoadManager, seg Roa
 	}
 }
 
+func (vm *VehicleManager) avoidCollisions(v *Vehicle, rm *RoadManager) {
+	for i := 0; i < VehiclePoolSize; i++ {
+		other := &vm.Pool[i]
+		if other == v || other.Lifecycle != LifecycleActive {
+			continue
+		}
+		if other.RoadSeg != v.RoadSeg || other.Lane != v.Lane {
+			continue
+		}
+		if other.SegProgress <= v.SegProgress {
+			continue
+		}
+		gap := other.SegProgress - v.SegProgress
+		if gap < 5.0 {
+			v.Speed *= 0.85
+			if v.Speed < 0.5 {
+				v.Speed = 0.5
+			}
+			if gap < 2.0 {
+				v.Speed *= 0.5
+				if v.Speed < 0.1 {
+					v.Speed = 0.1
+				}
+			}
+		}
+	}
+}
+
 func (vm *VehicleManager) Update(rm *RoadManager, h *Heightmap) {
 	vm.Timer++
 	if vm.Timer%30 == 0 && vm.Count < 50 {
@@ -389,6 +417,8 @@ func (vm *VehicleManager) Update(rm *RoadManager, h *Heightmap) {
 		if v.Speed < 0.5 {
 			v.Speed = 0.5
 		}
+
+		vm.avoidCollisions(v, rm)
 
 		xs, zs, ds := rm.SampleSegment(seg, int(seg.Length/2))
 		if len(xs) < 2 {

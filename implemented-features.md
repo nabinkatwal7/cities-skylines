@@ -2408,3 +2408,39 @@ Selection depends on:
 Lane changes occur before intersections whenever possible.
 
 ---
+
+## 3.16 Vehicle AI
+
+Each vehicle continuously updates:
+
+```text
+Desired Speed
+
+↓
+
+Acceleration
+
+↓
+
+Lane Position
+
+↓
+
+Obstacle Detection
+
+↓
+
+Traffic Lights
+
+↓
+
+Intersection Rules
+
+↓
+
+Destination
+```
+
+Vehicles never teleport unless explicitly despawned.
+
+---
