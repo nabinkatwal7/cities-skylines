@@ -249,6 +249,6 @@ func (ui *GameUI) drawHelpText() {
 	case ToolRemove:
 		rl.DrawText("L-click on road to remove | Esc=deselect", 10, helpY, 14, rl.White)
 	case ToolUpgrade:
-		rl.DrawText("L-click on road to upgrade its type | R=change target type | Esc=deselect", 10, helpY, 14, rl.White)
+		rl.DrawText(fmt.Sprintf("L-click on road to upgrade to %s | R=change target type | Esc=deselect", toolbarItems[1].Options[toolbarItems[1].OptIndex]), 10, helpY, 14, rl.White)
 	}
 }

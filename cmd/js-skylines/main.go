@@ -276,7 +276,9 @@ func main() {
 				case terrain.ToolUpgrade:
 					idx := sim.Roads.NearestSegment(worldX, worldZ)
 					if idx >= 0 {
-						sim.UpgradeSegment(idx, ui.RoadType)
+						if !sim.UpgradeSegment(idx, ui.RoadType) {
+							ui.HelpText = "Cannot upgrade: insufficient funds or already that type"
+						}
 					}
 				}
 			}

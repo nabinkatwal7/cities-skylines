@@ -425,10 +425,29 @@ func (sm *SimulationManager) RemoveTrees(worldX, worldZ, radius float32) int {
 	return removed
 }
 
-func (sm *SimulationManager) UpgradeSegment(idx int, newType RoadType) {
+func (sm *SimulationManager) UpgradeSegment(idx int, newType RoadType) bool {
+	if idx < 0 || idx >= len(sm.Roads.Segments) {
+		return false
+	}
+	old := sm.Roads.Segments[idx]
+	if old.RoadType == newType {
+		return true
+	}
+	oldCost := roadConstructionCost(old.RoadType)
+	newCost := roadConstructionCost(newType)
+	diff := newCost - oldCost
+	if diff > 0 && sm.Money < diff {
+		return false
+	}
 	sm.Roads.UpgradeSegment(idx, newType)
+	if diff > 0 {
+		sm.Money -= diff
+	} else if diff < 0 {
+		sm.Money -= diff // diff is negative, so this adds money (refund)
+	}
 	sm.Roads.Rebuild(sm.Heightmap)
 	sm.EventBus.Emit(string(EventRoadUpgraded), idx)
+	return true
 }
 
 func (sm *SimulationManager) SetZone(worldX, worldZ float32, zt ZoneType) {

@@ -1,35 +1,3 @@
-## 3.9 Road Upgrades
-
-Existing roads may be upgraded.
-
-Example:
-
-```text
-Two Lane
-
-↓
-
-Four Lane
-
-↓
-
-Six Lane
-
-↓
-
-Tree-Lined Avenue
-```
-
-Upgrade preserves:
-
-- Connected buildings
-- Zoning
-- Intersections
-- Utilities
-- Public Transport Lines
-
----
-
 ## 3.10 Junction Generation
 
 Whenever roads intersect, the engine generates a procedural junction.
