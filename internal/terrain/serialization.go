@@ -66,6 +66,16 @@ type RoadSegmentData struct {
 	CurveP1z         float32
 	CurveP2x         float32
 	CurveP2z         float32
+	Lanes            []LaneData
+}
+
+type LaneData struct {
+	Index      int32
+	Direction  int8
+	SpeedLimit float32
+	VehicleType VehicleType
+	Width      float32
+	Priority   int32
 }
 
 type ZoneCellData struct {
@@ -140,7 +150,7 @@ type SaveStats struct {
 	TotalCount int32
 }
 
-const currentSaveVersion int32 = 3
+const currentSaveVersion int32 = 4
 
 func calcChecksum(data []byte) uint32 {
 	return crc32.ChecksumIEEE(data)
@@ -179,6 +189,51 @@ func migrateSaveData(data *SaveData) bool {
 				}
 			}
 			data.Version = 3
+		case 3:
+			for i := range data.RoadSegments {
+				sd := &data.RoadSegments[i]
+				if len(sd.Lanes) == 0 {
+					sd.Lanes = make([]LaneData, sd.LaneCount)
+					half := sd.LaneCount / 2
+					allowed := roadAllowedVehicles(sd.RoadType)
+					var vt VehicleType
+					switch allowed {
+					case "bus":
+						vt = VehicleBus
+					case "bike":
+						vt = VehicleBike
+					case "pedestrian":
+						vt = VehiclePedestrian
+					case "tram":
+						vt = VehicleTram
+					default:
+						vt = VehicleCar
+					}
+					for li := int32(0); li < sd.LaneCount; li++ {
+						var dir int8
+						if sd.Direction == 1 {
+							dir = 0
+						} else if sd.Direction == -1 {
+							dir = 1
+						} else {
+							if li < half {
+								dir = 0
+							} else {
+								dir = 1
+							}
+						}
+						sd.Lanes[li] = LaneData{
+							Index:       li,
+							Direction:   dir,
+							SpeedLimit:  sd.SpeedLimit,
+							VehicleType: vt,
+							Width:       3.0,
+							Priority:    li,
+						}
+					}
+				}
+			}
+			data.Version = 4
 		}
 	}
 	return true
@@ -277,6 +332,17 @@ func SaveGame(filename string, m *SimulationManager, money float32, timeOfDay in
 			})
 		}
 		for _, s := range m.Roads.Segments {
+			lanesData := make([]LaneData, len(s.Lanes))
+			for li, l := range s.Lanes {
+				lanesData[li] = LaneData{
+					Index:       l.Index,
+					Direction:   l.Direction,
+					SpeedLimit:  l.SpeedLimit,
+					VehicleType: l.VehicleType,
+					Width:       l.Width,
+					Priority:    l.Priority,
+				}
+			}
 			data.RoadSegments = append(data.RoadSegments, RoadSegmentData{
 				NodeA:            s.NodeA,
 				NodeB:            s.NodeB,
@@ -293,6 +359,7 @@ func SaveGame(filename string, m *SimulationManager, money float32, timeOfDay in
 				CurveP1z:         s.Curve.P1z,
 				CurveP2x:         s.Curve.P2x,
 				CurveP2z:         s.Curve.P2z,
+				Lanes:            lanesData,
 			})
 		}
 	}
@@ -464,6 +531,19 @@ func LoadGame(filename string, m *SimulationManager) (money float32, timeOfDay i
 					m.Roads.Segments[i].ConstructionCost = sd.ConstructionCost
 					m.Roads.Segments[i].Damaged = sd.Damaged
 					m.Roads.Segments[i].Curve = CurveData{P1x: sd.CurveP1x, P1z: sd.CurveP1z, P2x: sd.CurveP2x, P2z: sd.CurveP2z}
+					if len(sd.Lanes) > 0 {
+						m.Roads.Segments[i].Lanes = make([]Lane, len(sd.Lanes))
+						for li, ld := range sd.Lanes {
+							m.Roads.Segments[i].Lanes[li] = Lane{
+								Index:       ld.Index,
+								Direction:   ld.Direction,
+								SpeedLimit:  ld.SpeedLimit,
+								VehicleType: ld.VehicleType,
+								Width:       ld.Width,
+								Priority:    ld.Priority,
+							}
+						}
+					}
 					break
 				}
 			}

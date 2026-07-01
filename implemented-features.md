@@ -2096,3 +2096,41 @@ Construction Cost
 ```
 
 ---
+
+## 3.3 Lane System
+
+Every road segment owns one or more lane objects.
+
+Example:
+
+```text
+Road
+
+├── Lane 1
+├── Lane 2
+├── Lane 3
+├── Sidewalk
+└── Bicycle Lane
+```
+
+Each lane stores:
+
+```cpp
+Lane ID
+
+Direction
+
+Speed Limit
+
+Vehicle Type
+
+Bezier Curve
+
+Width
+
+Priority
+```
+
+Lane geometry is generated procedurally from the road spline.
+
+---

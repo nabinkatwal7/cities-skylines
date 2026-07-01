@@ -13,6 +13,9 @@ const (
 	VehicleBus
 	VehicleTruck
 	VehicleEmergency
+	VehicleBike
+	VehiclePedestrian
+	VehicleTram
 )
 
 type Vehicle struct {
@@ -217,7 +220,14 @@ func (vm *VehicleManager) Update(rm *RoadManager, h *Heightmap) {
 		}
 
 		lanes := int(seg.LaneCount)
-		halfLane := float32(lanes)*laneW*0.5 - float32(v.Lane)*laneW - laneW*0.5
+		if v.Lane >= lanes {
+			v.Lane = 0
+		}
+		laneW := float32(3.0)
+		if v.Lane < len(seg.Lanes) {
+			laneW = seg.Lanes[v.Lane].Width
+		}
+		laneOffset := (float32(v.Lane) - float32(lanes)*0.5) * laneW
 
 		t := v.SegProgress / totalLen
 		if t > 1 {
@@ -240,8 +250,8 @@ func (vm *VehicleManager) Update(rm *RoadManager, h *Heightmap) {
 			}
 		}
 
-		v.Position.X = xs[idx] + (xs[idx+1]-xs[idx])*frac + perX*halfLane
-		v.Position.Z = zs[idx] + (zs[idx+1]-zs[idx])*frac + perZ*halfLane
+		v.Position.X = xs[idx] + (xs[idx+1]-xs[idx])*frac + perX*laneOffset
+		v.Position.Z = zs[idx] + (zs[idx+1]-zs[idx])*frac + perZ*laneOffset
 
 		if v.SegProgress >= totalLen {
 			v.RemovalTimer = 0

@@ -231,6 +231,59 @@ type CurveData struct {
 	P2x, P2z float32
 }
 
+type Lane struct {
+	Index      int32
+	Direction  int8        // 0=forward (A→B), 1=reverse (B→A)
+	SpeedLimit float32
+	VehicleType VehicleType
+	Width      float32
+	Priority   int32
+}
+
+func generateLanes(rt RoadType, direction int8, speedLimit float32, laneCount int32) []Lane {
+	lanes := make([]Lane, laneCount)
+	half := laneCount / 2
+	allowed := roadAllowedVehicles(rt)
+	var vt VehicleType
+	switch allowed {
+	case "bus":
+		vt = VehicleBus
+	case "bike":
+		vt = VehicleBike
+	case "pedestrian":
+		vt = VehiclePedestrian
+	case "tram":
+		vt = VehicleTram
+	default:
+		vt = VehicleCar
+	}
+
+	for i := int32(0); i < laneCount; i++ {
+		var dir int8
+		if direction == 1 {
+			dir = 0
+		} else if direction == -1 {
+			dir = 1
+		} else {
+			if i < half {
+				dir = 0
+			} else {
+				dir = 1
+			}
+		}
+
+		lanes[i] = Lane{
+			Index:       i,
+			Direction:   dir,
+			SpeedLimit:  speedLimit,
+			VehicleType: vt,
+			Width:       3.0,
+			Priority:    i,
+		}
+	}
+	return lanes
+}
+
 type RoadSegment struct {
 	ID               uint32
 	NodeA            uint32
@@ -245,6 +298,7 @@ type RoadSegment struct {
 	ConstructionCost float32
 	Damaged          bool
 	Curve            CurveData
+	Lanes            []Lane
 }
 
 type RoadManager struct {
@@ -301,6 +355,7 @@ func (rm *RoadManager) AddSegment(a, b uint32, rt RoadType) uint32 {
 
 	id := rm.NextID
 	rm.NextID++
+	lanes := generateLanes(rt, 0, roadSpeed(rt), int32(roadLanes(rt)))
 	rm.Segments = append(rm.Segments, RoadSegment{
 		ID:               id,
 		NodeA:            a,
@@ -316,6 +371,7 @@ func (rm *RoadManager) AddSegment(a, b uint32, rt RoadType) uint32 {
 			P1x: tx0, P1z: tz0,
 			P2x: tx1, P2z: tz1,
 		},
+		Lanes: lanes,
 	})
 
 	na.Connected = append(na.Connected, id)
@@ -496,6 +552,42 @@ func (rm *RoadManager) SampleSegment(seg RoadSegment, steps int) ([]float32, []f
 	}
 
 	return xs, zs, ds
+}
+
+func (rm *RoadManager) SampleLane(seg RoadSegment, laneIdx int32, steps int) ([]float32, []float32, []float32) {
+	xs, zs, ds := rm.SampleSegment(seg, steps)
+	if laneIdx < 0 || int(laneIdx) >= len(seg.Lanes) {
+		return xs, zs, ds
+	}
+	lanes := int32(len(seg.Lanes))
+	laneW := seg.Lanes[laneIdx].Width
+	offset := (float32(laneIdx) - float32(lanes-1)*0.5) * laneW
+
+	lxs := make([]float32, len(xs))
+	lzs := make([]float32, len(zs))
+	for i := 0; i < len(xs); i++ {
+		var perX, perZ float32
+		if i < len(xs)-1 {
+			dx := xs[i+1] - xs[i]
+			dz := zs[i+1] - zs[i]
+			l := float32(math.Sqrt(float64(dx*dx + dz*dz)))
+			if l > 0.01 {
+				perX = -dz / l
+				perZ = dx / l
+			}
+		} else if i > 0 {
+			dx := xs[i] - xs[i-1]
+			dz := zs[i] - zs[i-1]
+			l := float32(math.Sqrt(float64(dx*dx + dz*dz)))
+			if l > 0.01 {
+				perX = -dz / l
+				perZ = dx / l
+			}
+		}
+		lxs[i] = xs[i] + perX*offset
+		lzs[i] = zs[i] + perZ*offset
+	}
+	return lxs, lzs, ds
 }
 
 func (rm *RoadManager) NearestNode(x, z float32) (uint32, bool) {
@@ -991,6 +1083,7 @@ func (rm *RoadManager) UpgradeSegment(idx int, newType RoadType) {
 	s.LaneCount = int32(roadLanes(newType))
 	s.MaintenanceCost = roadMaintenanceCost(newType)
 	s.ConstructionCost = roadConstructionCost(newType)
+	s.Lanes = generateLanes(newType, s.Direction, s.SpeedLimit, s.LaneCount)
 }
 
 func (rm *RoadManager) removeNodeByIndex(idx uint32) {
