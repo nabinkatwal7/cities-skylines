@@ -273,3 +273,18 @@ func (ts *TreeSystem) getState(t Tree) TreeState {
 func (ts *TreeSystem) Count() int {
 	return int(ts.activeCount)
 }
+
+func (ts *TreeSystem) HasTreeAt(worldX, worldZ float32) bool {
+	for i := 0; i < TreePoolSize; i++ {
+		t := &ts.Pool[i]
+		if t.Lifecycle != LifecycleActive {
+			continue
+		}
+		dx := t.X - worldX
+		dz := t.Z - worldZ
+		if dx*dx+dz*dz < 4 {
+			return true
+		}
+	}
+	return false
+}

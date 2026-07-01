@@ -37,6 +37,7 @@ type SimulationManager struct {
 	Vehicles    *VehicleManager
 	Transport   *TransportManager
 	Districts   *DistrictManager
+	Buildability *BuildabilityChecker
 
 	Seed      int64
 	Night     bool
@@ -92,6 +93,9 @@ func NewSimulationManager(seed int64) *SimulationManager {
 	sm.Water.SetEventBus(sm.EventBus)
 	SetWaterForBuildings(sm.Water)
 	SetWaterForRoads(sm.Water)
+	sm.Buildability = NewBuildabilityChecker(sm.Heightmap, sm.Water, sm.Trees, sm.Buildings, sm.Roads, sm.Zones, sm.Resources)
+	SetBuildabilityChecker(sm.Buildability)
+	SetZoneBuildabilityCheck(sm.Buildability)
 	return sm
 }
 

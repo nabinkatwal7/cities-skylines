@@ -352,6 +352,15 @@ func (bm *BuildingManager) developZones(zm *ZoneManager, roads *RoadManager) {
 			if !canDevelop {
 				continue
 			}
+			if buildabilityChecker != nil {
+				info := buildabilityChecker.GetBuildability(cx, cz)
+				if info.Score < 0.5 {
+					continue
+				}
+				if info.IsUnderwater {
+					continue
+				}
+			}
 			if cell.Density >= 0.5 {
 				continue
 			}
@@ -368,6 +377,12 @@ func (bm *BuildingManager) developZones(zm *ZoneManager, roads *RoadManager) {
 			}
 		}
 	}
+}
+
+var buildabilityChecker *BuildabilityChecker
+
+func SetBuildabilityChecker(bc *BuildabilityChecker) {
+	buildabilityChecker = bc
 }
 
 func (bm *BuildingManager) updateBuildings(zm *ZoneManager, h *Heightmap, roads *RoadManager, dm *DistrictManager) {

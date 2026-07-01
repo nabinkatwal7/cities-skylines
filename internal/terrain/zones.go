@@ -51,17 +51,23 @@ func (zm *ZoneManager) CanZone(worldX, worldZ float32, roads *RoadManager) bool 
 			checkX := worldX + float32(dx)*cellSize
 			checkZ := worldZ + float32(dz)*cellSize
 			if roads.HasNearbyRoad(checkX, checkZ, cellSize*1.5) {
-				cx := zm.cellX(worldX)
-				cz := zm.cellZ(worldZ)
-				if abs(dx) <= maxZoneDepth && abs(dz) <= maxZoneDepth {
-					_ = cx
-					_ = cz
+				if buildabilityCheck != nil {
+					info := buildabilityCheck.GetBuildability(worldX, worldZ)
+					if info.Score < 0.3 || info.IsUnderwater {
+						return false
+					}
 				}
 				return true
 			}
 		}
 	}
 	return false
+}
+
+var buildabilityCheck *BuildabilityChecker
+
+func SetZoneBuildabilityCheck(bc *BuildabilityChecker) {
+	buildabilityCheck = bc
 }
 
 func (zm *ZoneManager) SetZone(worldX, worldZ float32, zt ZoneType, roads *RoadManager) {
