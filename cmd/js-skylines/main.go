@@ -250,8 +250,13 @@ func main() {
 								roadActive = false
 								break
 							}
-							newNode, _ := sim.PlaceRoadSegment(roadStartNode, cx, cz, ui.RoadType, roadElevation)
-							roadStartNode = newNode
+							newNode, _, ok := sim.PlaceRoadSegment(roadStartNode, cx, cz, ui.RoadType, roadElevation)
+							if ok {
+								roadStartNode = newNode
+							}
+							if !ok {
+								ui.HelpText = "Cannot place road: check terrain slope, water, or obstacles"
+							}
 						}
 					}
 				case terrain.ToolZone:

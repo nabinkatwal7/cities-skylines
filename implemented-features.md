@@ -2239,3 +2239,20 @@ Elevation affects:
 - Terrain deformation
 
 ---
+
+## 3.8 Road Construction Validation
+
+Before placement the engine validates:
+
+- Terrain slope
+- Collision
+- Water
+- Existing roads
+- Buildings
+- Map boundary
+- Minimum curve radius
+- Maximum slope
+
+Invalid placement is rejected.
+
+---

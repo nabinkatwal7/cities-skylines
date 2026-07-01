@@ -1,5 +1,7 @@
 package terrain
 
+import "math"
+
 type SimEvent string
 
 const (
@@ -272,11 +274,110 @@ func (sm *SimulationManager) collectTax(dt float64) {
 	}
 }
 
+const (
+	MaxRoadSlope      = 0.25
+	MinCurveRadius    = 8.0
+	RoadProximityDist = 4.0
+	BuildingProximity = 3.0
+)
+
+func (sm *SimulationManager) CanPlaceRoad(x1, z1, x2, z2 float32, rt RoadType, elevation int32, excludeSegID uint32) string {
+	half := float32(WorldSize / 2)
+	if x1 < -half || x1 > half || z1 < -half || z1 > half {
+		return "outside map boundary"
+	}
+	if x2 < -half || x2 > half || z2 < -half || z2 > half {
+		return "outside map boundary"
+	}
+
+	dx := x2 - x1
+	dz := z2 - z1
+	length := float32(math.Sqrt(float64(dx*dx + dz*dz)))
+	if length < 2.0 {
+		return "segment too short"
+	}
+
+	if elevation >= 0 {
+		h1 := sm.Heightmap.WorldHeight(x1, z1)
+		h2 := sm.Heightmap.WorldHeight(x2, z2)
+		slope := float32(math.Abs(float64(h2-h1))) / length
+		if slope > MaxRoadSlope {
+			return "terrain slope too steep"
+		}
+
+		if sm.Heightmap.IsUnderwater(x1, z1) || sm.Heightmap.IsUnderwater(x2, z2) {
+			return "endpoint underwater"
+		}
+
+		steps := int(length / 4)
+		if steps < 4 {
+			steps = 4
+		}
+		for si := 1; si < steps; si++ {
+			t := float32(si) / float32(steps)
+			px := x1 + dx*t
+			pz := z1 + dz*t
+			if sm.Heightmap.IsUnderwater(px, pz) {
+				return "segment crosses water"
+			}
+		}
+	}
+
+	for _, seg := range sm.Roads.Segments {
+		if seg.ID == excludeSegID {
+			continue
+		}
+		xs, zs, _ := sm.Roads.SampleSegment(seg, 8)
+		for i := 0; i < len(xs); i++ {
+			sdx := x1 - xs[i]
+			sdz := z1 - zs[i]
+			if sdx*sdx+sdz*sdz < RoadProximityDist*RoadProximityDist {
+				return "too close to existing road"
+			}
+			sdx = x2 - xs[i]
+			sdz = z2 - zs[i]
+			if sdx*sdx+sdz*sdz < RoadProximityDist*RoadProximityDist {
+				return "too close to existing road"
+			}
+		}
+	}
+
+	if sm.Buildings != nil {
+		for i := 0; i < BuildingPoolSize; i++ {
+			b := &sm.Buildings.Pool[i]
+			if b.Lifecycle != LifecycleActive {
+				continue
+			}
+			hw := b.Width * 0.5
+			hd := b.Depth * 0.5
+			if lineIntersectsRect(x1, z1, x2, z2, b.Position.X-hw, b.Position.Z-hd, b.Position.X+hw, b.Position.Z+hd) {
+				return "intersects building"
+			}
+		}
+	}
+
+	return ""
+}
+
+func lineIntersectsRect(x1, z1, x2, z2, rx0, rz0, rx1, rz1 float32) bool {
+	minX := float32(math.Min(float64(x1), float64(x2)))
+	maxX := float32(math.Max(float64(x1), float64(x2)))
+	minZ := float32(math.Min(float64(z1), float64(z2)))
+	maxZ := float32(math.Max(float64(z1), float64(z2)))
+	return !(maxX < rx0 || minX > rx1 || maxZ < rz0 || minZ > rz1)
+}
+
 func (sm *SimulationManager) PlaceRoadNode(x, z float32) uint32 {
 	return sm.Roads.AddNode(x, 0, z)
 }
 
-func (sm *SimulationManager) PlaceRoadSegment(nodeA uint32, x, z float32, roadType RoadType, elevation int32) (uint32, uint32) {
+func (sm *SimulationManager) PlaceRoadSegment(nodeA uint32, x, z float32, roadType RoadType, elevation int32) (uint32, uint32, bool) {
+	na := sm.Roads.Nodes[nodeA]
+	reason := sm.CanPlaceRoad(na.X, na.Z, x, z, roadType, elevation, math.MaxUint32)
+	if reason != "" {
+		return math.MaxUint32, math.MaxUint32, false
+	}
+
 	nodeB := sm.Roads.AddNode(x, 0, z)
 	segID := sm.Roads.AddSegment(nodeA, nodeB, roadType)
 	if elevation != 0 {
@@ -303,7 +404,7 @@ func (sm *SimulationManager) PlaceRoadSegment(nodeA uint32, x, z float32, roadTy
 	sm.Roads.Rebuild(sm.Heightmap)
 	sm.Money -= cost
 	sm.EventBus.Emit(string(EventRoadPlaced), segID)
-	return nodeB, segID
+	return nodeB, segID, true
 }
 
 func (sm *SimulationManager) RemoveSegment(idx int) {
