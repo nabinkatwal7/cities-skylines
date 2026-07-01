@@ -147,6 +147,9 @@ func (m *Manager) Draw(camX, camZ float32) {
 	if sim.Vehicles != nil {
 		sim.Vehicles.Draw(sim.Heightmap)
 	}
+	if sim.Parking != nil {
+		sim.Parking.Draw(sim.Heightmap)
+	}
 	if sim.Transport != nil {
 		sim.Transport.Draw(sim.Heightmap)
 	}

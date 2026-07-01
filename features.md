@@ -1,21 +1,3 @@
-## 3.20 Road Maintenance
-
-Every road incurs maintenance.
-
-Factors:
-
-- Length
-- Type
-- Decorations
-- Lighting
-- Elevation
-- Bridges
-- Tunnels
-
-Maintenance contributes to the city's operating expenses.
-
----
-
 ## 3.21 Road Damage
 
 Roads may become temporarily unusable due to:

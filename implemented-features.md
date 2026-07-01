@@ -2508,3 +2508,21 @@ If parking is unavailable:
 Parking availability influences traffic congestion.
 
 ---
+
+## 3.20 Road Maintenance
+
+Every road incurs maintenance.
+
+Factors:
+
+- Length
+- Type
+- Decorations
+- Lighting
+- Elevation
+- Bridges
+- Tunnels
+
+Maintenance contributes to the city's operating expenses.
+
+---

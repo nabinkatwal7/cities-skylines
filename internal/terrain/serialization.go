@@ -39,6 +39,9 @@ type SaveData struct {
 
 	TransportStops    []TransportStopData
 	TransportLines    []TransportLineData
+
+	ParkingSpots []ParkingSpotData
+	ParkingLots  []ParkingLotData
 }
 
 type RoadNodeData struct {
@@ -133,6 +136,25 @@ type TransportLineData struct {
 	ColorB    uint8
 }
 
+type ParkingSpotData struct {
+	ID       uint32
+	SpotType ParkingSpotType
+	X, Z     float32
+	RoadSeg  int32
+	LaneIdx  int32
+	Occupied bool
+	OwnerSlot int32
+}
+
+type ParkingLotData struct {
+	X, Z        float32
+	LotType     ParkingSpotType
+	Width, Depth float32
+	Capacity    int32
+	CellX, CellZ int
+	SpotIndices []int32
+}
+
 type TreeData struct {
 	X, Z    float32
 	Species int
@@ -150,7 +172,7 @@ type SaveStats struct {
 	TotalCount int32
 }
 
-const currentSaveVersion int32 = 4
+const currentSaveVersion int32 = 5
 
 func calcChecksum(data []byte) uint32 {
 	return crc32.ChecksumIEEE(data)
@@ -438,6 +460,36 @@ func SaveGame(filename string, m *SimulationManager, money float32, timeOfDay in
 		}
 	}
 
+	if m.Parking != nil {
+		for _, sp := range m.Parking.Spots {
+			data.ParkingSpots = append(data.ParkingSpots, ParkingSpotData{
+				ID:        sp.ID,
+				SpotType:  sp.SpotType,
+				X:         sp.X,
+				Z:         sp.Z,
+				RoadSeg:   sp.RoadSeg,
+				LaneIdx:   sp.LaneIdx,
+				Occupied:  sp.Occupied,
+				OwnerSlot: sp.OwnerSlot,
+			})
+		}
+		m.Parking.ForEachLot(func(lot *ParkingLot, slot int32) {
+			spotIndices := make([]int32, len(lot.Spots))
+			copy(spotIndices, lot.Spots)
+			data.ParkingLots = append(data.ParkingLots, ParkingLotData{
+				X:           lot.Position.X,
+				Z:           lot.Position.Z,
+				LotType:     lot.LotType,
+				Width:       lot.Width,
+				Depth:       lot.Depth,
+				Capacity:    lot.Capacity,
+				CellX:       lot.CellX,
+				CellZ:       lot.CellZ,
+				SpotIndices: spotIndices,
+			})
+		})
+	}
+
 	f, err := os.Create(filename)
 	if err != nil {
 		return fmt.Errorf("create save: %w", err)
@@ -464,7 +516,7 @@ func LoadGame(filename string, m *SimulationManager) (money float32, timeOfDay i
 		return 0, 0, fmt.Errorf("decode save: %w", err)
 	}
 
-	if data.Version != 1 {
+	if data.Version < 1 || data.Version > currentSaveVersion {
 		return 0, 0, fmt.Errorf("unsupported save version: %d", data.Version)
 	}
 
@@ -626,6 +678,43 @@ func LoadGame(filename string, m *SimulationManager) (money float32, timeOfDay i
 		for _, ld := range data.TransportLines {
 			col := rl.NewColor(ld.ColorR, ld.ColorG, ld.ColorB, 255)
 			m.Transport.AddLine("Line", ld.TransType, ld.StopIDs, col)
+		}
+	}
+
+	if m.Parking != nil && len(data.ParkingSpots) > 0 {
+		m.Parking.Spots = make([]ParkingSpot, len(data.ParkingSpots))
+		for i, pd := range data.ParkingSpots {
+			m.Parking.Spots[i] = ParkingSpot{
+				ID:        pd.ID,
+				SpotType:  pd.SpotType,
+				X:         pd.X,
+				Z:         pd.Z,
+				RoadSeg:   pd.RoadSeg,
+				LaneIdx:   pd.LaneIdx,
+				Occupied:  pd.Occupied,
+				OwnerSlot: pd.OwnerSlot,
+			}
+			if pd.ID >= m.Parking.NextID {
+				m.Parking.NextID = pd.ID + 1
+			}
+		}
+		for _, ld := range data.ParkingLots {
+			slot := m.Parking.allocLot()
+			if slot < 0 {
+				continue
+			}
+			lot := &m.Parking.Lots[slot]
+			lot.Entity = NewEntity(m.Parking.NextID, ld.X, 0, ld.Z, OwnerBuilding)
+			lot.Lifecycle = LifecycleActive
+			lot.LotType = ld.LotType
+			lot.Width = ld.Width
+			lot.Depth = ld.Depth
+			lot.Capacity = ld.Capacity
+			lot.CellX = ld.CellX
+			lot.CellZ = ld.CellZ
+			lot.Spots = make([]int32, len(ld.SpotIndices))
+			copy(lot.Spots, ld.SpotIndices)
+			m.Parking.NextID++
 		}
 	}
 

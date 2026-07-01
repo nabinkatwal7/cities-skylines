@@ -13,6 +13,7 @@ const (
 	ToolRoad
 	ToolZone
 	ToolPark
+	ToolParking
 	ToolRemove
 	ToolUpgrade
 )
@@ -31,6 +32,7 @@ type GameUI struct {
 	ZoneType      ZoneType
 	RoadType      RoadType
 	ParkMode      bool
+	ParkingGarage bool
 	Money         float32
 	Population    int32
 	ResDemand     int
@@ -57,8 +59,9 @@ var toolbarItems = []ToolbarItem{
 	{ToolRoad, "Roads", rl.KeyTwo, rl.NewColor(180, 160, 120, 255), []string{"2-Lane", "1-Way", "4-Lane", "Gravel", "Highway", "6-Lane", "Avenue", "Bus Rd", "Tram Rd", "Bike Rd", "Tree Rd", "Asym Rd", "Pedestrian", "Quay"}, 0},
 	{ToolZone, "Zones", rl.KeyThree, rl.NewColor(100, 200, 100, 255), []string{"Res Low", "Res High", "Com Low", "Com High", "Industrial", "Office"}, 0},
 	{ToolPark, "Parks", rl.KeyFour, rl.NewColor(80, 200, 80, 255), nil, 0},
-	{ToolRemove, "Remove", rl.KeyFive, rl.NewColor(200, 80, 80, 255), nil, 0},
-	{ToolUpgrade, "Upgrade", rl.KeySix, rl.NewColor(200, 200, 80, 255), nil, 0},
+	{ToolParking, "Parking", rl.KeyFive, rl.NewColor(100, 100, 200, 255), []string{"Lot", "Garage"}, 0},
+	{ToolRemove, "Remove", rl.KeySix, rl.NewColor(200, 80, 80, 255), nil, 0},
+	{ToolUpgrade, "Upgrade", rl.KeySeven, rl.NewColor(200, 200, 80, 255), nil, 0},
 }
 
 const (
@@ -87,6 +90,11 @@ func (ui *GameUI) HandleInput() GameTool {
 		item := &toolbarItems[2]
 		item.OptIndex = (item.OptIndex + 1) % len(item.Options)
 		ui.ZoneType = ZoneType(item.OptIndex + 1)
+	}
+	if ui.Selected == ToolParking && rl.IsKeyPressed(rl.KeyR) {
+		item := &toolbarItems[4]
+		item.OptIndex = (item.OptIndex + 1) % len(item.Options)
+		ui.ParkingGarage = item.OptIndex == 1
 	}
 	if rl.IsKeyPressed(rl.KeyEscape) {
 		ui.Selected = ToolPointer
@@ -232,6 +240,21 @@ func (ui *GameUI) drawOptions() {
 				ui.ZoneType = ZoneType(oi + 1)
 			}
 		}
+	case ToolParking:
+		item := &toolbarItems[4]
+		optW := int32(80)
+		total := len(item.Options) * int(optW+ToolbarPad)
+		sx := (1280 - total) / 2
+		for oi, opt := range item.Options {
+			bx := int32(sx + oi*(int(optW)+int(ToolbarPad)))
+			by := int32(ToolbarY - OptionsBarH + 4)
+			sel := oi == item.OptIndex
+			uiBtn(bx, by, optW, OptionsBarH-8, opt, rl.NewColor(40, 40, 40, 200), rl.White, sel)
+			if rl.IsMouseButtonPressed(rl.MouseButtonLeft) && mx >= bx && mx < bx+optW && my >= by && my < by+OptionsBarH-8 {
+				item.OptIndex = oi
+				ui.ParkingGarage = oi == 1
+			}
+		}
 	}
 }
 
@@ -246,6 +269,13 @@ func (ui *GameUI) drawHelpText() {
 		rl.DrawText(fmt.Sprintf("L-click to paint zones | R=cycle type | Esc=deselect | Current: %s", toolbarItems[2].Options[toolbarItems[2].OptIndex]), 10, helpY, 14, rl.White)
 	case ToolPark:
 		rl.DrawText("L-click to place park ($500) | Esc=deselect", 10, helpY, 14, rl.White)
+	case ToolParking:
+		rl.DrawText(fmt.Sprintf("L-click to place parking %s ($%.0f) | R=cycle type | Esc=deselect", toolbarItems[4].Options[toolbarItems[4].OptIndex], float32(3000)), 10, helpY, 14, rl.White)
+		if ui.ParkingGarage {
+			rl.DrawText("Current: Garage ($3000)", 10, helpY+18, 14, rl.White)
+		} else {
+			rl.DrawText("Current: Surface Lot ($1000)", 10, helpY+18, 14, rl.White)
+		}
 	case ToolRemove:
 		rl.DrawText("L-click on road to remove | Esc=deselect", 10, helpY, 14, rl.White)
 	case ToolUpgrade:

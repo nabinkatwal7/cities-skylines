@@ -22,6 +22,9 @@ const (
 	EventTimeDay             SimEvent = "time:day"
 	EventFloodStarted        SimEvent = "flood:started"
 	EventFloodReceded        SimEvent = "flood:receded"
+	EventParkingLotPlaced    SimEvent = "parkinglot:placed"
+	EventParkingGaragePlaced SimEvent = "parkinggarage:placed"
+	EventParkingLotRemoved   SimEvent = "parkinglot:removed"
 )
 
 type SimulationManager struct {
@@ -40,6 +43,7 @@ type SimulationManager struct {
 	Transport   *TransportManager
 	Districts   *DistrictManager
 	Buildability *BuildabilityChecker
+	Parking     *ParkingManager
 
 	Seed      int64
 	Night     bool
@@ -68,6 +72,7 @@ func NewSimulationManager(seed int64) *SimulationManager {
 	buildings := NewBuildingManager()
 	services := NewServiceManager()
 	vehicles := NewVehicleManager()
+	parking := NewParkingManager()
 
 	sm := &SimulationManager{
 		Generator:   gen,
@@ -81,6 +86,7 @@ func NewSimulationManager(seed int64) *SimulationManager {
 		Services:    services,
 		Connections: conn,
 		Vehicles:    vehicles,
+		Parking:     parking,
 		Transport:   NewTransportManager(),
 		Districts:   NewDistrictManager(),
 		Seed:        seed,
@@ -102,6 +108,7 @@ func NewSimulationManager(seed int64) *SimulationManager {
 	SetResourceForBuildings(sm.Resources)
 	sm.Trees.SetResources(sm.Resources)
 	sm.Resources.SetTrees(sm.Trees)
+	sm.Parking.GenerateRoadsideSpots(sm.Roads)
 	return sm
 }
 
@@ -128,13 +135,19 @@ func (sm *SimulationManager) initScheduler() {
 		Name:     "vehicles",
 		Priority: SchedPriorityHigh,
 		BudgetMs: 3,
-		Callback: func(dt float64) { sm.Vehicles.Update(sm.Roads, sm.Heightmap) },
+		Callback: func(dt float64) { sm.Vehicles.Update(sm.Roads, sm.Heightmap, sm.Parking) },
 	})
 	sm.scheduler.Register(GroupMedium, UpdateTask{
 		Name:     "transport",
 		Priority: SchedPriorityHigh,
 		BudgetMs: 2,
 		Callback: func(dt float64) { sm.Transport.Update(sm.Roads, sm.Heightmap) },
+	})
+	sm.scheduler.Register(GroupFast, UpdateTask{
+		Name:     "parking",
+		Priority: SchedPriorityLow,
+		BudgetMs: 0.5,
+		Callback: func(dt float64) { sm.Parking.Timer++ },
 	})
 	sm.scheduler.Register(GroupSlow, UpdateTask{
 		Name:     "buildings",
@@ -156,6 +169,17 @@ func (sm *SimulationManager) initEventListeners() {
 		idx, ok := data.(int)
 		if ok && sm.Vehicles != nil {
 			sm.Vehicles.OnRoadRemoved(idx)
+			sm.Parking.GenerateRoadsideSpots(sm.Roads)
+		}
+	})
+	sm.EventBus.On(string(EventRoadPlaced), func(data any) {
+		if sm.Parking != nil {
+			sm.Parking.GenerateRoadsideSpots(sm.Roads)
+		}
+	})
+	sm.EventBus.On(string(EventRoadUpgraded), func(data any) {
+		if sm.Parking != nil {
+			sm.Parking.GenerateRoadsideSpots(sm.Roads)
 		}
 	})
 	sm.EventBus.On(string(EventBuildingDemolished), func(data any) {
@@ -460,6 +484,47 @@ func (sm *SimulationManager) PlacePark(x, z float32) {
 	sm.Services.AddPark(x, z)
 	sm.Money -= 500
 	sm.EventBus.Emit(string(EventParkPlaced), nil)
+}
+
+func (sm *SimulationManager) PlaceParkingLot(x, z float32, isGarage bool) bool {
+	if sm.Money < 1000 {
+		return false
+	}
+	ok := sm.Parking.PlaceParkingLot(x, z, 20, 15, isGarage)
+	if ok {
+		cost := float32(1000)
+		if isGarage {
+			cost = 3000
+		}
+		sm.Money -= cost
+		if isGarage {
+			sm.EventBus.Emit(string(EventParkingGaragePlaced), nil)
+		} else {
+			sm.EventBus.Emit(string(EventParkingLotPlaced), nil)
+		}
+	}
+	return ok
+}
+
+func (sm *SimulationManager) RemoveParkingLot(x, z float32) bool {
+	bestSlot := int32(-1)
+	bestDist := float32(100.0)
+	sm.Parking.ForEachLot(func(lot *ParkingLot, slot int32) {
+		dx := lot.Position.X - x
+		dz := lot.Position.Z - z
+		d := float32(math.Sqrt(float64(dx*dx + dz*dz)))
+		if d < bestDist {
+			bestDist = d
+			bestSlot = slot
+		}
+	})
+	if bestSlot >= 0 {
+		sm.Parking.RemoveParkingLot(bestSlot)
+		sm.Money += 500
+		sm.EventBus.Emit(string(EventParkingLotRemoved), bestSlot)
+		return true
+	}
+	return false
 }
 
 func (sm *SimulationManager) InitTerraform(chunks []*Chunk, rebuildChunk func(idx int)) {

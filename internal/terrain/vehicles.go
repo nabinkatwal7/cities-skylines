@@ -32,6 +32,8 @@ type Vehicle struct {
 	Lane        int
 	TurnSignal  int
 	SignalTimer int32
+	ParkTimer   int32
+	ParkSpotIdx int
 }
 
 const VehiclePoolSize = 500
@@ -87,8 +89,9 @@ func (vm *VehicleManager) ForEach(fn func(*Vehicle, int32)) {
 func (vm *VehicleManager) buildCongestionMap(rm *RoadManager) map[int]float32 {
 	cong := make(map[int]float32)
 	for i := 0; i < VehiclePoolSize; i++ {
-		if vm.Pool[i].Lifecycle == LifecycleActive {
-			cong[vm.Pool[i].RoadSeg]++
+		v := &vm.Pool[i]
+		if v.Lifecycle == LifecycleActive && !v.HasFlag(FlagParked) {
+			cong[v.RoadSeg]++
 		}
 	}
 	for k, v := range cong {
@@ -130,6 +133,8 @@ func (vm *VehicleManager) SpawnCar(rm *RoadManager) {
 	v.RoadSeg = segIdx
 	v.Lane = lane
 	v.Color = rl.NewColor(uint8(100+vm.NextID%100), uint8(50+vm.NextID%80), uint8(80+vm.NextID%100), 255)
+	v.ParkTimer = 0
+	v.ParkSpotIdx = -1
 	vm.NextID++
 
 	destIdx := int(vm.NextID) % len(rm.Nodes)
@@ -451,7 +456,7 @@ func (vm *VehicleManager) avoidCollisions(v *Vehicle, rm *RoadManager) {
 	}
 }
 
-func (vm *VehicleManager) Update(rm *RoadManager, h *Heightmap) {
+func (vm *VehicleManager) Update(rm *RoadManager, h *Heightmap, pm *ParkingManager) {
 	vm.Timer++
 	if vm.Timer%30 == 0 && vm.Count < 50 {
 		vm.SpawnCar(rm)
@@ -463,6 +468,14 @@ func (vm *VehicleManager) Update(rm *RoadManager, h *Heightmap) {
 			continue
 		}
 		if v.Lifecycle == LifecycleSuspended {
+			continue
+		}
+
+		if v.HasFlag(FlagParked) {
+			v.ParkTimer--
+			if v.ParkTimer <= 0 {
+				vm.unpark(v, rm, pm)
+			}
 			continue
 		}
 
@@ -563,17 +576,73 @@ func (vm *VehicleManager) Update(rm *RoadManager, h *Heightmap) {
 					}
 				}
 				if !found {
-					v.RemovalTimer = 0
-					v.Lifecycle = LifecycleMarkedForRemoval
+					vm.tryPark(v, rm, pm)
 				}
 			} else {
-				v.RemovalTimer = 0
-				v.Lifecycle = LifecycleMarkedForRemoval
+				vm.tryPark(v, rm, pm)
 			}
 		}
 	}
 
 	vm.processRemovals()
+}
+
+func (vm *VehicleManager) tryPark(v *Vehicle, rm *RoadManager, pm *ParkingManager) {
+	if pm == nil {
+		v.RemovalTimer = 0
+		v.Lifecycle = LifecycleMarkedForRemoval
+		return
+	}
+	spotIdx := pm.FindSpot(v.Position.X, v.Position.Z, 50)
+	if spotIdx >= 0 {
+		ok := pm.OccupySpot(spotIdx, v.ID)
+		if ok {
+			v.SetFlag(FlagParked)
+			v.ParkSpotIdx = spotIdx
+			v.ParkTimer = int32(120 + vm.NextID%180)
+			sp := pm.Spots[spotIdx]
+			v.Position.X = sp.X
+			v.Position.Z = sp.Z
+			return
+		}
+	}
+	v.RemovalTimer = 0
+	v.Lifecycle = LifecycleMarkedForRemoval
+}
+
+func (vm *VehicleManager) unpark(v *Vehicle, rm *RoadManager, pm *ParkingManager) {
+	v.ClearFlag(FlagParked)
+	if v.ParkSpotIdx >= 0 && pm != nil {
+		pm.FreeSpot(v.ParkSpotIdx)
+	}
+	v.ParkSpotIdx = -1
+	if len(rm.Segments) == 0 {
+		v.RemovalTimer = 0
+		v.Lifecycle = LifecycleMarkedForRemoval
+		return
+	}
+	segIdx := int(vm.NextID) % len(rm.Segments)
+	v.RoadSeg = segIdx
+	v.SegProgress = 0
+	v.Speed = 0.5
+	seg := rm.Segments[segIdx]
+	v.TargetSpeed = seg.SpeedLimit * 0.8
+
+	destIdx := int(vm.NextID+1) % len(rm.Nodes)
+	if destIdx >= len(rm.Nodes) {
+		destIdx = 0
+	}
+	cong := vm.buildCongestionMap(rm)
+	v.Path = rm.FindPathWithCongestion(seg.NodeA, uint32(destIdx), v.Type, cong)
+	v.PathIdx = 0
+	if len(v.Path) > 0 {
+		v.Path = v.Path[1:]
+	} else {
+		v.Path = nil
+	}
+	na := &rm.Nodes[seg.NodeA]
+	v.Position.X = na.X
+	v.Position.Z = na.Z
 }
 
 func (vm *VehicleManager) processRemovals() {
@@ -593,6 +662,11 @@ func (vm *VehicleManager) processRemovals() {
 
 func (vm *VehicleManager) Draw(h *Heightmap) {
 	vm.ForEach(func(v *Vehicle, _ int32) {
+		if v.HasFlag(FlagParked) {
+			hy := h.WorldHeight(v.Position.X, v.Position.Z) + 0.2
+			rl.DrawCube(rl.NewVector3(v.Position.X, hy, v.Position.Z), 1.5, 0.4, 1, v.Color)
+			return
+		}
 		hy := h.WorldHeight(v.Position.X, v.Position.Z) + 0.5
 		rl.DrawCube(rl.NewVector3(v.Position.X, hy, v.Position.Z), 1.5, 0.5, 1, v.Color)
 		rl.DrawCube(rl.NewVector3(v.Position.X, hy+0.4, v.Position.Z+0.6), 0.8, 0.3, 0.1, rl.NewColor(200, 50, 50, 255))

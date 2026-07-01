@@ -24,6 +24,7 @@ const (
 func main() {
 	sim := terrain.NewSimulationManager(42)
 	sim.InitDefaultRoads()
+	sim.Parking.GenerateRoadsideSpots(sim.Roads)
 
 	t := terrain.NewManager(sim)
 	t.InitChunks()
@@ -263,10 +264,18 @@ func main() {
 					if sim.Money >= 20 && !sim.Heightmap.IsUnderwater(worldX, worldZ) {
 						sim.SetZone(worldX, worldZ, ui.ZoneType)
 					}
-				case terrain.ToolPark:
-					if sim.Money >= 500 && !sim.Heightmap.IsUnderwater(worldX, worldZ) {
-						sim.PlacePark(worldX, worldZ)
-					}
+			case terrain.ToolPark:
+				if sim.Money >= 500 && !sim.Heightmap.IsUnderwater(worldX, worldZ) {
+					sim.PlacePark(worldX, worldZ)
+				}
+			case terrain.ToolParking:
+				cost := float32(1000)
+				if ui.ParkingGarage {
+					cost = 3000
+				}
+				if sim.Money >= cost && !sim.Heightmap.IsUnderwater(worldX, worldZ) {
+					sim.PlaceParkingLot(worldX, worldZ, ui.ParkingGarage)
+				}
 				case terrain.ToolRemove:
 					idx := sim.Roads.NearestSegment(worldX, worldZ)
 					if idx >= 0 {
@@ -310,6 +319,13 @@ func main() {
 				rl.DrawCube(rl.NewVector3(worldX, h+0.5, worldZ), 8, 0.3, 8, terrain.ZoneColor(ui.ZoneType))
 			case terrain.ToolPark:
 				rl.DrawCube(rl.NewVector3(worldX, h+0.3, worldZ), 3, 0.2, 3, rl.NewColor(80, 200, 80, 120))
+			case terrain.ToolParking:
+				col := rl.NewColor(80, 80, 200, 100)
+				if !ui.ParkingGarage {
+					col = rl.NewColor(80, 160, 80, 80)
+				}
+				rl.DrawCube(rl.NewVector3(worldX, h+0.3, worldZ), 20, 0.3, 15, col)
+				rl.DrawCubeWires(rl.NewVector3(worldX, h+0.3, worldZ), 20, 0.3, 15, rl.NewColor(60, 60, 100, 150))
 			case terrain.ToolRemove:
 				idx := sim.Roads.NearestSegment(worldX, worldZ)
 				if idx >= 0 {
