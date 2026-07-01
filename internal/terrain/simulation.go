@@ -97,6 +97,9 @@ func NewSimulationManager(seed int64) *SimulationManager {
 	SetBuildabilityChecker(sm.Buildability)
 	SetZoneBuildabilityCheck(sm.Buildability)
 	SetLandValueTrees(sm.Trees)
+	SetResourceForBuildings(sm.Resources)
+	sm.Trees.SetResources(sm.Resources)
+	sm.Resources.SetTrees(sm.Trees)
 	return sm
 }
 

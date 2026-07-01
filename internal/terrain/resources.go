@@ -6,15 +6,17 @@ import (
 )
 
 type ResourceMap struct {
-	Ore      [HeightmapSize][HeightmapSize]float32
-	Oil      [HeightmapSize][HeightmapSize]float32
-	Fertility [HeightmapSize][HeightmapSize]float32
-	Forest   [HeightmapSize][HeightmapSize]float32
+	Ore            [HeightmapSize][HeightmapSize]float32
+	Oil            [HeightmapSize][HeightmapSize]float32
+	Fertility      [HeightmapSize][HeightmapSize]float32
+	Forest         [HeightmapSize][HeightmapSize]float32
+	NoiseAbsorption [HeightmapSize][HeightmapSize]float32
 }
 
 type ResourceSystem struct {
 	Map      ResourceMap
 	overlay  bool
+	trees    *TreeSystem
 }
 
 func NewResourceSystem(seed int64, h *Heightmap) *ResourceSystem {
@@ -61,10 +63,34 @@ func NewResourceSystem(seed int64, h *Heightmap) *ResourceSystem {
 				forestMask = 1.0 - (float64(terrainH)-0.5)/0.15
 			}
 			rs.Map.Forest[z][x] = float32(math.Max(0, math.Min(1, forestBase*forestMask)))
+
+			absorpBase := noise.Fbm(nx+500, nz+500, 3, 2.0, 0.5)
+			rs.Map.NoiseAbsorption[z][x] = rs.Map.Forest[z][x] * float32(math.Max(0, absorpBase))
 		}
 	}
 
 	return rs
+}
+
+func (rs *ResourceSystem) SetTrees(ts *TreeSystem) {
+	rs.trees = ts
+}
+
+func (rs *ResourceSystem) NoiseAt(worldX, worldZ float32) float32 {
+	rx := int((worldX/WorldSize + 0.5) * float32(HeightmapSize-1))
+	rz := int((worldZ/WorldSize + 0.5) * float32(HeightmapSize-1))
+	if rx < 0 || rx >= HeightmapSize || rz < 0 || rz >= HeightmapSize {
+		return 0
+	}
+	baseNoise := float32(0.3)
+	absorp := rs.Map.NoiseAbsorption[rz][rx]
+	if absorp > 0 {
+		baseNoise *= 1.0 - absorp*0.6
+	}
+	if baseNoise < 0 {
+		baseNoise = 0
+	}
+	return baseNoise
 }
 
 func (rs *ResourceSystem) ToggleOverlay() {

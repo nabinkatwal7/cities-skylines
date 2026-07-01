@@ -380,9 +380,14 @@ func (bm *BuildingManager) developZones(zm *ZoneManager, roads *RoadManager) {
 }
 
 var buildabilityChecker *BuildabilityChecker
+var resourceForBuildings *ResourceSystem
 
 func SetBuildabilityChecker(bc *BuildabilityChecker) {
 	buildabilityChecker = bc
+}
+
+func SetResourceForBuildings(rs *ResourceSystem) {
+	resourceForBuildings = rs
 }
 
 func (bm *BuildingManager) updateBuildings(zm *ZoneManager, h *Heightmap, roads *RoadManager, dm *DistrictManager) {
@@ -475,9 +480,24 @@ func (bm *BuildingManager) updateBuildings(zm *ZoneManager, h *Heightmap, roads 
 				if b.Business.Profitability < 60 {
 					b.Business.Profitability++
 				}
+				if b.Type == ZoneIndustrial && resourceForBuildings != nil {
+					rx := int((b.Position.X/WorldSize + 0.5) * float32(HeightmapSize-1))
+					rz := int((b.Position.Z/WorldSize + 0.5) * float32(HeightmapSize-1))
+					if rx >= 0 && rx < HeightmapSize && rz >= 0 && rz < HeightmapSize {
+						resourceForBuildings.ExtractOre(rx, rz, 0.001)
+						resourceForBuildings.ExtractOil(rx, rz, 0.001)
+					}
+				}
 			}
 			if dm != nil {
 				dm.ApplyPolicies(b)
+			}
+
+			if b.Household != nil && resourceForBuildings != nil {
+				noise := resourceForBuildings.NoiseAt(b.Position.X, b.Position.Z)
+				if noise > 0.2 {
+					b.Household.Happiness -= 1
+				}
 			}
 
 			if b.Level >= 5 {
@@ -567,7 +587,7 @@ func landValue(b *Building, h *Heightmap) int32 {
 	}
 	if landValueTrees != nil {
 		trees := landValueTrees.TreeCountAt(b.Position.X, b.Position.Z, 20)
-		val += trees * 2
+		val += int32(trees) * 2
 		if trees > 5 {
 			val += 10
 		}
@@ -596,6 +616,13 @@ func (bm *BuildingManager) FlushStats() {
 			bm.Stats.TotalWaterUsed += b.Consumption.Water
 		}
 	})
+	if landValueTrees != nil {
+		defPct := landValueTrees.DeforestPct()
+		if defPct > 0.3 {
+			penalty := int32(defPct * 50)
+			bm.Stats.TotalHappiness -= penalty
+		}
+	}
 }
 
 func (bm *BuildingManager) Demand() (res, com, ind int) {

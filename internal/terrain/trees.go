@@ -40,13 +40,24 @@ const (
 const TreePoolSize = 20000
 
 type TreeSystem struct {
-	Pool        [TreePoolSize]Tree
-	FreeList    []int32
-	activeCount int32
-	seed        int64
-	Model       rl.Model
-	colorMap    map[TreeSpecies]rl.Color
-	RemovedCount int
+	Pool          [TreePoolSize]Tree
+	FreeList      []int32
+	activeCount   int32
+	seed          int64
+	Model         rl.Model
+	colorMap      map[TreeSpecies]rl.Color
+	RemovedCount  int
+	forestTimer   int32
+	resources     *ResourceSystem
+	Deforestation float32
+}
+
+func (ts *TreeSystem) DeforestPct() float32 {
+	total := ts.activeCount + int32(ts.RemovedCount)
+	if total == 0 {
+		return 0
+	}
+	return float32(ts.RemovedCount) / float32(total)
 }
 
 func NewTreeSystem(seed int64) *TreeSystem {
@@ -191,6 +202,28 @@ func (ts *TreeSystem) Update(dt float64) {
 			ts.Free(int32(i))
 		}
 	}
+
+	ts.forestTimer++
+	if ts.forestTimer > 120 && ts.resources != nil {
+		ts.forestTimer = 0
+		regrow := 0
+		for i := 0; i < TreePoolSize; i++ {
+			t := &ts.Pool[i]
+			if t.Lifecycle != LifecycleActive {
+				continue
+			}
+			rx := int((t.X/WorldSize + 0.5) * float32(HeightmapSize-1))
+			rz := int((t.Z/WorldSize + 0.5) * float32(HeightmapSize-1))
+			if rx >= 0 && rx < HeightmapSize && rz >= 0 && rz < HeightmapSize {
+				ts.resources.RegenerateForest(rx, rz, 0.01)
+				regrow++
+			}
+		}
+	}
+}
+
+func (ts *TreeSystem) SetResources(rs *ResourceSystem) {
+	ts.resources = rs
 }
 
 func (ts *TreeSystem) RemoveNear(x, z, radius float32) int {
@@ -207,6 +240,13 @@ func (ts *TreeSystem) RemoveNear(x, z, radius float32) int {
 			t.RemovalTimer = 0
 			t.Lifecycle = LifecycleMarkedForRemoval
 			removed++
+			if ts.resources != nil {
+				rx := int((t.X/WorldSize + 0.5) * float32(HeightmapSize-1))
+				rz := int((t.Z/WorldSize + 0.5) * float32(HeightmapSize-1))
+				if rx >= 0 && rx < HeightmapSize && rz >= 0 && rz < HeightmapSize {
+					ts.resources.Map.NoiseAbsorption[rz][rx] *= 0.5
+				}
+			}
 		}
 	}
 	ts.RemovedCount += removed

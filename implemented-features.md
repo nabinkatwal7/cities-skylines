@@ -1873,3 +1873,98 @@ Higher density yields higher production.
 Resources are visible only in resource overlays.
 
 ---
+
+## 2.20 Outside Connections ✅
+
+The terrain contains fixed entry points.
+
+Supported connections:
+
+- Highway
+- Rail
+- Ship
+- Air
+
+Outside connections are permanent.
+
+They define:
+
+- Imports
+- Exports
+- Immigration
+- Tourism
+
+---
+
+## 2.21 Terrain Serialization ✅
+
+Saved terrain includes:
+
+- Heightmap
+- Water Levels
+- Trees
+- Resources
+- Pollution
+- Terraforming
+- Chunk States
+
+Rendering meshes are regenerated after loading.
+
+Only simulation data is stored.
+
+---
+
+## 2.22 Performance Optimization ✅
+
+Terrain updates are incremental.
+
+Modified chunks are marked dirty.
+
+```text
+Terraform
+
+↓
+
+Dirty Chunk
+
+↓
+
+Rebuild Mesh
+
+↓
+
+Update Collision
+
+↓
+
+Refresh Water
+
+↓
+
+Render
+```
+
+Unchanged chunks remain untouched.
+
+This allows very large maps without rebuilding the entire terrain.
+
+---
+
+## 2.23 Design Goals
+
+The terrain system is designed to support:
+
+- Continuous world coordinates
+- Massive maps
+- Dynamic terraforming
+- Water simulation
+- Resource extraction
+- Road adaptation
+- Environmental interaction
+- High-performance rendering
+- Efficient serialization
+- Incremental updates
+- Realistic terrain deformation
+- Large-scale environmental simulation
+
+The terrain engine serves as the foundation for roads, zoning, buildings, utilities, transportation, disasters, and every other simulation system within the city.
