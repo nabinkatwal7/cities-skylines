@@ -162,6 +162,8 @@ type TransportNetworkData struct {
 	TotalIncome      float32
 	MaintenanceCost  float32
 	Capacity         int32
+	Pollution        float32
+	Noise            float32
 }
 
 type TransportVehicleData struct {
@@ -215,7 +217,7 @@ type SaveStats struct {
 	TotalCount int32
 }
 
-const currentSaveVersion int32 = 8
+const currentSaveVersion int32 = 9
 
 func calcChecksum(data []byte) uint32 {
 	return crc32.ChecksumIEEE(data)
@@ -321,6 +323,8 @@ func migrateSaveData(data *SaveData) bool {
 				sd.Accessibility = 0.5
 			}
 			data.Version = 8
+		case 8:
+			data.Version = 9
 		}
 	}
 	return true
@@ -558,6 +562,8 @@ func SaveGame(filename string, m *SimulationManager, money float32, timeOfDay in
 				TotalIncome:      n.TotalIncome,
 				MaintenanceCost:  n.MaintenanceCost,
 				Capacity:         n.Capacity,
+				Pollution:        n.Pollution,
+				Noise:            n.Noise,
 			})
 		}
 		for _, v := range m.Transport.Vehicles {
@@ -854,6 +860,8 @@ func LoadGame(filename string, m *SimulationManager) (money float32, timeOfDay i
 				m.Transport.Networks[i].TotalIncome = nd.TotalIncome
 				m.Transport.Networks[i].MaintenanceCost = nd.MaintenanceCost
 				m.Transport.Networks[i].Capacity = nd.Capacity
+				m.Transport.Networks[i].Pollution = nd.Pollution
+				m.Transport.Networks[i].Noise = nd.Noise
 			}
 		}
 		m.Transport.Vehicles = make([]TransportVehicle, 0, len(data.TransportVehicles))

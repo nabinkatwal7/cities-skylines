@@ -19,7 +19,45 @@ const (
 	TransTaxi
 	TransAir
 	TransShip
+	TransWalk
+	TransBicycle
+	TransCar
+	TransBlimp
 )
+
+const TransportModeCount = 14
+
+type TransportModeConfig struct {
+	Speed           float32
+	Capacity        int32
+	OperatingCost   float32
+	TicketRevenue   float32
+	Pollution       float32
+	Noise           float32
+	SizeX, SizeY, SizeZ float32
+	NeedsRoad       bool
+	NeedsRails      bool
+	NeedsTrack      bool
+	NeedsWater      bool
+	NeedsUnderground bool
+}
+
+var transportModeConfigs = [TransportModeCount]TransportModeConfig{
+	TransBus:     {40, 30, 2, 2, 0.8, 0.6, 2.5, 0.8, 1.2, true, false, false, false, false},
+	TransTram:    {30, 60, 3, 3, 0.3, 0.8, 4.0, 0.6, 1.0, false, false, true, false, false},
+	TransMetro:   {50, 120, 6, 5, 0.1, 0.4, 5.0, 1.0, 1.5, false, false, false, false, true},
+	TransTrain:   {70, 200, 10, 8, 0.3, 0.9, 6.0, 1.2, 1.5, false, true, false, false, false},
+	TransFerry:   {20, 80, 5, 4, 0.5, 0.5, 5.0, 0.5, 2.5, false, false, false, true, false},
+	TransMonorail: {45, 100, 5, 4, 0.2, 0.5, 4.0, 0.6, 1.0, false, false, true, false, false},
+	TransCableCar: {12, 20, 2, 2, 0.0, 0.2, 1.5, 0.8, 1.0, false, false, false, false, false},
+	TransTaxi:    {50, 4, 1, 10, 0.9, 0.4, 1.5, 0.5, 1.0, true, false, false, false, false},
+	TransAir:     {200, 180, 30, 20, 2.0, 2.5, 8.0, 1.5, 6.0, false, false, false, false, false},
+	TransShip:    {30, 250, 15, 12, 1.5, 1.0, 8.0, 1.0, 3.0, false, false, false, true, false},
+	TransWalk:    {6, 1, 0, 0, 0.0, 0.0, 0.5, 1.0, 0.5, true, false, false, false, false},
+	TransBicycle: {15, 1, 0, 0, 0.0, 0.1, 1.0, 0.5, 0.3, true, false, false, false, false},
+	TransCar:     {50, 4, 0, 0, 1.0, 0.7, 2.0, 0.6, 1.0, true, false, false, false, false},
+	TransBlimp:   {25, 60, 8, 6, 0.4, 0.3, 6.0, 1.2, 3.0, false, false, false, false, false},
+}
 
 type TransportStop struct {
 	ID          uint32
@@ -77,6 +115,8 @@ type TransportNetwork struct {
 	TotalIncome      float32
 	MaintenanceCost  float32
 	Capacity         int32
+	Pollution        float32
+	Noise            float32
 }
 
 const TransportVehiclePoolSize = 200
@@ -87,7 +127,7 @@ type TransportManager struct {
 	Vehicles []TransportVehicle
 	NextID   uint32
 
-	Networks [10]TransportNetwork
+	Networks [TransportModeCount]TransportNetwork
 
 	Pool     [TransportVehiclePoolSize]TransportVehicle
 	FreeList []int32
@@ -138,7 +178,7 @@ func (tm *TransportManager) forEachVehicle(fn func(*TransportVehicle, int32)) {
 func (tm *TransportManager) AddStop(x, z float32, tt TransportType) uint32 {
 	id := tm.NextID
 	tm.NextID++
-	isStation := tt == TransMetro || tt == TransTrain || tt == TransMonorail || tt == TransAir || tt == TransShip
+	isStation := tt == TransMetro || tt == TransTrain || tt == TransMonorail || tt == TransAir || tt == TransShip || tt == TransBlimp
 	tm.Stops = append(tm.Stops, TransportStop{
 		ID:                id,
 		X:                 x, Z: z,
@@ -315,29 +355,16 @@ func (tm *TransportManager) SpawnVehicle(lineIdx int) {
 	if len(line.Stops) < 2 {
 		return
 	}
-	stop0 := &tm.Stops[line.Stops[0]]
-	cap := int32(30)
-	spd := float32(20)
-	switch line.TransType {
-	case TransTram:
-		cap, spd = 60, 25
-	case TransMetro:
-		cap, spd = 120, 40
-	case TransTrain:
-		cap, spd = 200, 60
-	case TransFerry:
-		cap, spd = 80, 15
-	case TransMonorail:
-		cap, spd = 100, 35
-	case TransCableCar:
-		cap, spd = 20, 8
-	case TransTaxi:
-		cap, spd = 4, 30
-	case TransAir:
-		cap, spd = 180, 150
-	case TransShip:
-		cap, spd = 250, 25
+	if int(line.TransType) >= len(transportModeConfigs) {
+		return
 	}
+	cfg := &transportModeConfigs[line.TransType]
+	if cfg.Capacity <= 1 {
+		return
+	}
+	stop0 := &tm.Stops[line.Stops[0]]
+	cap := cfg.Capacity
+	spd := cfg.Speed
 
 	slot := tm.allocVehicle()
 	if slot < 0 {
@@ -402,22 +429,18 @@ func (tm *TransportManager) Update(rm *RoadManager, dm *DistrictManager, h *Heig
 				line.PassengerCount += v.Passengers
 			}
 		})
-		desired := 1
-		switch line.TransType {
-		case TransBus:
-			desired = 2
-		case TransMetro:
-			desired = 3
-		case TransTrain:
-			desired = 2
-		case TransFerry:
-			desired = 1
-		case TransTram:
-			desired = 2
-		case TransMonorail:
-			desired = 2
-		case TransCableCar:
-			desired = 1
+		desired := 0
+		if int(line.TransType) < len(transportModeConfigs) {
+			cfg := &transportModeConfigs[line.TransType]
+			if cfg.Capacity > 1 {
+				desired = 1
+				switch line.TransType {
+				case TransBus, TransTram, TransMonorail:
+					desired = 2
+				case TransMetro:
+					desired = 3
+				}
+			}
 		}
 		if line.VehicleCount < int32(desired) {
 			tm.SpawnVehicle(li)
@@ -597,6 +620,11 @@ func (tm *TransportManager) moveVehicle(v *TransportVehicle, rm *RoadManager, h 
 		}
 		v.X += (dx / dist) * spd * 0.02
 		v.Z += (dz / dist) * spd * 0.02
+		netIdx := int(v.TransType)
+		if netIdx < len(tm.Networks) && netIdx < len(transportModeConfigs) {
+			tm.Networks[netIdx].Pollution += transportModeConfigs[v.TransType].Pollution * 0.001
+			tm.Networks[netIdx].Noise += transportModeConfigs[v.TransType].Noise * 0.001
+		}
 	}
 }
 
@@ -631,6 +659,14 @@ func transportTypeName(tt TransportType) string {
 		return "Air"
 	case TransShip:
 		return "Ship"
+	case TransWalk:
+		return "Walk"
+	case TransBicycle:
+		return "Bicycle"
+	case TransCar:
+		return "Car"
+	case TransBlimp:
+		return "Blimp"
 	default:
 		return "Unknown"
 	}
@@ -688,6 +724,14 @@ func TransportStopColor(tt TransportType) rl.Color {
 		return rl.NewColor(200, 100, 100, 200)
 	case TransShip:
 		return rl.NewColor(50, 100, 200, 200)
+	case TransWalk:
+		return rl.NewColor(200, 200, 200, 200)
+	case TransBicycle:
+		return rl.NewColor(150, 200, 150, 200)
+	case TransCar:
+		return rl.NewColor(100, 200, 255, 200)
+	case TransBlimp:
+		return rl.NewColor(200, 180, 100, 200)
 	default:
 		return rl.NewColor(150, 150, 150, 200)
 	}
@@ -695,33 +739,32 @@ func TransportStopColor(tt TransportType) rl.Color {
 
 func (tm *TransportManager) drawVehicle(v *TransportVehicle, h *Heightmap) {
 	hy := h.WorldHeight(v.X, v.Z) + 0.6
-	switch v.TransType {
-	case TransBus:
-		rl.DrawCube(rl.NewVector3(v.X, hy, v.Z), 2.5, 0.8, 1.2, rl.NewColor(0, 100, 200, 255))
-		rl.DrawCube(rl.NewVector3(v.X, hy+0.5, v.Z+0.8), 1.5, 0.3, 0.1, rl.NewColor(200, 200, 100, 255))
-	case TransTram:
-		rl.DrawCube(rl.NewVector3(v.X, hy, v.Z), 4, 0.6, 1, rl.NewColor(200, 50, 200, 255))
-		rl.DrawCube(rl.NewVector3(v.X, hy+0.4, v.Z+0.6), 3, 0.2, 0.1, rl.NewColor(255, 255, 100, 255))
-	case TransMetro:
-		rl.DrawCube(rl.NewVector3(v.X, 0.5, v.Z), 5, 1, 1.5, rl.NewColor(100, 100, 220, 255))
-		rl.DrawCube(rl.NewVector3(v.X, 1, v.Z), 4.5, 0.3, 1.3, rl.NewColor(200, 200, 255, 255))
-	case TransTrain:
-		rl.DrawCube(rl.NewVector3(v.X, hy, v.Z), 6, 1.2, 1.5, rl.NewColor(200, 150, 50, 255))
-		rl.DrawCube(rl.NewVector3(v.X, hy+0.8, v.Z+1), 4, 0.3, 0.1, rl.NewColor(255, 200, 100, 255))
-	case TransFerry:
-		rl.DrawCube(rl.NewVector3(v.X, 0.3, v.Z), 5, 0.5, 2.5, rl.NewColor(50, 150, 200, 255))
-	case TransMonorail:
-		rl.DrawCube(rl.NewVector3(v.X, hy+2, v.Z), 4, 0.6, 1, rl.NewColor(100, 200, 200, 255))
-		rl.DrawCube(rl.NewVector3(v.X, hy+1.7, v.Z), 0.3, 0.5, 0.3, rl.NewColor(150, 150, 150, 255))
-	case TransCableCar:
-		rl.DrawCube(rl.NewVector3(v.X, hy+3, v.Z), 1.5, 0.8, 1, rl.NewColor(200, 200, 100, 255))
-	case TransTaxi:
-		rl.DrawCube(rl.NewVector3(v.X, hy, v.Z), 1.5, 0.5, 1, rl.NewColor(200, 200, 50, 255))
-	case TransAir:
-		rl.DrawCube(rl.NewVector3(v.X, hy+5, v.Z), 8, 1.5, 6, rl.NewColor(200, 100, 100, 255))
-	case TransShip:
-		rl.DrawCube(rl.NewVector3(v.X, 0.5, v.Z), 8, 1, 3, rl.NewColor(50, 100, 200, 255))
+	if int(v.TransType) < len(transportModeConfigs) {
+		cfg := &transportModeConfigs[v.TransType]
+		col := TransportStopColor(v.TransType)
+		if v.TransType == TransMetro || v.TransType == TransFerry || v.TransType == TransShip {
+			hy = 0.5
+		}
+		if v.TransType == TransMonorail {
+			rl.DrawCube(rl.NewVector3(v.X, hy+2, v.Z), cfg.SizeX, cfg.SizeY, cfg.SizeZ, col)
+			rl.DrawCube(rl.NewVector3(v.X, hy+1.7, v.Z), 0.3, 0.5, 0.3, rl.NewColor(150, 150, 150, 255))
+			return
+		}
+		if v.TransType == TransCableCar {
+			rl.DrawCube(rl.NewVector3(v.X, hy+3, v.Z), cfg.SizeX, cfg.SizeY, cfg.SizeZ, col)
+			return
+		}
+		if v.TransType == TransAir {
+			rl.DrawCube(rl.NewVector3(v.X, hy+5, v.Z), cfg.SizeX, cfg.SizeY, cfg.SizeZ, col)
+			return
+		}
+		rl.DrawCube(rl.NewVector3(v.X, hy, v.Z), cfg.SizeX, cfg.SizeY, cfg.SizeZ, col)
+		if v.TransType == TransBus || v.TransType == TransTram || v.TransType == TransTrain {
+			rl.DrawCube(rl.NewVector3(v.X, hy+cfg.SizeY*0.6, v.Z+cfg.SizeZ*0.7), cfg.SizeX*0.6, cfg.SizeY*0.3, 0.1, rl.NewColor(255, 255, 200, 255))
+		}
+		return
 	}
+	rl.DrawCube(rl.NewVector3(v.X, hy, v.Z), 2, 0.6, 1, rl.Gray)
 }
 
 func (tm *TransportManager) Unload() {

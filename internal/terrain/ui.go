@@ -62,7 +62,7 @@ var toolbarItems = []ToolbarItem{
 	{ToolZone, "Zones", rl.KeyThree, rl.NewColor(100, 200, 100, 255), []string{"Res Low", "Res High", "Com Low", "Com High", "Industrial", "Office"}, 0},
 	{ToolPark, "Parks", rl.KeyFour, rl.NewColor(80, 200, 80, 255), nil, 0},
 	{ToolParking, "Parking", rl.KeyFive, rl.NewColor(100, 100, 200, 255), []string{"Lot", "Garage"}, 0},
-	{ToolTransport, "Transport", rl.KeySix, rl.NewColor(50, 150, 200, 255), []string{"Bus", "Tram", "Metro", "Train", "Ferry", "Monorail", "Cable Car", "Taxi", "Air", "Ship"}, 0},
+	{ToolTransport, "Transport", rl.KeySix, rl.NewColor(50, 150, 200, 255), []string{"Bus", "Tram", "Metro", "Train", "Ferry", "Monorail", "Cable Car", "Taxi", "Air", "Ship", "Walk", "Bicycle", "Car", "Blimp"}, 0},
 	{ToolRemove, "Remove", rl.KeySeven, rl.NewColor(200, 80, 80, 255), nil, 0},
 	{ToolUpgrade, "Upgrade", rl.KeyEight, rl.NewColor(200, 200, 80, 255), nil, 0},
 }
