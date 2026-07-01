@@ -117,6 +117,7 @@ func (bm *BuildingManager) calcDemand(zm *ZoneManager) {
 	resPop := int32(0)
 	comJobs := int32(0)
 	indJobs := int32(0)
+	total := 0
 	for _, b := range bm.Buildings {
 		switch b.Type {
 		case ZoneResidentialLow, ZoneResidentialHigh:

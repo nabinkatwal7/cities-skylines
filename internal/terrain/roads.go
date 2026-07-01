@@ -224,6 +224,7 @@ func (rm *RoadManager) buildSurfaceMesh(h *Heightmap, seg RoadSegment) rl.Model 
 	}
 	rl.UploadMesh(&mesh, false)
 	model := rl.LoadModelFromMesh(mesh)
+	clearModelMeshData(&model)
 	mats := model.GetMaterials()
 	if len(mats) > 0 && rm.roadTex.ID != 0 {
 		rl.SetMaterialTexture(&mats[0], rl.MapAlbedo, rm.roadTex)
