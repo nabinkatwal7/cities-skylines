@@ -216,6 +216,17 @@ const (
 	RoadFlagTunnel      RoadFlags = 1 << 2
 )
 
+func elevationHeight(elevation int32) float32 {
+	if elevation >= 0 {
+		return float32(elevation) * 5.0
+	}
+	return float32(elevation) * 5.0
+}
+
+func isElevated(elevation int32) bool { return elevation > 0 }
+
+func isTunnel(elevation int32) bool { return elevation < 0 }
+
 type RoadNode struct {
 	ID                uint32
 	X, Y, Z           float32
@@ -853,6 +864,8 @@ func (rm *RoadManager) Draw(h *Heightmap) {
 	rm.drawSidewalks(h)
 	rm.drawStreetLights(h)
 	rm.drawRoadsideTrees(h)
+	rm.drawBridgePillars(h)
+	rm.drawTunnelPortals(h)
 }
 
 func (rm *RoadManager) drawFallback(h *Heightmap) {
@@ -1299,6 +1312,116 @@ func (rm *RoadManager) drawRoadsideTrees(h *Heightmap) {
 			placed += interval
 		}
 	}
+}
+
+func (rm *RoadManager) drawBridgePillars(h *Heightmap) {
+	if !rm.anyElevated() {
+		return
+	}
+	interval := float32(15.0)
+	pillarCol := rl.NewColor(140, 140, 140, 255)
+
+	for _, seg := range rm.Segments {
+		if seg.Damaged || seg.Elevation <= 0 {
+			continue
+		}
+		xs, zs, ds := rm.SampleSegment(seg, int(seg.Length/2))
+		if len(xs) < 2 {
+			continue
+		}
+		totalLen := ds[len(ds)-1]
+		if totalLen < 0.01 {
+			continue
+		}
+
+		elevH := float32(seg.Elevation) * 5.0
+		placed := float32(0)
+		for placed < totalLen {
+			t := placed / totalLen
+			idx := int(t * float32(len(xs)-1))
+			if idx >= len(xs)-1 {
+				break
+			}
+			frac := t*float32(len(xs)-1) - float32(idx)
+			px := xs[idx] + (xs[idx+1]-xs[idx])*frac
+			pz := zs[idx] + (zs[idx+1]-zs[idx])*frac
+			gh := h.WorldHeight(px, pz)
+			pillarH := elevH - gh
+			if pillarH > 0.5 {
+				rl.DrawCube(rl.NewVector3(px, gh+pillarH*0.5, pz), 0.4, pillarH, 0.4, pillarCol)
+				capCol := rl.NewColor(160, 160, 160, 255)
+				rl.DrawCube(rl.NewVector3(px, elevH-0.2, pz), 0.8, 0.2, 0.8, capCol)
+			}
+			placed += interval
+		}
+	}
+}
+
+func (rm *RoadManager) drawTunnelPortals(h *Heightmap) {
+	portalCol := rl.NewColor(100, 100, 100, 255)
+	archCol := rl.NewColor(120, 120, 120, 255)
+
+	for i := range rm.Nodes {
+		n := &rm.Nodes[i]
+		hasTunnel := false
+		hasSurface := false
+		for _, sid := range n.Connected {
+			seg := rm.Segments[sid]
+			if seg.Elevation < 0 {
+				hasTunnel = true
+			} else {
+				hasSurface = true
+			}
+		}
+		if !hasTunnel || !hasSurface {
+			continue
+		}
+
+		tunnelSegs := make([]struct{ sid uint32; dx, dz, l float32 }, 0)
+		for _, sid := range n.Connected {
+			seg := rm.Segments[sid]
+			if seg.Elevation >= 0 {
+				continue
+			}
+			other := seg.NodeA
+			if other == uint32(i) {
+				other = seg.NodeB
+			}
+			on := &rm.Nodes[other]
+			dx := on.X - n.X
+			dz := on.Z - n.Z
+			l := float32(math.Sqrt(float64(dx*dx + dz*dz)))
+			if l > 0.01 {
+				tunnelSegs = append(tunnelSegs, struct{ sid uint32; dx, dz, l float32 }{sid, dx / l, dz / l, l})
+			}
+		}
+
+		tunnelH := float32(0)
+		for _, ts := range tunnelSegs {
+			tunnelH = float32(rm.Segments[ts.sid].Elevation) * 5.0
+			break
+		}
+		gh := h.WorldHeight(n.X, n.Z)
+
+		for _, ts := range tunnelSegs {
+			px := n.X + ts.dx*2.0
+			pz := n.Z + ts.dz*2.0
+			perX := -ts.dz
+			perZ := ts.dx
+			rl.DrawCube(rl.NewVector3(px, gh+tunnelH*0.5, pz), 0.8, -tunnelH, 0.8, portalCol)
+			rl.DrawCube(rl.NewVector3(px+perX*2.0, gh+tunnelH*0.5, pz+perZ*2.0), 0.8, -tunnelH, 0.8, portalCol)
+			rl.DrawCube(rl.NewVector3(px, gh+tunnelH, pz), 5.0, 0.3, 1.0, archCol)
+		}
+	}
+}
+
+func (rm *RoadManager) anyElevated() bool {
+	for _, seg := range rm.Segments {
+		if seg.Elevation > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func (rm *RoadManager) AddShortSegment(x1, z1, x2, z2 float32, rt RoadType) {

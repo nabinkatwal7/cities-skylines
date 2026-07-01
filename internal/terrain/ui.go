@@ -241,7 +241,7 @@ func (ui *GameUI) drawHelpText() {
 	case ToolPointer:
 		rl.DrawText("Click on buildings for info | 1-6 to select tools | WASD=pan | R-drag=orbit | Scroll=zoom", 10, helpY, 14, rl.White)
 	case ToolRoad:
-		rl.DrawText(fmt.Sprintf("L-click to place road segments | R=cycle type | Esc=deselect | Current: %s", toolbarItems[1].Options[toolbarItems[1].OptIndex]), 10, helpY, 14, rl.White)
+		rl.DrawText(fmt.Sprintf("L-click to place | R=cycle type | PgUp/PgDn=elevation | Esc=deselect | Current: %s", toolbarItems[1].Options[toolbarItems[1].OptIndex]), 10, helpY, 14, rl.White)
 	case ToolZone:
 		rl.DrawText(fmt.Sprintf("L-click to paint zones | R=cycle type | Esc=deselect | Current: %s", toolbarItems[2].Options[toolbarItems[2].OptIndex]), 10, helpY, 14, rl.White)
 	case ToolPark:

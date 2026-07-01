@@ -2219,3 +2219,23 @@ Advantages:
 Each lane follows its own spline offset from the road centerline.
 
 ---
+
+## 3.7 Elevation
+
+Roads may exist at different elevations.
+
+Supported:
+
+- Ground
+- Elevated
+- Bridge
+- Tunnel
+
+Elevation affects:
+
+- Construction cost
+- Bridge pillars
+- Tunnel portals
+- Terrain deformation
+
+---

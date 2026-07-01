@@ -279,16 +279,29 @@ func (sm *SimulationManager) PlaceRoadNode(x, z float32) uint32 {
 func (sm *SimulationManager) PlaceRoadSegment(nodeA uint32, x, z float32, roadType RoadType, elevation int32) (uint32, uint32) {
 	nodeB := sm.Roads.AddNode(x, 0, z)
 	segID := sm.Roads.AddSegment(nodeA, nodeB, roadType)
-	if elevation > 0 {
+	if elevation != 0 {
 		for i := range sm.Roads.Segments {
 			if sm.Roads.Segments[i].ID == segID {
 				sm.Roads.Segments[i].Elevation = elevation
+				if elevation > 0 {
+					sm.Roads.Nodes[nodeA].Flags |= RoadFlagBridge
+					sm.Roads.Nodes[nodeB].Flags |= RoadFlagBridge
+				} else if elevation < 0 {
+					sm.Roads.Nodes[nodeA].Flags |= RoadFlagTunnel
+					sm.Roads.Nodes[nodeB].Flags |= RoadFlagTunnel
+				}
 				break
 			}
 		}
 	}
+	cost := roadConstructionCost(roadType)
+	if elevation > 0 {
+		cost += float32(elevation) * 50
+	} else if elevation < 0 {
+		cost += float32(-elevation) * 100
+	}
 	sm.Roads.Rebuild(sm.Heightmap)
-	sm.Money -= 100
+	sm.Money -= cost
 	sm.EventBus.Emit(string(EventRoadPlaced), segID)
 	return nodeB, segID
 }

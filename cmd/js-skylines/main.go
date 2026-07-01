@@ -163,16 +163,28 @@ func main() {
 		// Road elevation control
 		if rl.IsKeyPressed(rl.KeyPageUp) {
 			if ui.Selected == terrain.ToolRoad {
-				roadElevation++
-				if roadElevation > 2 {
+				switch roadElevation {
+				case 0:
+					roadElevation = 1
+				case 1:
 					roadElevation = 2
+				case 2:
+					roadElevation = -1
+				case -1:
+					roadElevation = 0
 				}
 			}
 		}
 		if rl.IsKeyPressed(rl.KeyPageDown) {
 			if ui.Selected == terrain.ToolRoad {
-				roadElevation--
-				if roadElevation < 0 {
+				switch roadElevation {
+				case 0:
+					roadElevation = -1
+				case -1:
+					roadElevation = 2
+				case 2:
+					roadElevation = 1
+				case 1:
 					roadElevation = 0
 				}
 			}

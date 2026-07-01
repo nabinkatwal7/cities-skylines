@@ -1,23 +1,3 @@
-## 3.7 Elevation
-
-Roads may exist at different elevations.
-
-Supported:
-
-- Ground
-- Elevated
-- Bridge
-- Tunnel
-
-Elevation affects:
-
-- Construction cost
-- Bridge pillars
-- Tunnel portals
-- Terrain deformation
-
----
-
 ## 3.8 Road Construction Validation
 
 Before placement the engine validates:
