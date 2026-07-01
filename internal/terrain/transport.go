@@ -562,6 +562,8 @@ func (tm *TransportManager) moveVehicle(v *TransportVehicle, rm *RoadManager, h 
 	if v.Moving {
 		if v.TransType == TransBus && rm != nil && len(rm.Segments) > 0 {
 			tm.moveBusOnRoad(v, rm, h, nextStop, currentStop, line, nextIdx)
+		} else if v.TransType == TransTram && rm != nil && len(rm.Segments) > 0 {
+			tm.moveTramOnTracks(v, rm, h, nextStop, currentStop, line, nextIdx)
 		} else {
 			tm.moveDirect(v, rm, h, nextStop, currentStop, line, nextIdx)
 		}

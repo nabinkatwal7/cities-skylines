@@ -306,12 +306,14 @@ func main() {
 				if ui.ParkingGarage {
 					cost = 3000
 				}
-				if ui.BusDepotMode {
+				if ui.BusDepotMode || ui.TramDepotMode {
 					cost = 5000
 				}
 				if sim.Money >= cost && !sim.Heightmap.IsUnderwater(worldX, worldZ) {
 					if ui.BusDepotMode {
 						sim.PlaceBusDepot(worldX, worldZ)
+					} else if ui.TramDepotMode {
+						sim.PlaceTramDepot(worldX, worldZ)
 					} else {
 						sim.PlaceParkingLot(worldX, worldZ, ui.ParkingGarage)
 					}
@@ -391,7 +393,10 @@ func main() {
 			case terrain.ToolPark:
 				rl.DrawCube(rl.NewVector3(worldX, h+0.3, worldZ), 3, 0.2, 3, rl.NewColor(80, 200, 80, 120))
 			case terrain.ToolParking:
-				if ui.BusDepotMode {
+				if ui.TramDepotMode {
+					rl.DrawCube(rl.NewVector3(worldX, h+0.5, worldZ), 6, 1, 4, rl.NewColor(180, 50, 180, 120))
+					rl.DrawCubeWires(rl.NewVector3(worldX, h+0.5, worldZ), 6, 1, 4, rl.NewColor(180, 50, 180, 200))
+				} else if ui.BusDepotMode {
 					rl.DrawCube(rl.NewVector3(worldX, h+0.5, worldZ), 6, 1, 4, rl.NewColor(200, 180, 50, 120))
 					rl.DrawCubeWires(rl.NewVector3(worldX, h+0.5, worldZ), 6, 1, 4, rl.NewColor(200, 180, 50, 200))
 				} else {

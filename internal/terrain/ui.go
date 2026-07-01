@@ -29,14 +29,15 @@ type ToolbarItem struct {
 }
 
 type GameUI struct {
-	Selected      GameTool
-	ZoneType      ZoneType
-	RoadType      RoadType
-	ParkMode      bool
-	ParkingGarage bool
-	BusDepotMode  bool
-	TransportType TransportType
-	Money         float32
+	Selected       GameTool
+	ZoneType       ZoneType
+	RoadType       RoadType
+	ParkMode       bool
+	ParkingGarage  bool
+	BusDepotMode   bool
+	TramDepotMode  bool
+	TransportType  TransportType
+	Money          float32
 	Population    int32
 	ResDemand     int
 	ComDemand     int
@@ -62,7 +63,7 @@ var ToolbarItems = []ToolbarItem{
 	{ToolRoad, "Roads", rl.KeyTwo, rl.NewColor(180, 160, 120, 255), []string{"2-Lane", "1-Way", "4-Lane", "Gravel", "Highway", "6-Lane", "Avenue", "Bus Rd", "Tram Rd", "Bike Rd", "Tree Rd", "Asym Rd", "Pedestrian", "Quay"}, 0},
 	{ToolZone, "Zones", rl.KeyThree, rl.NewColor(100, 200, 100, 255), []string{"Res Low", "Res High", "Com Low", "Com High", "Industrial", "Office"}, 0},
 	{ToolPark, "Parks", rl.KeyFour, rl.NewColor(80, 200, 80, 255), nil, 0},
-	{ToolParking, "Parking", rl.KeyFive, rl.NewColor(100, 100, 200, 255), []string{"Lot", "Garage", "Bus Depot"}, 0},
+	{ToolParking, "Parking", rl.KeyFive, rl.NewColor(100, 100, 200, 255), []string{"Lot", "Garage", "Bus Depot", "Tram Depot"}, 0},
 	{ToolTransport, "Transport", rl.KeySix, rl.NewColor(50, 150, 200, 255), []string{"Bus", "Tram", "Metro", "Train", "Ferry", "Monorail", "Cable Car", "Taxi", "Air", "Ship", "Walk", "Bicycle", "Car", "Blimp"}, 0},
 	{ToolRemove, "Remove", rl.KeySeven, rl.NewColor(200, 80, 80, 255), nil, 0},
 	{ToolUpgrade, "Upgrade", rl.KeyEight, rl.NewColor(200, 200, 80, 255), nil, 0},
@@ -100,6 +101,7 @@ func (ui *GameUI) HandleInput() GameTool {
 		item.OptIndex = (item.OptIndex + 1) % len(item.Options)
 		ui.ParkingGarage = item.OptIndex == 1
 		ui.BusDepotMode = item.OptIndex == 2
+		ui.TramDepotMode = item.OptIndex == 3
 	}
 	if ui.Selected == ToolTransport && rl.IsKeyPressed(rl.KeyR) {
 		item := &ToolbarItems[5]
@@ -264,6 +266,7 @@ func (ui *GameUI) drawOptions() {
 				item.OptIndex = oi
 				ui.ParkingGarage = oi == 1
 				ui.BusDepotMode = oi == 2
+				ui.TramDepotMode = oi == 3
 			}
 		}
 	case ToolTransport:
@@ -306,6 +309,8 @@ func (ui *GameUI) drawHelpText() {
 			rl.DrawText("Parking Garage ($3000)", 10, helpY+18, 14, rl.White)
 		case 2:
 			rl.DrawText("Bus Depot ($5000) — spawns buses for bus lines", 10, helpY+18, 14, rl.White)
+		case 3:
+			rl.DrawText("Tram Depot ($5000) — spawns trams for tram lines", 10, helpY+18, 14, rl.White)
 		}
 	case ToolTransport:
 		rl.DrawText(fmt.Sprintf("L-click to place %s stop | R=cycle type | Esc=deselect | Current: %s", ToolbarItems[5].Options[ToolbarItems[5].OptIndex], ToolbarItems[5].Options[ToolbarItems[5].OptIndex]), 10, helpY, 14, rl.White)

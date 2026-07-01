@@ -586,6 +586,18 @@ func (sm *SimulationManager) PlaceBusDepot(x, z float32) bool {
 	return false
 }
 
+func (sm *SimulationManager) PlaceTramDepot(x, z float32) bool {
+	if sm.Money < 5000 {
+		return false
+	}
+	slot := sm.Parking.PlaceTramDepot(x, z)
+	if slot >= 0 {
+		sm.Money -= 5000
+		return true
+	}
+	return false
+}
+
 func (sm *SimulationManager) RemoveParkingLot(x, z float32) bool {
 	bestSlot := int32(-1)
 	bestDist := float32(100.0)

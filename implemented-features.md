@@ -2812,3 +2812,18 @@ Buses obey:
 - Speed limits
 
 ---
+
+## 4.7 Tram System
+
+Trams operate on dedicated tram tracks.
+
+Unlike buses:
+
+- Ignore road congestion where segregated.
+- Share intersections.
+- Require tram-enabled roads.
+- Use tram depots.
+
+Passengers board only at tram stops.
+
+---

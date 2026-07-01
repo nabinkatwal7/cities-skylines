@@ -35,8 +35,15 @@ type ParkingLot struct {
 
 const ParkingLotPoolSize = 500
 const BusDepotPoolSize = 100
+const TramDepotPoolSize = 100
 
 type BusDepot struct {
+	Entity
+	X, Z   float32
+	CellX, CellZ int
+}
+
+type TramDepot struct {
 	Entity
 	X, Z   float32
 	CellX, CellZ int
@@ -53,12 +60,17 @@ type ParkingManager struct {
 	BusDepots   [BusDepotPoolSize]BusDepot
 	DepotFreeList []int32
 	DepotCount  int32
+
+	TramDepots   [TramDepotPoolSize]TramDepot
+	TramDepotFreeList []int32
+	TramDepotCount  int32
 }
 
 func NewParkingManager() *ParkingManager {
 	pm := &ParkingManager{
 		LotFreeList:  make([]int32, ParkingLotPoolSize),
 		DepotFreeList: make([]int32, BusDepotPoolSize),
+		TramDepotFreeList: make([]int32, TramDepotPoolSize),
 	}
 	for i := 0; i < ParkingLotPoolSize; i++ {
 		pm.Lots[i].Lifecycle = LifecycleUnallocated
@@ -67,6 +79,10 @@ func NewParkingManager() *ParkingManager {
 	for i := 0; i < BusDepotPoolSize; i++ {
 		pm.BusDepots[i].Lifecycle = LifecycleUnallocated
 		pm.DepotFreeList[i] = int32(BusDepotPoolSize - 1 - i)
+	}
+	for i := 0; i < TramDepotPoolSize; i++ {
+		pm.TramDepots[i].Lifecycle = LifecycleUnallocated
+		pm.TramDepotFreeList[i] = int32(TramDepotPoolSize - 1 - i)
 	}
 	return pm
 }
@@ -116,6 +132,19 @@ func (pm *ParkingManager) PlaceBusDepot(x, z float32) int32 {
 	return slot
 }
 
+func (pm *ParkingManager) PlaceTramDepot(x, z float32) int32 {
+	slot := pm.allocTramDepot()
+	if slot < 0 {
+		return -1
+	}
+	d := &pm.TramDepots[slot]
+	d.X = x
+	d.Z = z
+	d.CellX = int(x) / 8
+	d.CellZ = int(z) / 8
+	return slot
+}
+
 func (pm *ParkingManager) NearestBusDepot(x, z float32, maxDist float32) (int32, float32) {
 	best := maxDist
 	bestIdx := int32(-1)
@@ -124,6 +153,59 @@ func (pm *ParkingManager) NearestBusDepot(x, z float32, maxDist float32) (int32,
 			continue
 		}
 		d := &pm.BusDepots[i]
+		dx := d.X - x
+		dz := d.Z - z
+		dist := dx*dx + dz*dz
+		if dist < best {
+			best = dist
+			bestIdx = int32(i)
+		}
+	}
+	return bestIdx, best
+}
+
+func (pm *ParkingManager) allocTramDepot() int32 {
+	if len(pm.TramDepotFreeList) == 0 {
+		return -1
+	}
+	idx := pm.TramDepotFreeList[len(pm.TramDepotFreeList)-1]
+	pm.TramDepotFreeList = pm.TramDepotFreeList[:len(pm.TramDepotFreeList)-1]
+	pm.TramDepots[idx] = TramDepot{}
+	pm.TramDepots[idx].Lifecycle = LifecycleAllocated
+	pm.TramDepotCount++
+	return int32(idx)
+}
+
+func (pm *ParkingManager) freeTramDepot(slot int32) {
+	if slot < 0 || int(slot) >= TramDepotPoolSize {
+		return
+	}
+	pm.TramDepots[slot].Lifecycle = LifecycleReturnedToPool
+	pm.TramDepotFreeList = append(pm.TramDepotFreeList, slot)
+	pm.TramDepotCount--
+}
+
+func (pm *ParkingManager) PlaceTramDepot(x, z float32) int32 {
+	slot := pm.allocTramDepot()
+	if slot < 0 {
+		return -1
+	}
+	d := &pm.TramDepots[slot]
+	d.X = x
+	d.Z = z
+	d.CellX = int(x) / 8
+	d.CellZ = int(z) / 8
+	return slot
+}
+
+func (pm *ParkingManager) NearestTramDepot(x, z float32, maxDist float32) (int32, float32) {
+	best := maxDist
+	bestIdx := int32(-1)
+	for i := 0; i < TramDepotPoolSize; i++ {
+		if pm.TramDepots[i].Lifecycle != LifecycleAllocated {
+			continue
+		}
+		d := &pm.TramDepots[i]
 		dx := d.X - x
 		dz := d.Z - z
 		dist := dx*dx + dz*dz
@@ -379,6 +461,17 @@ func (pm *ParkingManager) Draw(h *Heightmap) {
 		rl.DrawCube(rl.NewVector3(d.X, hy, d.Z), 6, 1, 4, rl.NewColor(200, 180, 50, 180))
 		rl.DrawCubeWires(rl.NewVector3(d.X, hy, d.Z), 6, 1, 4, rl.NewColor(200, 180, 50, 255))
 		rl.DrawCube(rl.NewVector3(d.X, hy+0.6, d.Z), 2, 0.3, 1, rl.NewColor(255, 200, 100, 200))
+	}
+
+	for i := 0; i < TramDepotPoolSize; i++ {
+		d := &pm.TramDepots[i]
+		if d.Lifecycle != LifecycleAllocated {
+			continue
+		}
+		hy := h.WorldHeight(d.X, d.Z) + 0.5
+		rl.DrawCube(rl.NewVector3(d.X, hy, d.Z), 6, 1, 4, rl.NewColor(180, 50, 180, 180))
+		rl.DrawCubeWires(rl.NewVector3(d.X, hy, d.Z), 6, 1, 4, rl.NewColor(180, 50, 180, 255))
+		rl.DrawCube(rl.NewVector3(d.X, hy+0.6, d.Z), 2, 0.3, 1, rl.NewColor(255, 100, 255, 200))
 	}
 }
 
