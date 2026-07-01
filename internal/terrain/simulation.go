@@ -95,6 +95,7 @@ func NewSimulationManager(seed int64) *SimulationManager {
 		Time:        NewGameTime(),
 		Jobs:        NewJobQueue(),
 	}
+	sm.Transport.Parking = parking
 
 	sm.initScheduler()
 	sm.initEventListeners()
@@ -571,6 +572,18 @@ func (sm *SimulationManager) PlaceParkingLot(x, z float32, isGarage bool) bool {
 		}
 	}
 	return ok
+}
+
+func (sm *SimulationManager) PlaceBusDepot(x, z float32) bool {
+	if sm.Money < 5000 {
+		return false
+	}
+	slot := sm.Parking.PlaceBusDepot(x, z)
+	if slot >= 0 {
+		sm.Money -= 5000
+		return true
+	}
+	return false
 }
 
 func (sm *SimulationManager) RemoveParkingLot(x, z float32) bool {

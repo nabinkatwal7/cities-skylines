@@ -34,6 +34,7 @@ type GameUI struct {
 	RoadType      RoadType
 	ParkMode      bool
 	ParkingGarage bool
+	BusDepotMode  bool
 	TransportType TransportType
 	Money         float32
 	Population    int32
@@ -56,12 +57,12 @@ func NewGameUI() *GameUI {
 	}
 }
 
-var toolbarItems = []ToolbarItem{
+var ToolbarItems = []ToolbarItem{
 	{ToolPointer, "Pointer", rl.KeyOne, rl.NewColor(200, 200, 200, 255), nil, 0},
 	{ToolRoad, "Roads", rl.KeyTwo, rl.NewColor(180, 160, 120, 255), []string{"2-Lane", "1-Way", "4-Lane", "Gravel", "Highway", "6-Lane", "Avenue", "Bus Rd", "Tram Rd", "Bike Rd", "Tree Rd", "Asym Rd", "Pedestrian", "Quay"}, 0},
 	{ToolZone, "Zones", rl.KeyThree, rl.NewColor(100, 200, 100, 255), []string{"Res Low", "Res High", "Com Low", "Com High", "Industrial", "Office"}, 0},
 	{ToolPark, "Parks", rl.KeyFour, rl.NewColor(80, 200, 80, 255), nil, 0},
-	{ToolParking, "Parking", rl.KeyFive, rl.NewColor(100, 100, 200, 255), []string{"Lot", "Garage"}, 0},
+	{ToolParking, "Parking", rl.KeyFive, rl.NewColor(100, 100, 200, 255), []string{"Lot", "Garage", "Bus Depot"}, 0},
 	{ToolTransport, "Transport", rl.KeySix, rl.NewColor(50, 150, 200, 255), []string{"Bus", "Tram", "Metro", "Train", "Ferry", "Monorail", "Cable Car", "Taxi", "Air", "Ship", "Walk", "Bicycle", "Car", "Blimp"}, 0},
 	{ToolRemove, "Remove", rl.KeySeven, rl.NewColor(200, 80, 80, 255), nil, 0},
 	{ToolUpgrade, "Upgrade", rl.KeyEight, rl.NewColor(200, 200, 80, 255), nil, 0},
@@ -78,29 +79,30 @@ const (
 )
 
 func (ui *GameUI) HandleInput() GameTool {
-	for _, item := range toolbarItems {
+	for _, item := range ToolbarItems {
 		if rl.IsKeyPressed(item.Key) {
 			ui.Selected = item.Tool
 			return item.Tool
 		}
 	}
 	if ui.Selected == ToolRoad && rl.IsKeyPressed(rl.KeyR) {
-		item := &toolbarItems[1]
+		item := &ToolbarItems[1]
 		item.OptIndex = (item.OptIndex + 1) % len(item.Options)
 		ui.RoadType = RoadType(item.OptIndex)
 	}
 	if ui.Selected == ToolZone && rl.IsKeyPressed(rl.KeyR) {
-		item := &toolbarItems[2]
+		item := &ToolbarItems[2]
 		item.OptIndex = (item.OptIndex + 1) % len(item.Options)
 		ui.ZoneType = ZoneType(item.OptIndex + 1)
 	}
 	if ui.Selected == ToolParking && rl.IsKeyPressed(rl.KeyR) {
-		item := &toolbarItems[4]
+		item := &ToolbarItems[4]
 		item.OptIndex = (item.OptIndex + 1) % len(item.Options)
 		ui.ParkingGarage = item.OptIndex == 1
+		ui.BusDepotMode = item.OptIndex == 2
 	}
 	if ui.Selected == ToolTransport && rl.IsKeyPressed(rl.KeyR) {
-		item := &toolbarItems[5]
+		item := &ToolbarItems[5]
 		item.OptIndex = (item.OptIndex + 1) % len(item.Options)
 		ui.TransportType = TransportType(item.OptIndex)
 	}
@@ -114,9 +116,9 @@ func (ui *GameUI) handleToolbarClick() GameTool {
 	mPos := rl.GetMousePosition()
 	mx := int32(mPos.X)
 	my := int32(mPos.Y)
-	totalW := len(toolbarItems)*ToolbarBtnW + (len(toolbarItems)-1)*ToolbarPad
+	totalW := len(ToolbarItems)*ToolbarBtnW + (len(ToolbarItems)-1)*ToolbarPad
 	startX := (1280 - totalW) / 2
-	for i, item := range toolbarItems {
+	for i, item := range ToolbarItems {
 		bx := int32(startX + i*(ToolbarBtnW+ToolbarPad))
 		by := int32(ToolbarY)
 		if mx >= bx && mx < bx+ToolbarBtnW && my >= by && my < by+ToolbarBtnH {
@@ -190,9 +192,9 @@ func (ui *GameUI) drawTopBar() {
 
 func (ui *GameUI) drawToolbar() {
 	rl.DrawRectangle(0, ToolbarY, 1280, ToolbarH, rl.NewColor(0, 0, 0, 200))
-	totalW := len(toolbarItems)*ToolbarBtnW + (len(toolbarItems)-1)*ToolbarPad
+	totalW := len(ToolbarItems)*ToolbarBtnW + (len(ToolbarItems)-1)*ToolbarPad
 	startX := (1280 - totalW) / 2
-	for i, item := range toolbarItems {
+	for i, item := range ToolbarItems {
 		bx := int32(startX + i*(ToolbarBtnW+ToolbarPad))
 		by := int32(ToolbarY + (ToolbarH-ToolbarBtnH)/2)
 		col := item.Color
@@ -217,7 +219,7 @@ func (ui *GameUI) drawOptions() {
 
 	switch ui.Selected {
 	case ToolRoad:
-		item := &toolbarItems[1]
+		item := &ToolbarItems[1]
 		optW := int32(80)
 		total := len(item.Options) * int(optW+ToolbarPad)
 		sx := (1280 - total) / 2
@@ -232,7 +234,7 @@ func (ui *GameUI) drawOptions() {
 			}
 		}
 	case ToolZone:
-		item := &toolbarItems[2]
+		item := &ToolbarItems[2]
 		optW := int32(70)
 		total := len(item.Options) * int(optW+ToolbarPad)
 		sx := (1280 - total) / 2
@@ -249,7 +251,7 @@ func (ui *GameUI) drawOptions() {
 			}
 		}
 	case ToolParking:
-		item := &toolbarItems[4]
+		item := &ToolbarItems[4]
 		optW := int32(80)
 		total := len(item.Options) * int(optW+ToolbarPad)
 		sx := (1280 - total) / 2
@@ -261,10 +263,11 @@ func (ui *GameUI) drawOptions() {
 			if rl.IsMouseButtonPressed(rl.MouseButtonLeft) && mx >= bx && mx < bx+optW && my >= by && my < by+OptionsBarH-8 {
 				item.OptIndex = oi
 				ui.ParkingGarage = oi == 1
+				ui.BusDepotMode = oi == 2
 			}
 		}
 	case ToolTransport:
-		item := &toolbarItems[5]
+		item := &ToolbarItems[5]
 		optW := int32(75)
 		total := len(item.Options) * int(optW+ToolbarPad)
 		sx := (1280 - total) / 2
@@ -289,23 +292,26 @@ func (ui *GameUI) drawHelpText() {
 	case ToolPointer:
 		rl.DrawText("Click on buildings for info | 1-6 to select tools | WASD=pan | R-drag=orbit | Scroll=zoom", 10, helpY, 14, rl.White)
 	case ToolRoad:
-		rl.DrawText(fmt.Sprintf("L-click to place | R=cycle type | PgUp/PgDn=elevation | Esc=deselect | Current: %s", toolbarItems[1].Options[toolbarItems[1].OptIndex]), 10, helpY, 14, rl.White)
+		rl.DrawText(fmt.Sprintf("L-click to place | R=cycle type | PgUp/PgDn=elevation | Esc=deselect | Current: %s", ToolbarItems[1].Options[ToolbarItems[1].OptIndex]), 10, helpY, 14, rl.White)
 	case ToolZone:
-		rl.DrawText(fmt.Sprintf("L-click to paint zones | R=cycle type | Esc=deselect | Current: %s", toolbarItems[2].Options[toolbarItems[2].OptIndex]), 10, helpY, 14, rl.White)
+		rl.DrawText(fmt.Sprintf("L-click to paint zones | R=cycle type | Esc=deselect | Current: %s", ToolbarItems[2].Options[ToolbarItems[2].OptIndex]), 10, helpY, 14, rl.White)
 	case ToolPark:
 		rl.DrawText("L-click to place park ($500) | Esc=deselect", 10, helpY, 14, rl.White)
 	case ToolParking:
-		rl.DrawText(fmt.Sprintf("L-click to place parking %s ($%.0f) | R=cycle type | Esc=deselect", toolbarItems[4].Options[toolbarItems[4].OptIndex], float32(3000)), 10, helpY, 14, rl.White)
-		if ui.ParkingGarage {
-			rl.DrawText("Current: Garage ($3000)", 10, helpY+18, 14, rl.White)
-		} else {
-			rl.DrawText("Current: Surface Lot ($1000)", 10, helpY+18, 14, rl.White)
+		rl.DrawText(fmt.Sprintf("L-click to place %s | R=cycle type | Esc=deselect", ToolbarItems[4].Options[ToolbarItems[4].OptIndex]), 10, helpY, 14, rl.White)
+		switch ToolbarItems[4].OptIndex {
+		case 0:
+			rl.DrawText("Surface Parking Lot ($1000)", 10, helpY+18, 14, rl.White)
+		case 1:
+			rl.DrawText("Parking Garage ($3000)", 10, helpY+18, 14, rl.White)
+		case 2:
+			rl.DrawText("Bus Depot ($5000) — spawns buses for bus lines", 10, helpY+18, 14, rl.White)
 		}
 	case ToolTransport:
-		rl.DrawText(fmt.Sprintf("L-click to place %s stop | R=cycle type | Esc=deselect | Current: %s", toolbarItems[5].Options[toolbarItems[5].OptIndex], toolbarItems[5].Options[toolbarItems[5].OptIndex]), 10, helpY, 14, rl.White)
+		rl.DrawText(fmt.Sprintf("L-click to place %s stop | R=cycle type | Esc=deselect | Current: %s", ToolbarItems[5].Options[ToolbarItems[5].OptIndex], ToolbarItems[5].Options[ToolbarItems[5].OptIndex]), 10, helpY, 14, rl.White)
 	case ToolRemove:
 		rl.DrawText("L-click on stop to remove, near line to remove route, or road segment | Esc=deselect", 10, helpY, 14, rl.White)
 	case ToolUpgrade:
-		rl.DrawText(fmt.Sprintf("L-click on road to upgrade to %s | R=change target type | Esc=deselect", toolbarItems[1].Options[toolbarItems[1].OptIndex]), 10, helpY, 14, rl.White)
+		rl.DrawText(fmt.Sprintf("L-click on road to upgrade to %s | R=change target type | Esc=deselect", ToolbarItems[1].Options[ToolbarItems[1].OptIndex]), 10, helpY, 14, rl.White)
 	}
 }

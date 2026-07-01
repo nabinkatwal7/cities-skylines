@@ -306,8 +306,15 @@ func main() {
 				if ui.ParkingGarage {
 					cost = 3000
 				}
+				if ui.BusDepotMode {
+					cost = 5000
+				}
 				if sim.Money >= cost && !sim.Heightmap.IsUnderwater(worldX, worldZ) {
-					sim.PlaceParkingLot(worldX, worldZ, ui.ParkingGarage)
+					if ui.BusDepotMode {
+						sim.PlaceBusDepot(worldX, worldZ)
+					} else {
+						sim.PlaceParkingLot(worldX, worldZ, ui.ParkingGarage)
+					}
 				}
 			case terrain.ToolTransport:
 				if !sim.Heightmap.IsUnderwater(worldX, worldZ) {
@@ -384,12 +391,17 @@ func main() {
 			case terrain.ToolPark:
 				rl.DrawCube(rl.NewVector3(worldX, h+0.3, worldZ), 3, 0.2, 3, rl.NewColor(80, 200, 80, 120))
 			case terrain.ToolParking:
-				col := rl.NewColor(80, 80, 200, 100)
-				if !ui.ParkingGarage {
-					col = rl.NewColor(80, 160, 80, 80)
+				if ui.BusDepotMode {
+					rl.DrawCube(rl.NewVector3(worldX, h+0.5, worldZ), 6, 1, 4, rl.NewColor(200, 180, 50, 120))
+					rl.DrawCubeWires(rl.NewVector3(worldX, h+0.5, worldZ), 6, 1, 4, rl.NewColor(200, 180, 50, 200))
+				} else {
+					col := rl.NewColor(80, 80, 200, 100)
+					if !ui.ParkingGarage {
+						col = rl.NewColor(80, 160, 80, 80)
+					}
+					rl.DrawCube(rl.NewVector3(worldX, h+0.3, worldZ), 20, 0.3, 15, col)
+					rl.DrawCubeWires(rl.NewVector3(worldX, h+0.3, worldZ), 20, 0.3, 15, rl.NewColor(60, 60, 100, 150))
 				}
-				rl.DrawCube(rl.NewVector3(worldX, h+0.3, worldZ), 20, 0.3, 15, col)
-				rl.DrawCubeWires(rl.NewVector3(worldX, h+0.3, worldZ), 20, 0.3, 15, rl.NewColor(60, 60, 100, 150))
 			case terrain.ToolTransport:
 				stopCol := terrain.TransportStopColor(ui.TransportType)
 				if transportActive {

@@ -102,6 +102,12 @@ type TransportVehicle struct {
 	Moving     bool
 	TargetX    float32
 	TargetZ    float32
+	Path       []uint32
+	PathIdx    int
+	FuelType   uint8
+	Maintenance float32
+	Delay      int32
+	CurrentStopID uint32
 }
 
 type TransportNetwork struct {
@@ -132,6 +138,8 @@ type TransportManager struct {
 	Pool     [TransportVehiclePoolSize]TransportVehicle
 	FreeList []int32
 	PoolNext uint32
+
+	Parking *ParkingManager
 }
 
 func NewTransportManager() *TransportManager {
@@ -363,6 +371,14 @@ func (tm *TransportManager) SpawnVehicle(lineIdx int) {
 		return
 	}
 	stop0 := &tm.Stops[line.Stops[0]]
+	spawnX, spawnZ := stop0.X, stop0.Z
+	if line.TransType == TransBus && tm.Parking != nil {
+		slot, _ := tm.Parking.NearestBusDepot(spawnX, spawnZ, 5000)
+		if slot >= 0 {
+			spawnX = tm.Parking.BusDepots[slot].X
+			spawnZ = tm.Parking.BusDepots[slot].Z
+		}
+	}
 	cap := cfg.Capacity
 	spd := cfg.Speed
 
@@ -372,12 +388,15 @@ func (tm *TransportManager) SpawnVehicle(lineIdx int) {
 			ID:        tm.NextID,
 			LineID:    line.ID,
 			TransType: line.TransType,
-			X:         stop0.X,
-			Z:         stop0.Z,
+			X:         spawnX,
+			Z:         spawnZ,
 			Capacity:  cap,
 			Speed:     spd,
 			Forward:   true,
 			Moving:    true,
+			FuelType:  0,
+			Maintenance: 1.0,
+			CurrentStopID: line.Stops[0],
 		})
 		tm.NextID++
 		line.VehicleCount++
@@ -393,13 +412,16 @@ func (tm *TransportManager) SpawnVehicle(lineIdx int) {
 	tm.PoolNext++
 	v.LineID = line.ID
 	v.TransType = line.TransType
-	v.X = stop0.X
-	v.Z = stop0.Z
+	v.X = spawnX
+	v.Z = spawnZ
 	v.Capacity = cap
 	v.Speed = spd
 	v.Forward = true
 	v.Moving = true
 	v.StopIdx = 0
+	v.FuelType = 0
+	v.Maintenance = 1.0
+	v.CurrentStopID = line.Stops[0]
 
 	line.VehicleCount++
 	netIdx := int(line.TransType)
@@ -526,7 +548,6 @@ func (tm *TransportManager) moveVehicle(v *TransportVehicle, rm *RoadManager, h 
 		return
 	}
 
-	currentStop := tm.StopByID(line.Stops[v.StopIdx])
 	nextIdx := (v.StopIdx + 1) % len(line.Stops)
 	if !v.Forward {
 		nextIdx = (v.StopIdx - 1 + len(line.Stops)) % len(line.Stops)
@@ -536,47 +557,15 @@ func (tm *TransportManager) moveVehicle(v *TransportVehicle, rm *RoadManager, h 
 		return
 	}
 
+	currentStop := tm.StopByID(line.Stops[v.StopIdx])
+
 	if v.Moving {
-		v.TargetX = nextStop.X
-		v.TargetZ = nextStop.Z
-	}
-
-	dx := nextStop.X - v.X
-	dz := nextStop.Z - v.Z
-	dist := float32(math.Sqrt(float64(dx*dx + dz*dz)))
-
-	if dist < 3 && v.Moving {
-		v.Moving = false
-		v.Timer = 0
-		v.StopIdx = nextIdx
-		if !line.IsCircular {
-			if v.StopIdx == 0 || v.StopIdx == len(line.Stops)-1 {
-				v.Forward = !v.Forward
-			}
+		if v.TransType == TransBus && rm != nil && len(rm.Segments) > 0 {
+			tm.moveBusOnRoad(v, rm, h, nextStop, currentStop, line, nextIdx)
+		} else {
+			tm.moveDirect(v, rm, h, nextStop, currentStop, line, nextIdx)
 		}
-		boarded := v.Capacity / 10
-		if v.Passengers+boarded > v.Capacity {
-			boarded = v.Capacity - v.Passengers
-		}
-		v.Passengers += boarded
-		line.PassengerCount += boarded
-		line.TotalPassengers += int64(boarded)
-		income := float32(boarded) * 0.5
-		line.TotalIncome += income
-		if currentStop != nil {
-			currentStop.Passengers -= boarded
-			if currentStop.Passengers < 0 {
-				currentStop.Passengers = 0
-			}
-		}
-		netIdx := int(v.TransType)
-		if netIdx < len(tm.Networks) {
-			tm.Networks[netIdx].PassengersPerDay += boarded
-			tm.Networks[netIdx].TotalIncome += income
-		}
-	}
-
-	if !v.Moving {
+	} else {
 		v.Timer++
 		wait := int32(60)
 		switch v.TransType {
@@ -591,6 +580,19 @@ func (tm *TransportManager) moveVehicle(v *TransportVehicle, rm *RoadManager, h 
 				currentStop.Passengers += 2
 			}
 		}
+	}
+}
+
+func (tm *TransportManager) moveDirect(v *TransportVehicle, rm *RoadManager, h *Heightmap, nextStop, currentStop *TransportStop, line *TransportLine, nextIdx int) {
+	v.TargetX = nextStop.X
+	v.TargetZ = nextStop.Z
+
+	dx := nextStop.X - v.X
+	dz := nextStop.Z - v.Z
+	dist := float32(math.Sqrt(float64(dx*dx + dz*dz)))
+
+	if dist < 3 {
+		tm.arriveAtStop(v, currentStop, nextStop, line, nextIdx)
 		return
 	}
 
@@ -625,6 +627,123 @@ func (tm *TransportManager) moveVehicle(v *TransportVehicle, rm *RoadManager, h 
 			tm.Networks[netIdx].Pollution += transportModeConfigs[v.TransType].Pollution * 0.001
 			tm.Networks[netIdx].Noise += transportModeConfigs[v.TransType].Noise * 0.001
 		}
+	}
+}
+
+func (tm *TransportManager) moveBusOnRoad(v *TransportVehicle, rm *RoadManager, h *Heightmap, nextStop, currentStop *TransportStop, line *TransportLine, nextIdx int) {
+	// Compute path if needed
+	if len(v.Path) == 0 {
+		startNode, startOK := rm.NearestNode(v.X, v.Z)
+		endNode, endOK := rm.NearestNode(nextStop.X, nextStop.Z)
+		if !startOK || !endOK {
+			tm.moveDirect(v, rm, h, nextStop, currentStop, line, nextIdx)
+			return
+		}
+		v.Path = rm.FindPath(startNode, endNode, int(VehicleBus))
+		v.PathIdx = 0
+		if len(v.Path) == 0 {
+			v.Path = append(v.Path, startNode, endNode)
+		}
+	}
+
+	// Follow path
+	for v.PathIdx < len(v.Path)-1 {
+		nodeIdx := v.Path[v.PathIdx]
+		nextNodeIdx := v.Path[v.PathIdx+1]
+		if int(nodeIdx) >= len(rm.Nodes) || int(nextNodeIdx) >= len(rm.Nodes) {
+			v.Path = nil
+			return
+		}
+		node := &rm.Nodes[nodeIdx]
+		nextNode := &rm.Nodes[nextNodeIdx]
+
+		dx := nextNode.X - v.X
+		dz := nextNode.Z - v.Z
+		targetDist := float32(math.Sqrt(float64(dx*dx + dz*dz)))
+
+		if targetDist < 2 {
+			v.PathIdx++
+			v.Maintenance -= 0.001
+			if v.Maintenance < 0 {
+				v.Maintenance = 0
+			}
+			// Traffic light check
+			if node.TrafficLight != TrafficLightNone && int(nodeIdx) < len(rm.Nodes) {
+				if node.TrafficLight == TrafficLightRed || node.TrafficLight == TrafficLightYellow {
+					v.Delay++
+					return
+				}
+			}
+			continue
+		}
+
+		spd := v.Speed
+		spd = tm.applyCongestion(rm, int(nodeIdx), int(nextNodeIdx), spd)
+		v.Delay += int32(spd / v.Speed * 10)
+
+		v.X += (dx / targetDist) * spd * 0.02
+		v.Z += (dz / targetDist) * spd * 0.02
+
+		netIdx := int(v.TransType)
+		if netIdx < len(tm.Networks) && netIdx < len(transportModeConfigs) {
+			tm.Networks[netIdx].Pollution += transportModeConfigs[v.TransType].Pollution * 0.001
+			tm.Networks[netIdx].Noise += transportModeConfigs[v.TransType].Noise * 0.001
+		}
+		return
+	}
+
+	// Reached end of path — arrived at next stop
+	v.Path = nil
+	tm.arriveAtStop(v, currentStop, nextStop, line, nextIdx)
+	v.Path = nil
+}
+
+func (tm *TransportManager) applyCongestion(rm *RoadManager, fromNode, toNode int, baseSpeed float32) float32 {
+	for _, sid := range rm.Nodes[fromNode].Connected {
+		seg := rm.Segments[sid]
+		if int(seg.NodeA) == toNode || int(seg.NodeB) == toNode {
+			// Slow down based on road type
+			switch roadHierarchy(seg.RoadType) {
+			case HierarchyLocal:
+				return baseSpeed * 0.8
+			case HierarchyArterial:
+				return baseSpeed * 0.9
+			}
+			break
+		}
+	}
+	return baseSpeed
+}
+
+func (tm *TransportManager) arriveAtStop(v *TransportVehicle, currentStop, nextStop *TransportStop, line *TransportLine, nextIdx int) {
+	v.Moving = false
+	v.Timer = 0
+	v.StopIdx = nextIdx
+	v.CurrentStopID = line.Stops[nextIdx]
+	if !line.IsCircular {
+		if v.StopIdx == 0 || v.StopIdx == len(line.Stops)-1 {
+			v.Forward = !v.Forward
+		}
+	}
+	boarded := v.Capacity / 10
+	if v.Passengers+boarded > v.Capacity {
+		boarded = v.Capacity - v.Passengers
+	}
+	v.Passengers += boarded
+	line.PassengerCount += boarded
+	line.TotalPassengers += int64(boarded)
+	income := float32(boarded) * 0.5
+	line.TotalIncome += income
+	if currentStop != nil {
+		currentStop.Passengers -= boarded
+		if currentStop.Passengers < 0 {
+			currentStop.Passengers = 0
+		}
+	}
+	netIdx := int(v.TransType)
+	if netIdx < len(tm.Networks) {
+		tm.Networks[netIdx].PassengersPerDay += boarded
+		tm.Networks[netIdx].TotalIncome += income
 	}
 }
 

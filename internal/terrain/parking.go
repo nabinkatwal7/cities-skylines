@@ -34,6 +34,13 @@ type ParkingLot struct {
 }
 
 const ParkingLotPoolSize = 500
+const BusDepotPoolSize = 100
+
+type BusDepot struct {
+	Entity
+	X, Z   float32
+	CellX, CellZ int
+}
 
 type ParkingManager struct {
 	Spots      []ParkingSpot
@@ -42,17 +49,38 @@ type ParkingManager struct {
 	LotCount   int32
 	NextID     uint32
 	Timer      int32
+
+	BusDepots   [BusDepotPoolSize]BusDepot
+	DepotFreeList []int32
+	DepotCount  int32
 }
 
 func NewParkingManager() *ParkingManager {
 	pm := &ParkingManager{
-		LotFreeList: make([]int32, ParkingLotPoolSize),
+		LotFreeList:  make([]int32, ParkingLotPoolSize),
+		DepotFreeList: make([]int32, BusDepotPoolSize),
 	}
 	for i := 0; i < ParkingLotPoolSize; i++ {
 		pm.Lots[i].Lifecycle = LifecycleUnallocated
 		pm.LotFreeList[i] = int32(ParkingLotPoolSize - 1 - i)
 	}
+	for i := 0; i < BusDepotPoolSize; i++ {
+		pm.BusDepots[i].Lifecycle = LifecycleUnallocated
+		pm.DepotFreeList[i] = int32(BusDepotPoolSize - 1 - i)
+	}
 	return pm
+}
+
+func (pm *ParkingManager) allocBusDepot() int32 {
+	if len(pm.DepotFreeList) == 0 {
+		return -1
+	}
+	idx := pm.DepotFreeList[len(pm.DepotFreeList)-1]
+	pm.DepotFreeList = pm.DepotFreeList[:len(pm.DepotFreeList)-1]
+	pm.BusDepots[idx] = BusDepot{}
+	pm.BusDepots[idx].Lifecycle = LifecycleAllocated
+	pm.DepotCount++
+	return int32(idx)
 }
 
 func (pm *ParkingManager) allocLot() int32 {
@@ -64,6 +92,47 @@ func (pm *ParkingManager) allocLot() int32 {
 	pm.Lots[idx].Lifecycle = LifecycleInitializing
 	pm.LotCount++
 	return idx
+}
+
+func (pm *ParkingManager) freeBusDepot(slot int32) {
+	if slot < 0 || int(slot) >= BusDepotPoolSize {
+		return
+	}
+	pm.BusDepots[slot].Lifecycle = LifecycleReturnedToPool
+	pm.DepotFreeList = append(pm.DepotFreeList, slot)
+	pm.DepotCount--
+}
+
+func (pm *ParkingManager) PlaceBusDepot(x, z float32) int32 {
+	slot := pm.allocBusDepot()
+	if slot < 0 {
+		return -1
+	}
+	d := &pm.BusDepots[slot]
+	d.X = x
+	d.Z = z
+	d.CellX = int(x) / 8
+	d.CellZ = int(z) / 8
+	return slot
+}
+
+func (pm *ParkingManager) NearestBusDepot(x, z float32, maxDist float32) (int32, float32) {
+	best := maxDist
+	bestIdx := int32(-1)
+	for i := 0; i < BusDepotPoolSize; i++ {
+		if pm.BusDepots[i].Lifecycle != LifecycleAllocated {
+			continue
+		}
+		d := &pm.BusDepots[i]
+		dx := d.X - x
+		dz := d.Z - z
+		dist := dx*dx + dz*dz
+		if dist < best {
+			best = dist
+			bestIdx = int32(i)
+		}
+	}
+	return bestIdx, best
 }
 
 func (pm *ParkingManager) freeLot(slot int32) {
@@ -297,9 +366,20 @@ func (pm *ParkingManager) Draw(h *Heightmap) {
 		} else {
 			col = rl.NewColor(80, 160, 80, 80)
 			rl.DrawCube(rl.NewVector3(lot.Position.X, hy, lot.Position.Z), lot.Width, 0.3, lot.Depth, col)
-			rl.DrawCubeWires(rl.NewVector3(lot.Position.X, hy, lot.Position.Z), lot.Width, 0.3, lot.Depth, rl.NewColor(40, 80, 40, 100))
+			rl.DrawCubeWires(rl.NewVector3(lot.Position.X, hy, lot.Position.Z), lot.Width, 0.3, lot.Depth, rl.NewColor(60, 100, 60, 100))
 		}
 	})
+
+	for i := 0; i < BusDepotPoolSize; i++ {
+		d := &pm.BusDepots[i]
+		if d.Lifecycle != LifecycleAllocated {
+			continue
+		}
+		hy := h.WorldHeight(d.X, d.Z) + 0.5
+		rl.DrawCube(rl.NewVector3(d.X, hy, d.Z), 6, 1, 4, rl.NewColor(200, 180, 50, 180))
+		rl.DrawCubeWires(rl.NewVector3(d.X, hy, d.Z), 6, 1, 4, rl.NewColor(200, 180, 50, 255))
+		rl.DrawCube(rl.NewVector3(d.X, hy+0.6, d.Z), 2, 0.3, 1, rl.NewColor(255, 200, 100, 200))
+	}
 }
 
 func (pm *ParkingManager) Unload() {
