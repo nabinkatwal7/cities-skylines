@@ -418,10 +418,18 @@ func (rm *RoadManager) Update(h *Heightmap) {
 		seg := &rm.Segments[i]
 		na := &rm.Nodes[seg.NodeA]
 		nb := &rm.Nodes[seg.NodeB]
-		ah := h.WorldHeight(na.X, na.Z)
-		bh := h.WorldHeight(nb.X, nb.Z)
-		waterH := float32(SeaLevel*MaxHeight + 0.1)
-		if ah < waterH || bh < waterH {
+
+		isFlooded := false
+		if waterForRoads != nil {
+			isFlooded = waterForRoads.IsFlooded(na.X, na.Z) || waterForRoads.IsFlooded(nb.X, nb.Z)
+		}
+		if !isFlooded {
+			ah := h.WorldHeight(na.X, na.Z)
+			bh := h.WorldHeight(nb.X, nb.Z)
+			waterH := float32(SeaLevel*MaxHeight + 0.1)
+			isFlooded = ah < waterH || bh < waterH
+		}
+		if isFlooded {
 			if !seg.Damaged {
 				seg.Damaged = true
 			}
@@ -429,6 +437,12 @@ func (rm *RoadManager) Update(h *Heightmap) {
 			seg.Damaged = false
 		}
 	}
+}
+
+var waterForRoads *WaterSystem
+
+func SetWaterForRoads(ws *WaterSystem) {
+	waterForRoads = ws
 }
 
 func (rm *RoadManager) Draw(h *Heightmap) {

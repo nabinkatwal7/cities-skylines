@@ -399,6 +399,23 @@ func (bm *BuildingManager) updateBuildings(zm *ZoneManager, h *Heightmap, roads 
 				continue
 			}
 
+			isFlooded := false
+			if waterForBuildings != nil {
+				isFlooded = waterForBuildings.IsFlooded(b.Position.X, b.Position.Z)
+			}
+			if isFlooded {
+				b.SetFlag(FlagFlooded)
+				b.ClearFlag(FlagPowered)
+				b.ClearFlag(FlagWatered)
+				b.SetFlag(FlagAbandoned)
+				b.AbandonTimer = 0
+				b.Residents = 0
+				b.Workers = 0
+				continue
+			} else {
+				b.ClearFlag(FlagFlooded)
+			}
+
 			hasRoad := roads.HasNearbyRoad(b.Position.X, b.Position.Z, cellSize*2)
 			if hasRoad {
 				b.SetFlag(FlagHasRoad)
@@ -716,6 +733,12 @@ func (bm *BuildingManager) Draw(h *Heightmap, zm *ZoneManager, isNight bool) {
 			}
 		}
 	})
+}
+
+var waterForBuildings *WaterSystem
+
+func SetWaterForBuildings(ws *WaterSystem) {
+	waterForBuildings = ws
 }
 
 func (bm *BuildingManager) Unload() {

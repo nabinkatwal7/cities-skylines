@@ -18,6 +18,8 @@ const (
 	EventTimeMinute          SimEvent = "time:minute"
 	EventTimeHour            SimEvent = "time:hour"
 	EventTimeDay             SimEvent = "time:day"
+	EventFloodStarted        SimEvent = "flood:started"
+	EventFloodReceded        SimEvent = "flood:receded"
 )
 
 type SimulationManager struct {
@@ -87,6 +89,9 @@ func NewSimulationManager(seed int64) *SimulationManager {
 
 	sm.initScheduler()
 	sm.initEventListeners()
+	sm.Water.SetEventBus(sm.EventBus)
+	SetWaterForBuildings(sm.Water)
+	SetWaterForRoads(sm.Water)
 	return sm
 }
 

@@ -1663,3 +1663,36 @@ Current
 ```
 
 ---
+
+## 2.10 Water Simulation ✅
+
+Water behaves as a dynamic fluid.
+
+Every simulation step calculates:
+
+- Height
+- Pressure
+- Flow
+- Velocity
+
+Example
+
+```text
+Higher Water
+
+↓
+
+Pressure
+
+↓
+
+Lower Water
+
+↓
+
+Flow
+```
+
+Water continuously seeks equilibrium.
+
+---

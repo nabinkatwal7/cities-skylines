@@ -15,6 +15,7 @@ const (
 	FlagHasRoad     EntityFlags = 1 << 6
 	FlagParked      EntityFlags = 1 << 7
 	FlagRemoved     EntityFlags = 1 << 8
+	FlagFlooded     EntityFlags = 1 << 9
 )
 
 type OwnerType uint16

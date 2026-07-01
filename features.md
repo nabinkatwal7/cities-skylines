@@ -2,56 +2,6 @@
 
 # 2. Terrain & Map Generation System
 
-## 2.10 Water Simulation ✅
-
-Water behaves as a dynamic fluid.
-
-Every simulation step calculates:
-
-- Height
-- Pressure
-- Flow
-- Velocity
-
-Example
-
-```text
-Higher Water
-
-↓
-
-Pressure
-
-↓
-
-Lower Water
-
-↓
-
-Flow
-```
-
-Water continuously seeks equilibrium.
-
----
-
-## 2.11 Flooding ✅
-
-Flooding occurs when water exceeds terrain elevation.
-
-Flooded buildings become:
-
-- Inaccessible
-- Unpowered
-- Abandoned
-- Damaged
-
-Roads become unusable.
-
-Citizens evacuate flooded areas.
-
----
-
 ## 2.12 Terraforming ✅
 
 Players may alter terrain at runtime.
