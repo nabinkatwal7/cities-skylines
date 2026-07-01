@@ -2310,3 +2310,19 @@ The resulting junction depends on:
 - Road hierarchy
 
 ---
+
+## 3.11 Traffic Rules
+
+Every intersection contains routing rules.
+
+Supported:
+
+- Stop
+- Yield
+- Traffic Light
+- Priority Road
+- Roundabout
+
+Rules determine vehicle behavior.
+
+---

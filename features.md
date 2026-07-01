@@ -1,19 +1,3 @@
-## 3.11 Traffic Rules
-
-Every intersection contains routing rules.
-
-Supported:
-
-- Stop
-- Yield
-- Traffic Light
-- Priority Road
-- Roundabout
-
-Rules determine vehicle behavior.
-
----
-
 ## 3.12 Lane Connectivity
 
 Every incoming lane connects to one or more outgoing lanes.

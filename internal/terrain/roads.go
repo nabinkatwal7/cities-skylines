@@ -216,6 +216,48 @@ const (
 	RoadFlagTunnel      RoadFlags = 1 << 2
 )
 
+type TrafficRule uint8
+
+const (
+	RuleNone TrafficRule = iota
+	RuleStop
+	RuleYield
+	RuleTrafficLight
+	RulePriorityRoad
+	RuleRoundabout
+)
+
+func (rm *RoadManager) TrafficRuleForNode(nodeIdx uint32) TrafficRule {
+	n := &rm.Nodes[nodeIdx]
+	if len(n.Connected) < 2 {
+		return RuleNone
+	}
+	if n.JunctionType == 2 {
+		return RuleRoundabout
+	}
+	if n.TrafficLight != TrafficLightNone {
+		return RuleTrafficLight
+	}
+
+	maxHierarchy := HierarchyLocal
+	for _, sid := range n.Connected {
+		h := roadHierarchy(rm.Segments[sid].RoadType)
+		if h > maxHierarchy {
+			maxHierarchy = h
+		}
+	}
+
+	if maxHierarchy >= HierarchyArterial {
+		return RulePriorityRoad
+	}
+
+	if len(n.Connected) > 3 {
+		return RuleTrafficLight
+	}
+
+	return RuleYield
+}
+
 func elevationHeight(elevation int32) float32 {
 	if elevation >= 0 {
 		return float32(elevation) * 5.0

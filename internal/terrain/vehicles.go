@@ -149,6 +149,114 @@ func (vm *VehicleManager) chooseLane(v *Vehicle, rm *RoadManager, seg RoadSegmen
 	return 0
 }
 
+func (vm *VehicleManager) applyTrafficRules(v *Vehicle, rm *RoadManager, seg RoadSegment) {
+	lookAhead := func(n *RoadNode) (float32, TrafficRule) {
+		dx := n.X - v.Position.X
+		dz := n.Z - v.Position.Z
+		dist := float32(math.Sqrt(float64(dx*dx + dz*dz)))
+		rule := rm.TrafficRuleForNode(n.ID)
+		return dist, rule
+	}
+
+	distA, ruleA := lookAhead(&rm.Nodes[seg.NodeA])
+	distB, ruleB := lookAhead(&rm.Nodes[seg.NodeB])
+
+	var distToNode float32
+	var rule TrafficRule
+	if distA < distB {
+		distToNode = distA
+		rule = ruleA
+	} else {
+		distToNode = distB
+		rule = ruleB
+	}
+
+	approachDist := float32(15)
+	if seg.SpeedLimit > 50 {
+		approachDist = 25
+	}
+
+	switch rule {
+	case RuleTrafficLight:
+		on := &rm.Nodes[seg.NodeA]
+		if rm.Nodes[seg.NodeB].TrafficLight != TrafficLightNone {
+			if distB < distA {
+				on = &rm.Nodes[seg.NodeB]
+			}
+		}
+		if distToNode < approachDist && on.TrafficLight >= TrafficLightYellow {
+			v.Speed *= 0.9
+			if v.Speed < 2 {
+				v.Speed = 2
+			}
+			v.Waiting++
+		} else {
+			v.Waiting = 0
+		}
+
+	case RuleStop:
+		if distToNode < approachDist {
+			stopDist := float32(6)
+			if distToNode < stopDist && v.Speed > 0.5 {
+				v.Speed *= 0.85
+				if v.Speed < 0.5 {
+					v.Speed = 0.5
+				}
+				v.Waiting++
+			} else if distToNode < approachDist*0.5 {
+				v.Speed *= 0.9
+				v.Waiting++
+			} else {
+				v.Waiting = 0
+			}
+		} else {
+			v.Waiting = 0
+		}
+
+	case RuleYield, RuleRoundabout:
+		if distToNode < approachDist {
+			yieldDist := float32(10)
+			if distToNode < yieldDist {
+				v.Speed *= 0.92
+				if v.Speed < 1 {
+					v.Speed = 1
+				}
+				v.Waiting++
+			} else {
+				v.Speed *= 0.97
+				v.Waiting = 0
+			}
+		} else {
+			v.Waiting = 0
+		}
+
+	case RulePriorityRoad:
+		hasPriority := true
+		for _, sid := range rm.Nodes[seg.NodeA].Connected {
+			otherSeg := rm.Segments[sid]
+			if otherSeg.ID == seg.ID {
+				continue
+			}
+			if roadHierarchy(otherSeg.RoadType) >= roadHierarchy(seg.RoadType) {
+				continue
+			}
+			hasPriority = false
+			break
+		}
+		if !hasPriority && distToNode < approachDist {
+			v.Speed *= 0.95
+			if v.Speed < 1 {
+				v.Speed = 1
+			}
+		} else {
+			v.Waiting = 0
+		}
+
+	default:
+		v.Waiting = 0
+	}
+}
+
 func (vm *VehicleManager) Update(rm *RoadManager, h *Heightmap) {
 	vm.Timer++
 	if vm.Timer%30 == 0 && vm.Count < 50 {
@@ -180,22 +288,7 @@ func (vm *VehicleManager) Update(rm *RoadManager, h *Heightmap) {
 
 		v.Lane = vm.chooseLane(v, rm, seg)
 
-		na := &rm.Nodes[seg.NodeA]
-
-		if na.TrafficLight != TrafficLightNone && na.JunctionType == 1 {
-			dx := na.X - v.Position.X
-			dz := na.Z - v.Position.Z
-			distToNode := float32(math.Sqrt(float64(dx*dx + dz*dz)))
-			if distToNode < 15 && na.TrafficLight >= TrafficLightYellow {
-				v.Speed *= 0.9
-				if v.Speed < 2 {
-					v.Speed = 2
-				}
-				v.Waiting++
-			} else {
-				v.Waiting = 0
-			}
-		}
+		vm.applyTrafficRules(v, rm, seg)
 
 		v.Speed += (v.TargetSpeed - v.Speed) * 0.05
 		if v.Speed < 0.5 {
