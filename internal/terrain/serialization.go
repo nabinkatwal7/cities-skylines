@@ -1,12 +1,21 @@
 package terrain
 
 import (
+	"bytes"
+	"encoding/binary"
 	"encoding/gob"
 	"fmt"
+	"hash/crc32"
+	"io"
 	"os"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
+
+type SaveHeader struct {
+	Checksum uint32
+	_        [4]byte
+}
 
 type SaveData struct {
 	Version  int32
@@ -112,6 +121,87 @@ type ResourceCell struct {
 	Fertility float32
 	Ore       float32
 	Oil       float32
+}
+
+type SaveStats struct {
+	DirtyCount int32
+	TotalCount int32
+}
+
+const currentSaveVersion int32 = 2
+
+func calcChecksum(data []byte) uint32 {
+	return crc32.ChecksumIEEE(data)
+}
+
+func migrateSaveData(data *SaveData) bool {
+	if data.Version >= currentSaveVersion {
+		return false
+	}
+	if data.Version < 1 {
+		return false
+	}
+	for v := data.Version; v < currentSaveVersion; v++ {
+		switch v {
+		case 1:
+			data.Version = 2
+		}
+	}
+	return true
+}
+
+func writeSaveFile(filename string, data *SaveData) error {
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	if err := enc.Encode(data); err != nil {
+		return fmt.Errorf("encode: %w", err)
+	}
+	payload := buf.Bytes()
+	csum := calcChecksum(payload)
+
+	f, err := os.Create(filename)
+	if err != nil {
+		return fmt.Errorf("create: %w", err)
+	}
+	defer f.Close()
+
+	header := SaveHeader{Checksum: csum}
+	if err := binary.Write(f, binary.LittleEndian, &header); err != nil {
+		return fmt.Errorf("write header: %w", err)
+	}
+	if _, err := f.Write(payload); err != nil {
+		return fmt.Errorf("write data: %w", err)
+	}
+	return nil
+}
+
+func readSaveFile(filename string) (*SaveData, error) {
+	f, err := os.Open(filename)
+	if err != nil {
+		return nil, fmt.Errorf("open: %w", err)
+	}
+	defer f.Close()
+
+	var header SaveHeader
+	if err := binary.Read(f, binary.LittleEndian, &header); err != nil {
+		return nil, fmt.Errorf("read header: %w", err)
+	}
+
+	payload, err := io.ReadAll(f)
+	if err != nil {
+		return nil, fmt.Errorf("read payload: %w", err)
+	}
+
+	if calcChecksum(payload) != header.Checksum {
+		return nil, fmt.Errorf("checksum mismatch: file may be corrupted")
+	}
+
+	var data SaveData
+	dec := gob.NewDecoder(bytes.NewReader(payload))
+	if err := dec.Decode(&data); err != nil {
+		return nil, fmt.Errorf("decode: %w", err)
+	}
+	return &data, nil
 }
 
 func SaveGame(filename string, m *SimulationManager, money float32, timeOfDay int32) error {

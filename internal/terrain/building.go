@@ -536,6 +536,23 @@ func landValue(b *Building, h *Heightmap) int32 {
 	return val
 }
 
+func (bm *BuildingManager) FlushStats() {
+	bm.Stats = BuildingStats{}
+	bm.ForEach(func(b *Building, _ int32) {
+		if b.Household != nil {
+			bm.Stats.TotalWealth += b.Household.Wealth
+			bm.Stats.TotalHappiness += b.Household.Happiness
+			bm.Stats.TotalPowerUsed += b.Consumption.Power
+			bm.Stats.TotalWaterUsed += b.Consumption.Water
+			bm.Stats.TotalGarbage += b.Consumption.Garbage
+		}
+		if b.Business != nil {
+			bm.Stats.TotalPowerUsed += b.Consumption.Power
+			bm.Stats.TotalWaterUsed += b.Consumption.Water
+		}
+	})
+}
+
 func (bm *BuildingManager) Demand() (res, com, ind int) {
 	return bm.resDemand, bm.comDemand, bm.indDemand
 }
