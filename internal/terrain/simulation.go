@@ -44,6 +44,7 @@ type SimulationManager struct {
 	EventBus  *EventBus
 	scheduler *Scheduler
 	Time      *GameTime
+	Jobs      *JobQueue
 }
 
 func NewSimulationManager(seed int64) *SimulationManager {
@@ -81,6 +82,7 @@ func NewSimulationManager(seed int64) *SimulationManager {
 		EventBus:    NewEventBus(),
 		scheduler:   NewScheduler(),
 		Time:        NewGameTime(),
+		Jobs:        NewJobQueue(),
 	}
 
 	sm.initScheduler()
@@ -131,6 +133,7 @@ func (sm *SimulationManager) initScheduler() {
 		BudgetMs: 1,
 		Callback: func(dt float64) { sm.collectTax(dt) },
 	})
+
 }
 
 func (sm *SimulationManager) initEventListeners() {
@@ -193,6 +196,7 @@ func (sm *SimulationManager) Update(dt float64) {
 
 	simDt := dt * sm.Time.Speed
 	sm.Time.Tick(simDt)
+	sm.Jobs.Process()
 	sm.scheduler.RunAll(simDt)
 
 	if sm.Time.MinuteChanged() {

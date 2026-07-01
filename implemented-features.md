@@ -1159,3 +1159,365 @@ Mod Version
 Older saves migrate through upgrade pipelines.
 
 ---
+
+## 1.10 Job System & Background Processing ✅
+
+Cities contain millions of calculations each simulation hour.
+
+The engine distributes work across worker threads.
+
+```text
+Main Thread
+
+↓
+
+Job Scheduler
+
+↓
+
+Worker Pool
+
+↓
+
+Completed Jobs
+
+↓
+
+Simulation
+```
+
+---
+
+### Typical Background Jobs
+
+Traffic pathfinding
+
+Electricity propagation
+
+Water simulation
+
+Land value updates
+
+Noise calculations
+
+Pollution diffusion
+
+District analysis
+
+Statistics generation
+
+Heatmap generation
+
+Tree growth
+
+Vehicle routing
+
+Citizen destination search
+
+---
+
+### Job Lifecycle
+
+```text
+Create Job
+
+↓
+
+Schedule
+
+↓
+
+Execute
+
+↓
+
+Validate
+
+↓
+
+Commit Result
+```
+
+Workers never modify simulation state directly.
+
+Instead they produce immutable results.
+
+The Simulation Manager applies completed jobs during synchronization points.
+
+---
+
+### Dependency Graph
+
+Some jobs depend on others.
+
+Example
+
+```text
+Road Update
+
+↓
+
+Lane Graph
+
+↓
+
+Pathfinding
+
+↓
+
+Vehicle Routing
+
+↓
+
+Traffic AI
+```
+
+A dependent job cannot execute until its prerequisite finishes.
+
+---
+
+### Job Priorities
+
+```text
+Critical
+
+Pathfinding
+
+Utilities
+
+Vehicle Routing
+
+High
+
+Economy
+
+Land Value
+
+Services
+
+Medium
+
+Statistics
+
+District Analysis
+
+Low
+
+Heatmaps
+
+Achievements
+
+Analytics
+```
+
+---
+
+### Thread Safety
+
+Workers cannot:
+
+- Spawn entities
+- Destroy entities
+- Modify managers
+- Allocate IDs
+- Change game time
+
+Workers may only:
+
+- Read immutable snapshots
+- Execute calculations
+- Produce result buffers
+
+The Simulation Manager validates and commits all results on the main simulation thread, ensuring deterministic behavior and eliminating race conditions.
+
+---
+
+### Performance Scaling
+
+The scheduler dynamically adjusts job batch sizes based on available CPU cores.
+
+Example:
+
+| CPU Threads | Worker Threads |
+| ----------- | -------------: |
+| 4           |              3 |
+| 8           |              7 |
+| 12          |             11 |
+| 16          |             15 |
+
+The main thread remains dedicated to input processing, simulation coordination, rendering submission, and synchronization while computationally intensive tasks execute in parallel.
+
+---
+
+These systems establish the backbone of the simulation engine. Together with Sections **1.1–1.5**, they define how every entity is created, updated, communicated, serialized, and processed efficiently, providing a scalable foundation for large cities with hundreds of thousands of citizens and thousands of active vehicles.
+
+2
+
+The terrain system is the foundation of every city. Unlike traditional tile-based city builders, the world exists as a continuous heightfield that supports terrain deformation, water simulation, road adaptation, zoning, and environmental simulation.
+
+The terrain engine is responsible for:
+
+- Terrain generation
+- Heightmap storage
+- Water simulation
+- Tree distribution
+- Natural resources
+- Buildability
+- Terraforming
+- Terrain rendering
+- Terrain serialization
+- Collision queries
+
+---
+
+## 2.1 World Structure ✅
+
+The map is represented as a square terrain composed of evenly spaced vertices.
+
+```text
+World
+
+├── Terrain
+├── Water
+├── Resources
+├── Trees
+├── Props
+├── Outside Connections
+└── Simulation Grid
+```
+
+Each terrain vertex stores:
+
+```cpp
+struct TerrainVertex
+{
+    float height;
+    float waterLevel;
+    float pollution;
+    float fertility;
+    float ore;
+    float oil;
+    float forestry;
+    float buildability;
+}
+```
+
+Unlike roads and buildings, terrain is immutable in topology.
+
+Only vertex heights change during terraforming.
+
+---
+
+## 2.2 Coordinate System ✅
+
+The terrain uses world-space coordinates.
+
+```text
+Origin (0,0)
+
+↓
+
+Positive X
+
+↓
+
+Positive Z
+
+↓
+
+Height (Y)
+```
+
+Everything references terrain coordinates.
+
+Roads sample terrain.
+
+Buildings sample terrain.
+
+Trees sample terrain.
+
+Water samples terrain.
+
+---
+
+## 2.3 Heightmap ✅
+
+Terrain elevation is stored as a heightmap.
+
+```text
+1025 x 1025 vertices
+
+↓
+
+Interpolated
+
+↓
+
+Continuous Surface
+```
+
+Each vertex stores only elevation.
+
+Normals are calculated automatically.
+
+Slope is calculated dynamically.
+
+---
+
+## 2.4 Terrain Chunks ✅
+
+The terrain is divided into chunks.
+
+```text
+Terrain
+
+├── Chunk
+├── Chunk
+├── Chunk
+└── Chunk
+```
+
+Each chunk contains:
+
+- Height Data
+- Trees
+- Props
+- Collision
+- LOD Mesh
+- Dirty Flag
+
+Chunks update independently.
+
+Only modified chunks rebuild.
+
+---
+
+## 2.5 Terrain LOD ✅
+
+Different terrain meshes exist depending on camera distance.
+
+```text
+LOD0
+
+Highest Detail
+
+↓
+
+LOD1
+
+↓
+
+LOD2
+
+↓
+
+LOD3
+
+Lowest Detail
+```
+
+Only nearby terrain uses maximum resolution.
+
+Far terrain is heavily simplified.
+
+---
