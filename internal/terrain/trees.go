@@ -183,7 +183,7 @@ func (ts *TreeSystem) Update(dt float64) {
 			}
 		case LifecycleMarkedForRemoval:
 			t.RemovalTimer++
-			if t.RemovalTimer > 60 {
+			if t.RemovalTimer > 600 {
 				t.Lifecycle = LifecycleDestroyed
 			}
 		case LifecycleDestroyed:
@@ -216,42 +216,95 @@ func (ts *TreeSystem) Draw(h *Heightmap, camX, camZ float32) {
 	}
 	ts.ForEach(func(t *Tree, _ int32) {
 		state := ts.getState(*t)
-		if state == TreeDead {
-			return
-		}
 		dx := t.X - camX
 		dz := t.Z - camZ
 		if dx*dx+dz*dz > maxDist*maxDist {
 			return
 		}
+		if state == TreeDead {
+			ts.drawDeadMesh(t, h)
+			return
+		}
 		height := h.WorldHeight(t.X, t.Z)
-		col := ts.colorMap[t.Species]
-		scale := t.Scale * 0.4
+		stageScale := ts.growthScale(state)
+		col := ts.stageColor(t.Species, state)
+		scale := t.Scale * 0.4 * stageScale
 		pos := rl.NewVector3(t.X, height+scale*0.5, t.Z)
 		axis := rl.NewVector3(0, 1, 0)
 		rl.DrawModelEx(ts.Model, pos, axis, t.Yaw*57.3, rl.NewVector3(scale, scale, scale), col)
 	})
 }
 
+func (ts *TreeSystem) drawDeadMesh(t *Tree, h *Heightmap) {
+	height := h.WorldHeight(t.X, t.Z)
+	scale := t.Scale * 0.4 * 0.6
+	pos := rl.NewVector3(t.X, height+scale*0.5, t.Z)
+	axis := rl.NewVector3(0, 1, 0)
+	deadCol := rl.NewColor(80, 60, 40, 255)
+	rl.DrawModelEx(ts.Model, pos, axis, t.Yaw*57.3, rl.NewVector3(scale, scale*0.5, scale), deadCol)
+}
+
 func (ts *TreeSystem) drawFallback(h *Heightmap, camX, camZ, maxDist float32) {
 	ts.ForEach(func(t *Tree, _ int32) {
 		state := ts.getState(*t)
-		if state == TreeDead {
-			return
-		}
 		dx := t.X - camX
 		dz := t.Z - camZ
 		if dx*dx+dz*dz > maxDist*maxDist {
 			return
 		}
 		height := h.WorldHeight(t.X, t.Z)
-		scale := t.Scale
-		col := ts.colorMap[t.Species]
+		stageScale := ts.growthScale(state)
+		scale := t.Scale * stageScale
+		col := ts.stageColor(t.Species, state)
+
+		if state == TreeDead {
+			rl.DrawCube(rl.NewVector3(t.X, height+scale*0.3, t.Z), 0.15*scale, scale*0.6, 0.15*scale, rl.NewColor(80, 60, 40, 255))
+			return
+		}
+
 		rl.DrawCube(rl.NewVector3(t.X, height+scale*0.5, t.Z), 0.2*scale, scale, 0.2*scale, rl.NewColor(101, 67, 33, 255))
 		crownSize := scale * 0.8
 		crownY := height + scale + crownSize*0.3
 		rl.DrawCube(rl.NewVector3(t.X, crownY, t.Z), crownSize, crownSize*0.6, crownSize, col)
 	})
+}
+
+func (ts *TreeSystem) growthScale(state TreeState) float32 {
+	switch state {
+	case TreeSeedling:
+		return 0.3
+	case TreeYoung:
+		return 0.6
+	case TreeMature:
+		return 1.0
+	case TreeOld:
+		return 1.1
+	case TreeDead:
+		return 0.8
+	default:
+		return 0.5
+	}
+}
+
+func (ts *TreeSystem) stageColor(species TreeSpecies, state TreeState) rl.Color {
+	base := ts.colorMap[species]
+	if state == TreeOld {
+		return rl.NewColor(
+			uint8(float32(base.R)*0.7),
+			uint8(float32(base.G)*0.7),
+			uint8(float32(base.B)*0.6),
+			255,
+		)
+	}
+	if state == TreeSeedling {
+		return rl.NewColor(
+			uint8(float32(base.R)*0.5+100),
+			uint8(float32(base.G)*0.5+100),
+			uint8(float32(base.B)*0.5+80),
+			255,
+		)
+	}
+	return base
 }
 
 func (ts *TreeSystem) getState(t Tree) TreeState {
