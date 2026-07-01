@@ -159,7 +159,7 @@ func main() {
 		if rl.IsKeyPressed(rl.KeyT) {
 			timeOfDay = (timeOfDay + 1) % 4
 		}
-		sim.Night = timeOfDay == 3
+		sim.SetNight(timeOfDay == 3)
 
 		// Road elevation control
 		if rl.IsKeyPressed(rl.KeyPageUp) {
@@ -227,26 +227,15 @@ func main() {
 					if sim.Money >= 100 {
 						if !roadActive {
 							roadActive = true
-							roadStartNode = sim.Roads.AddNode(cx, cz)
-							sim.Money -= 100
+							roadStartNode = sim.PlaceRoadNode(cx, cz)
 						} else {
 							sn := &sim.Roads.Nodes[roadStartNode]
 							if sim.Heightmap.IsUnderwater(sn.X, sn.Z) {
 								roadActive = false
 								break
 							}
-							endNode := sim.Roads.AddNode(cx, cz)
-							segID := sim.Roads.AddSegment(roadStartNode, endNode, ui.RoadType)
-							if roadElevation > 0 {
-								for i := range sim.Roads.Segments {
-									if sim.Roads.Segments[i].ID == segID {
-										sim.Roads.Segments[i].Elevation = roadElevation
-									}
-								}
-							}
-							sim.Roads.Rebuild(sim.Heightmap)
-							roadStartNode = endNode
-							sim.Money -= 100
+							newNode, _ := sim.PlaceRoadSegment(roadStartNode, cx, cz, ui.RoadType, roadElevation)
+							roadStartNode = newNode
 						}
 					}
 				case terrain.ToolZone:
@@ -261,13 +250,11 @@ func main() {
 					idx := sim.Roads.NearestSegment(worldX, worldZ)
 					if idx >= 0 {
 						sim.RemoveSegment(idx)
-						sim.Roads.Rebuild(sim.Heightmap)
 					}
 				case terrain.ToolUpgrade:
 					idx := sim.Roads.NearestSegment(worldX, worldZ)
 					if idx >= 0 {
 						sim.UpgradeSegment(idx, ui.RoadType)
-						sim.Roads.Rebuild(sim.Heightmap)
 					}
 				}
 			}

@@ -1,8 +1,6 @@
 package terrain
 
-import (
-	"github.com/katwate/js-skylines/internal/engine"
-)
+
 
 type SimEvent string
 
@@ -42,8 +40,8 @@ type SimulationManager struct {
 	Money     float32
 	TaxTimer  int32
 
-	EventBus  *engine.EventBus
-	scheduler *engine.Scheduler
+	EventBus  *EventBus
+	scheduler *Scheduler
 }
 
 func NewSimulationManager(seed int64) *SimulationManager {
@@ -78,8 +76,8 @@ func NewSimulationManager(seed int64) *SimulationManager {
 		Transport:   NewTransportManager(),
 		Districts:   NewDistrictManager(),
 		Seed:        seed,
-		EventBus:    engine.NewEventBus(),
-		scheduler:   engine.NewScheduler(),
+		EventBus:    NewEventBus(),
+		scheduler:   NewScheduler(),
 	}
 
 	sm.initScheduler()
@@ -87,39 +85,39 @@ func NewSimulationManager(seed int64) *SimulationManager {
 }
 
 func (sm *SimulationManager) initScheduler() {
-	sm.scheduler.Register(engine.GroupFast, engine.UpdateTask{
+	sm.scheduler.Register(GroupFast, UpdateTask{
 		Name:     "water",
-		Priority: engine.SchedPriorityHigh,
+		Priority: SchedPriorityHigh,
 		Callback: func(dt float64) { sm.Water.Update(dt) },
 	})
-	sm.scheduler.Register(engine.GroupFast, engine.UpdateTask{
+	sm.scheduler.Register(GroupFast, UpdateTask{
 		Name:     "trees",
-		Priority: engine.SchedPriorityLow,
+		Priority: SchedPriorityLow,
 		Callback: func(dt float64) { sm.Trees.Update(dt) },
 	})
-	sm.scheduler.Register(engine.GroupMedium, engine.UpdateTask{
+	sm.scheduler.Register(GroupMedium, UpdateTask{
 		Name:     "roads",
-		Priority: engine.SchedPriorityMedium,
+		Priority: SchedPriorityMedium,
 		Callback: func(dt float64) { sm.Roads.Update(sm.Heightmap) },
 	})
-	sm.scheduler.Register(engine.GroupMedium, engine.UpdateTask{
+	sm.scheduler.Register(GroupMedium, UpdateTask{
 		Name:     "vehicles",
-		Priority: engine.SchedPriorityMedium,
+		Priority: SchedPriorityMedium,
 		Callback: func(dt float64) { sm.Vehicles.Update(sm.Roads, sm.Heightmap) },
 	})
-	sm.scheduler.Register(engine.GroupMedium, engine.UpdateTask{
+	sm.scheduler.Register(GroupMedium, UpdateTask{
 		Name:     "transport",
-		Priority: engine.SchedPriorityMedium,
+		Priority: SchedPriorityMedium,
 		Callback: func(dt float64) { sm.Transport.Update(sm.Roads, sm.Heightmap) },
 	})
-	sm.scheduler.Register(engine.GroupSlow, engine.UpdateTask{
+	sm.scheduler.Register(GroupSlow, UpdateTask{
 		Name:     "buildings",
-		Priority: engine.SchedPriorityHigh,
+		Priority: SchedPriorityHigh,
 		Callback: func(dt float64) { sm.Buildings.Update(sm.Zones, sm.Heightmap, sm.Roads, sm.Districts) },
 	})
-	sm.scheduler.Register(engine.GroupSlow, engine.UpdateTask{
+	sm.scheduler.Register(GroupSlow, UpdateTask{
 		Name:     "tax",
-		Priority: engine.SchedPriorityMedium,
+		Priority: SchedPriorityMedium,
 		Callback: func(dt float64) { sm.collectTax(dt) },
 	})
 }
@@ -144,10 +142,10 @@ func (sm *SimulationManager) InitDefaultRoads() {
 }
 
 func (sm *SimulationManager) Update(dt float64) {
-	sm.scheduler.RunGroup(engine.GroupFast, dt)
-	sm.scheduler.RunGroup(engine.GroupMedium, dt)
-	sm.scheduler.RunGroup(engine.GroupSlow, dt)
-	sm.scheduler.RunGroup(engine.GroupVerySlow, dt)
+	sm.scheduler.RunGroup(GroupFast, dt)
+	sm.scheduler.RunGroup(GroupMedium, dt)
+	sm.scheduler.RunGroup(GroupSlow, dt)
+	sm.scheduler.RunGroup(GroupVerySlow, dt)
 	sm.EventBus.ProcessQueue()
 }
 
@@ -165,28 +163,36 @@ func (sm *SimulationManager) collectTax(dt float64) {
 	}
 }
 
-func (sm *SimulationManager) PlaceRoad(x, z float32, roadType RoadType) (uint32, uint32) {
-	nodeA := sm.Roads.AddNode(x, z)
-	nodeB := sm.Roads.AddNode(x, z)
-	sm.Roads.AddSegment(nodeA, nodeB, roadType)
-	sm.Money -= 100
-	sm.EventBus.Emit(string(EventRoadPlaced), nil)
-	return nodeA, nodeB
+func (sm *SimulationManager) PlaceRoadNode(x, z float32) uint32 {
+	return sm.Roads.AddNode(x, z)
 }
 
-func (sm *SimulationManager) ExtendRoad(fromNode uint32, x, z float32, roadType RoadType) uint32 {
-	newNode := sm.Roads.AddNode(x, z)
-	sm.Roads.AddSegment(fromNode, newNode, roadType)
-	return newNode
+func (sm *SimulationManager) PlaceRoadSegment(nodeA uint32, x, z float32, roadType RoadType, elevation int32) (uint32, uint32) {
+	nodeB := sm.Roads.AddNode(x, z)
+	segID := sm.Roads.AddSegment(nodeA, nodeB, roadType)
+	if elevation > 0 {
+		for i := range sm.Roads.Segments {
+			if sm.Roads.Segments[i].ID == segID {
+				sm.Roads.Segments[i].Elevation = elevation
+				break
+			}
+		}
+	}
+	sm.Roads.Rebuild(sm.Heightmap)
+	sm.Money -= 100
+	sm.EventBus.Emit(string(EventRoadPlaced), segID)
+	return nodeB, segID
 }
 
 func (sm *SimulationManager) RemoveSegment(idx int) {
 	sm.Roads.RemoveSegment(idx)
+	sm.Roads.Rebuild(sm.Heightmap)
 	sm.EventBus.Emit(string(EventRoadRemoved), idx)
 }
 
 func (sm *SimulationManager) UpgradeSegment(idx int, newType RoadType) {
 	sm.Roads.UpgradeSegment(idx, newType)
+	sm.Roads.Rebuild(sm.Heightmap)
 	sm.EventBus.Emit(string(EventRoadUpgraded), idx)
 }
 
@@ -206,7 +212,11 @@ func (sm *SimulationManager) InitTerraform(chunks []*Chunk, rebuildChunk func(id
 	sm.Terraform = NewTerraformSystem(sm.Heightmap, sm.Water, chunks, rebuildChunk)
 }
 
-func (sm *SimulationManager) ToggleDayNight() {
-	sm.Night = !sm.Night
+func (sm *SimulationManager) SetNight(night bool) {
+	sm.Night = night
 	sm.EventBus.Emit(string(EventDayNightCycle), sm.Night)
+}
+
+func (sm *SimulationManager) ToggleDayNight() {
+	sm.SetNight(!sm.Night)
 }
