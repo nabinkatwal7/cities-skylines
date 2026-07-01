@@ -112,7 +112,7 @@ func (dm *DistrictManager) ApplyPolicies(b *Building) {
 	if b.Household == nil && b.Business == nil {
 		return
 	}
-	idx := dm.DistrictAt(b.X, b.Z)
+	idx := dm.DistrictAt(b.Position.X, b.Position.Z)
 	if idx < 0 {
 		return
 	}

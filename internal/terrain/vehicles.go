@@ -16,21 +16,19 @@ const (
 )
 
 type Vehicle struct {
-	ID             uint32
-	Type           VehicleType
-	X, Z           float32
-	Speed          float32
-	TargetSpeed    float32
-	Path           []uint32
-	PathIdx        int
-	SegProgress    float32
-	RoadSeg        int
-	Waiting        int32
-	Parked         bool
-	Color          rl.Color
-	Lane           int
-	TurnSignal     int
-	SignalTimer    int32
+	Entity
+	Type        VehicleType
+	Speed       float32
+	TargetSpeed float32
+	Path        []uint32
+	PathIdx     int
+	SegProgress float32
+	RoadSeg     int
+	Waiting     int32
+	Color       rl.Color
+	Lane        int
+	TurnSignal  int
+	SignalTimer int32
 }
 
 type VehicleManager struct {
@@ -54,16 +52,15 @@ func (vm *VehicleManager) SpawnCar(rm *RoadManager) {
 	lanes := roadLanes(seg.RoadType)
 	lane := int(vm.NextID) % lanes
 
-	vm.Vehicles = append(vm.Vehicles, Vehicle{
-		ID:          vm.NextID,
+	v := Vehicle{
+		Entity:      NewEntity(vm.NextID, na.X, 0, na.Z, OwnerVehicle),
 		Type:        VehicleCar,
-		X:           na.X,
-		Z:           na.Z,
 		TargetSpeed: roadSpeed(seg.RoadType) * 0.8,
 		RoadSeg:     segIdx,
 		Lane:        lane,
 		Color:       rl.NewColor(uint8(100+vm.NextID%100), uint8(50+vm.NextID%80), uint8(80+vm.NextID%100), 255),
-	})
+	}
+	vm.Vehicles = append(vm.Vehicles, v)
 	vm.NextID++
 
 	if len(vm.Vehicles) > 200 {
@@ -100,12 +97,12 @@ func (vm *VehicleManager) Update(rm *RoadManager, h *Heightmap) {
 
 	for i := range vm.Vehicles {
 		v := &vm.Vehicles[i]
-		if v.Parked {
+		if v.HasFlag(FlagParked) {
 			continue
 		}
 
 		if v.RoadSeg < 0 || v.RoadSeg >= len(rm.Segments) {
-			v.Parked = true
+			v.SetFlag(FlagParked)
 			continue
 		}
 
@@ -122,8 +119,8 @@ func (vm *VehicleManager) Update(rm *RoadManager, h *Heightmap) {
 		na := &rm.Nodes[seg.NodeA]
 
 		if na.HasTrafficLight && na.JunctionType == 1 {
-			dx := na.X - v.X
-			dz := na.Z - v.Z
+			dx := na.X - v.Position.X
+			dz := na.Z - v.Position.Z
 			distToNode := float32(math.Sqrt(float64(dx*dx + dz*dz)))
 			if distToNode < 15 && na.TrafficLightPhase >= 2 {
 				v.Speed *= 0.9
@@ -182,24 +179,24 @@ func (vm *VehicleManager) Update(rm *RoadManager, h *Heightmap) {
 			}
 		}
 
-		v.X = xs[idx] + (xs[idx+1]-xs[idx])*frac + perX*halfLane
-		v.Z = zs[idx] + (zs[idx+1]-zs[idx])*frac + perZ*halfLane
+		v.Position.X = xs[idx] + (xs[idx+1]-xs[idx])*frac + perX*halfLane
+		v.Position.Z = zs[idx] + (zs[idx+1]-zs[idx])*frac + perZ*halfLane
 
 		if v.SegProgress >= totalLen {
-			v.Parked = true
+			v.SetFlag(FlagParked)
 		}
 	}
 }
 
 func (vm *VehicleManager) Draw(h *Heightmap) {
 	for _, v := range vm.Vehicles {
-		if v.Parked {
+		if v.HasFlag(FlagParked) {
 			continue
 		}
-		hy := h.WorldHeight(v.X, v.Z) + 0.5
-		rl.DrawCube(rl.NewVector3(v.X, hy, v.Z), 1.5, 0.5, 1, v.Color)
-		rl.DrawCube(rl.NewVector3(v.X, hy+0.4, v.Z+0.6), 0.8, 0.3, 0.1, rl.NewColor(200, 50, 50, 255))
-		rl.DrawCube(rl.NewVector3(v.X, hy+0.4, v.Z-0.6), 0.8, 0.3, 0.1, rl.NewColor(200, 50, 50, 255))
+		hy := h.WorldHeight(v.Position.X, v.Position.Z) + 0.5
+		rl.DrawCube(rl.NewVector3(v.Position.X, hy, v.Position.Z), 1.5, 0.5, 1, v.Color)
+		rl.DrawCube(rl.NewVector3(v.Position.X, hy+0.4, v.Position.Z+0.6), 0.8, 0.3, 0.1, rl.NewColor(200, 50, 50, 255))
+		rl.DrawCube(rl.NewVector3(v.Position.X, hy+0.4, v.Position.Z-0.6), 0.8, 0.3, 0.1, rl.NewColor(200, 50, 50, 255))
 	}
 }
 

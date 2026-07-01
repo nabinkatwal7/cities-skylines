@@ -360,11 +360,12 @@ func (rm *RoadManager) buildSurfaceMesh(h *Heightmap, seg RoadSegment) rl.Model 
 			}
 		}
 
-		yOff := float32(0.15)
+		var hgt float32
 		if seg.Elevation > 0 {
-			yOff = float32(seg.Elevation) * 5
+			hgt = float32(seg.Elevation) * 5
+		} else {
+			hgt = h.WorldHeight(x, z) + 0.15
 		}
-		hgt := h.WorldHeight(x, z) + yOff
 
 		u := float32(si) / 4.0
 		verts = append(verts, x-perX*half, hgt, z-perZ*half)
@@ -470,12 +471,14 @@ func (rm *RoadManager) drawFallback(h *Heightmap) {
 			}
 			perX := -dz / l
 			perZ := dx / l
-			yOff := float32(0.15)
+			var h0, h1 float32
 			if seg.Elevation > 0 {
-				yOff = float32(seg.Elevation) * 5
+				h0 = float32(seg.Elevation) * 5
+				h1 = float32(seg.Elevation) * 5
+			} else {
+				h0 = h.WorldHeight(x0, z0) + 0.15
+				h1 = h.WorldHeight(x1, z1) + 0.15
 			}
-			h0 := h.WorldHeight(x0, z0) + yOff
-			h1 := h.WorldHeight(x1, z1) + yOff
 
 			al := rl.NewVector3(x0-perX*half, h0, z0-perZ*half)
 			ar := rl.NewVector3(x0+perX*half, h0, z0+perZ*half)
@@ -525,12 +528,14 @@ func (rm *RoadManager) drawMarkings(h *Heightmap) {
 			perX := -dz / l
 			perZ := dx / l
 
-			yOff := float32(0.15)
+			var h0, h1 float32
 			if seg.Elevation > 0 {
-				yOff = float32(seg.Elevation) * 5
+				h0 = float32(seg.Elevation) * 5
+				h1 = float32(seg.Elevation) * 5
+			} else {
+				h0 = h.WorldHeight(x0, z0) + 0.15
+				h1 = h.WorldHeight(x1, z1) + 0.15
 			}
-			h0 := h.WorldHeight(x0, z0) + yOff
-			h1 := h.WorldHeight(x1, z1) + yOff
 
 			for li := 0; li < lanes-1; li++ {
 				offset := (float32(li) - float32(lanes-1)*0.5 + 1) * laneW
@@ -564,6 +569,12 @@ func (rm *RoadManager) drawJunctionMarkings(h *Heightmap) {
 			continue
 		}
 		hy := h.WorldHeight(n.X, n.Z) + 0.2
+		for _, sid := range n.Connected {
+			if rm.Segments[sid].Elevation > 0 {
+				hy = float32(rm.Segments[sid].Elevation) * 5
+				break
+			}
+		}
 		col := rl.NewColor(200, 100, 100, 200)
 		if n.JunctionType == 2 {
 			col = rl.NewColor(100, 100, 200, 200)

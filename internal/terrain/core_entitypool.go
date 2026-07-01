@@ -1,13 +1,13 @@
 package terrain
 
-type Entity interface {
+type EntityI interface {
 	GetID() int
 	SetID(id int)
 	GetLifecycle() LifecycleState
 	SetLifecycle(state LifecycleState)
 }
 
-type EntityPool[T Entity] struct {
+type EntityPool[T EntityI] struct {
 	pool     []T
 	freeList []int
 	size     int
@@ -15,7 +15,7 @@ type EntityPool[T Entity] struct {
 	factory  func() T
 }
 
-func NewEntityPool[T Entity](capacity int, factory func() T) *EntityPool[T] {
+func NewEntityPool[T EntityI](capacity int, factory func() T) *EntityPool[T] {
 	p := &EntityPool[T]{
 		pool:     make([]T, capacity),
 		freeList: make([]int, capacity),

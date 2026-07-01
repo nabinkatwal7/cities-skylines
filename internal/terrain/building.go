@@ -8,42 +8,39 @@ import (
 
 type HouseholdInfo struct {
 	FamilyMembers int32
-	Wealth        int32 // 0-100
-	Education     int32 // 0-100
-	Happiness     int32 // 0-100
+	Wealth        int32
+	Education     int32
+	Happiness     int32
 }
 
 type BusinessInfo struct {
-	Production   int32
-	GoodsStored  int32
-	Profitability int32 // 0-100
+	Production    int32
+	GoodsStored   int32
+	Profitability int32
 }
 
 type ServiceConsumption struct {
-	Power  float32
-	Water  float32
+	Power   float32
+	Water   float32
 	Garbage float32
 }
 
 type Building struct {
-	X, Z              float32
-	Type              ZoneType
-	Seed              int32
-	Width, Depth      float32
-	Height            float32
-	Level             int32
-	UpgradeTimer      int32
-	Workers           int32
-	Residents         int32
-	Abandoned         bool
-	AbandonTimer      int32
-	HasRoad           bool
-	CellX, CellZ      int
-	ConstructTimer    int32
-	Constructed       bool
-	Household         *HouseholdInfo
-	Business          *BusinessInfo
-	Consumption       ServiceConsumption
+	Entity
+	Type         ZoneType
+	Seed         int32
+	Width, Depth float32
+	Height       float32
+	Level        int32
+	UpgradeTimer int32
+	Workers      int32
+	Residents    int32
+	AbandonTimer int32
+	CellX, CellZ int
+	ConstructTimer int32
+	Household    *HouseholdInfo
+	Business     *BusinessInfo
+	Consumption  ServiceConsumption
 }
 
 type BuildingManager struct {
@@ -54,11 +51,11 @@ type BuildingManager struct {
 	comDemand int
 	indDemand int
 	offDemand int
-	TotalPowerUsed  float32
-	TotalWaterUsed  float32
-	TotalGarbage    float32
-	TotalWealth     int32
-	TotalHappiness  int32
+	TotalPowerUsed   float32
+	TotalWaterUsed   float32
+	TotalGarbage     float32
+	TotalWealth      int32
+	TotalHappiness   int32
 }
 
 func NewBuildingManager() *BuildingManager {
@@ -94,61 +91,59 @@ func (bm *BuildingManager) Update(zm *ZoneManager, h *Heightmap, roads *RoadMana
 			if bm.shouldDevelop(cell) {
 				cell.Density += 0.005
 			}
-			if 			cell.Density >= 0.5 {
+			if cell.Density >= 0.5 {
 				w := 5 + float32(bm.nextSeed%3)*1.5
 				d := 5 + float32((bm.nextSeed+1)%3)*1.5
 				hgt := buildingHeight(cell.Type, bm.nextSeed)
 				res, workers := calcPopulation(cell.Type, bm.nextSeed)
 				bld := Building{
-				X: cx, Z: cz,
-				Type:        cell.Type,
-				Seed:        bm.nextSeed,
-				Width:       w,
-				Depth:       d,
-				Height:      hgt,
-				Level:       1,
-				Residents:   res,
-				Workers:     workers,
-				HasRoad:     true,
-				CellX:       x,
-				CellZ:       z,
-				Constructed: false,
-			}
-			if cell.Type == ZoneResidentialLow || cell.Type == ZoneResidentialHigh {
-				bld.Household = &HouseholdInfo{
-					FamilyMembers: res,
-					Wealth:        30 + bm.nextSeed%30,
-					Education:     10 + bm.nextSeed%20,
-					Happiness:     50,
+					Entity:    NewEntity(uint32(bm.nextSeed), cx, 0, cz, OwnerBuilding),
+					Type:      cell.Type,
+					Seed:      bm.nextSeed,
+					Width:     w,
+					Depth:     d,
+					Height:    hgt,
+					Level:     1,
+					Residents: res,
+					Workers:   workers,
+					CellX:     x,
+					CellZ:     z,
 				}
-				bld.Consumption.Power = 1.0 + float32(bld.Level)*0.5
-				bld.Consumption.Water = 0.8 + float32(bld.Level)*0.3
-				bld.Consumption.Garbage = 0.5 + float32(bld.Level)*0.2
-			}
-			if cell.Type == ZoneCommercialLow || cell.Type == ZoneCommercialHigh || cell.Type == ZoneIndustrial || cell.Type == ZoneOffice {
-				bld.Business = &BusinessInfo{
-					GoodsStored:   10,
-					Profitability: 50,
+				bld.SetFlag(FlagHasRoad)
+				if cell.Type == ZoneResidentialLow || cell.Type == ZoneResidentialHigh {
+					bld.Household = &HouseholdInfo{
+						FamilyMembers: res,
+						Wealth:        30 + bm.nextSeed%30,
+						Education:     10 + bm.nextSeed%20,
+						Happiness:     50,
+					}
+					bld.Consumption.Power = 1.0 + float32(bld.Level)*0.5
+					bld.Consumption.Water = 0.8 + float32(bld.Level)*0.3
+					bld.Consumption.Garbage = 0.5 + float32(bld.Level)*0.2
 				}
-				bld.Consumption.Power = 2.0 + float32(bld.Level)
-				bld.Consumption.Water = 1.0 + float32(bld.Level)*0.5
-				bld.Consumption.Garbage = 1.0 + float32(bld.Level)*0.5
+				if cell.Type == ZoneCommercialLow || cell.Type == ZoneCommercialHigh || cell.Type == ZoneIndustrial || cell.Type == ZoneOffice {
+					bld.Business = &BusinessInfo{
+						GoodsStored:   10,
+						Profitability: 50,
+					}
+					bld.Consumption.Power = 2.0 + float32(bld.Level)
+					bld.Consumption.Water = 1.0 + float32(bld.Level)*0.5
+					bld.Consumption.Garbage = 1.0 + float32(bld.Level)*0.5
+				}
+				bm.Buildings = append(bm.Buildings, bld)
+				bm.nextSeed++
 			}
-			bm.Buildings = append(bm.Buildings, bld)
-			bm.nextSeed++
 		}
-	}
 	}
 	for i := range bm.Buildings {
 		b := &bm.Buildings[i]
-		if b.Abandoned {
+		if b.HasFlag(FlagAbandoned) {
 			b.AbandonTimer++
 			if b.AbandonTimer > 1800 {
 				if b.CellX >= 0 && b.CellX < zm.width && b.CellZ >= 0 && b.CellZ < zm.height {
 					zm.Cells[b.CellZ][b.CellX].Density = 0
 				}
-				b.Z = -99999
-				b.X = -99999
+				b.SetFlag(FlagRemoved)
 				b.Residents = 0
 				b.Workers = 0
 			}
@@ -156,20 +151,24 @@ func (bm *BuildingManager) Update(zm *ZoneManager, h *Heightmap, roads *RoadMana
 		}
 
 		cellSize := WorldSize / float32(zm.width)
-		hasRoad := roads.HasNearbyRoad(b.X, b.Z, cellSize*2)
-		b.HasRoad = hasRoad
+		hasRoad := roads.HasNearbyRoad(b.Position.X, b.Position.Z, cellSize*2)
+		if hasRoad {
+			b.SetFlag(FlagHasRoad)
+		} else {
+			b.ClearFlag(FlagHasRoad)
+		}
 		if !hasRoad {
-			b.Abandoned = true
+			b.SetFlag(FlagAbandoned)
 			b.AbandonTimer = 0
 			b.Residents = 0
 			b.Workers = 0
 			continue
 		}
 
-		if !b.Constructed {
+		if !b.HasFlag(FlagConstructed) {
 			b.ConstructTimer++
 			if b.ConstructTimer > 300 {
-				b.Constructed = true
+				b.SetFlag(FlagConstructed)
 			}
 			continue
 		}
@@ -180,19 +179,17 @@ func (bm *BuildingManager) Update(zm *ZoneManager, h *Heightmap, roads *RoadMana
 			bm.TotalPowerUsed += b.Consumption.Power
 			bm.TotalWaterUsed += b.Consumption.Water
 			bm.TotalGarbage += b.Consumption.Garbage
-			if b.Constructed {
-				if b.Household.Happiness < 80 {
-					b.Household.Happiness++
-				}
-				if b.Household.Wealth < 70 {
-					b.Household.Wealth++
-				}
+			if b.Household.Happiness < 80 {
+				b.Household.Happiness++
+			}
+			if b.Household.Wealth < 70 {
+				b.Household.Wealth++
 			}
 		}
 		if b.Business != nil {
 			bm.TotalPowerUsed += b.Consumption.Power
 			bm.TotalWaterUsed += b.Consumption.Water
-			if b.Constructed && b.Business.GoodsStored < 50 {
+			if b.Business.GoodsStored < 50 {
 				b.Business.GoodsStored++
 			}
 			if b.Business.Profitability < 60 {
@@ -246,6 +243,9 @@ func (bm *BuildingManager) calcDemand(zm *ZoneManager) {
 	offJobs := int32(0)
 	total := 0
 	for _, b := range bm.Buildings {
+		if b.HasFlag(FlagRemoved) {
+			continue
+		}
 		total++
 		switch b.Type {
 		case ZoneResidentialLow, ZoneResidentialHigh:
@@ -316,7 +316,7 @@ func buildingHeight(zt ZoneType, seed int32) float32 {
 
 func landValue(b *Building, h *Heightmap) int32 {
 	val := int32(30)
-	if b.HasRoad {
+	if b.HasFlag(FlagHasRoad) {
 		val += 20
 	}
 	switch b.Type {
@@ -327,7 +327,7 @@ func landValue(b *Building, h *Heightmap) int32 {
 	case ZoneOffice:
 		val += 15
 	}
-	hy := h.WorldHeight(b.X, b.Z)
+	hy := h.WorldHeight(b.Position.X, b.Position.Z)
 	if hy < 12 {
 		val += 15
 	}
@@ -341,7 +341,7 @@ func (bm *BuildingManager) Demand() (res, com, ind int) {
 func (bm *BuildingManager) Population() int32 {
 	total := int32(0)
 	for _, b := range bm.Buildings {
-		if b.X < -99998 {
+		if b.HasFlag(FlagRemoved) {
 			continue
 		}
 		total += b.Residents
@@ -353,11 +353,11 @@ func (bm *BuildingManager) NearestInfo(wx, wz float32, radius float32) string {
 	best := float32(radius * radius)
 	idx := -1
 	for i, b := range bm.Buildings {
-		if b.X < -99998 {
+		if b.HasFlag(FlagRemoved) {
 			continue
 		}
-		dx := b.X - wx
-		dz := b.Z - wz
+		dx := b.Position.X - wx
+		dz := b.Position.Z - wz
 		d := dx*dx + dz*dz
 		if d < best {
 			best = d
@@ -369,12 +369,13 @@ func (bm *BuildingManager) NearestInfo(wx, wz float32, radius float32) string {
 	}
 	b := bm.Buildings[idx]
 	name := ZoneTypeName(b.Type)
-	lvl := "I"
-	for b.Level > 1 {
+	levelCount := b.Level
+	lvl := ""
+	for i := int32(0); i < levelCount; i++ {
 		lvl += "I"
 	}
 	extra := " | "
-	if b.Abandoned {
+	if b.HasFlag(FlagAbandoned) {
 		extra += "ABANDONED"
 	} else if b.Residents > 0 {
 		extra += fmt.Sprintf("Pop: %d", b.Residents)
@@ -387,7 +388,7 @@ func (bm *BuildingManager) NearestInfo(wx, wz float32, radius float32) string {
 			extra += fmt.Sprintf(" P:%d%%", b.Business.Profitability)
 		}
 	}
-	if !b.Constructed {
+	if !b.HasFlag(FlagConstructed) {
 		pct := int(float32(b.ConstructTimer) / 300.0 * 100)
 		extra += fmt.Sprintf(" Building %d%%", pct)
 	}
@@ -396,10 +397,10 @@ func (bm *BuildingManager) NearestInfo(wx, wz float32, radius float32) string {
 
 func (bm *BuildingManager) Draw(h *Heightmap, zm *ZoneManager, isNight bool) {
 	for _, b := range bm.Buildings {
-		if b.X < -99998 {
+		if b.HasFlag(FlagRemoved) {
 			continue
 		}
-		hy := h.WorldHeight(b.X, b.Z)
+		hy := h.WorldHeight(b.Position.X, b.Position.Z)
 		col := ZoneColor(b.Type)
 		col.A = 255
 
@@ -410,19 +411,18 @@ func (bm *BuildingManager) Draw(h *Heightmap, zm *ZoneManager, isNight bool) {
 			if b.Type == ZoneResidentialLow {
 				s = b.Width * 0.12 * lvlScale
 			}
-			pos := rl.NewVector3(b.X, hy+0.5, b.Z)
 			axis := rl.NewVector3(0, 1, 0)
-			rl.DrawModelEx(m, pos, axis, float32(b.Seed)*60, rl.NewVector3(s, s, s), rl.White)
+			rl.DrawModelEx(m, b.Position, axis, b.Rotation.W*rl.Rad2deg, rl.NewVector3(s, s, s), rl.White)
 			continue
 		}
 
-		if b.Abandoned {
+		if b.HasFlag(FlagAbandoned) {
 			grey := rl.NewColor(80, 80, 80, 255)
-			rl.DrawCube(rl.NewVector3(b.X, hy+b.Height*0.5*lvlScale, b.Z), b.Width, b.Height*lvlScale, b.Depth, grey)
+			rl.DrawCube(rl.NewVector3(b.Position.X, hy+b.Height*0.5*lvlScale, b.Position.Z), b.Width, b.Height*lvlScale, b.Depth, grey)
 			continue
 		}
 
-		if !b.Constructed {
+		if !b.HasFlag(FlagConstructed) {
 			progress := float32(b.ConstructTimer) / 300.0
 			if progress > 1 {
 				progress = 1
@@ -435,9 +435,9 @@ func (bm *BuildingManager) Draw(h *Heightmap, zm *ZoneManager, isNight bool) {
 				255,
 			)
 			if progress < 0.3 {
-				rl.DrawCube(rl.NewVector3(b.X, hy+currH*0.3, b.Z), b.Width*0.5, currH*0.6, b.Depth*0.5, constructCol)
+				rl.DrawCube(rl.NewVector3(b.Position.X, hy+currH*0.3, b.Position.Z), b.Width*0.5, currH*0.6, b.Depth*0.5, constructCol)
 			} else {
-				rl.DrawCube(rl.NewVector3(b.X, hy+currH*0.5, b.Z), b.Width, currH, b.Depth, constructCol)
+				rl.DrawCube(rl.NewVector3(b.Position.X, hy+currH*0.5, b.Position.Z), b.Width, currH, b.Depth, constructCol)
 			}
 			continue
 		}
@@ -445,7 +445,7 @@ func (bm *BuildingManager) Draw(h *Heightmap, zm *ZoneManager, isNight bool) {
 		baseH := b.Height * 0.7 * lvlScale
 		roofH := b.Height * 0.3 * lvlScale
 
-		rl.DrawCube(rl.NewVector3(b.X, hy+baseH*0.5, b.Z), b.Width, baseH, b.Depth, col)
+		rl.DrawCube(rl.NewVector3(b.Position.X, hy+baseH*0.5, b.Position.Z), b.Width, baseH, b.Depth, col)
 
 		roofCol := rl.NewColor(
 			uint8(float32(col.R)*0.7),
@@ -457,17 +457,17 @@ func (bm *BuildingManager) Draw(h *Heightmap, zm *ZoneManager, isNight bool) {
 		roofBase := hy + baseH
 
 		if b.Type == ZoneIndustrial || b.Type == ZoneCommercialHigh {
-			rl.DrawCube(rl.NewVector3(b.X, roofTop, b.Z), b.Width*0.85, roofH, b.Depth*0.85, roofCol)
+			rl.DrawCube(rl.NewVector3(b.Position.X, roofTop, b.Position.Z), b.Width*0.85, roofH, b.Depth*0.85, roofCol)
 		} else if b.Type == ZoneResidentialLow {
 			hw := b.Width * 0.5
 			hd := b.Depth * 0.5
-			rl.DrawTriangle3D(rl.NewVector3(b.X-hw, roofBase, b.Z-hd), rl.NewVector3(b.X+hw, roofBase, b.Z-hd), rl.NewVector3(b.X, roofTop, b.Z), roofCol)
-			rl.DrawTriangle3D(rl.NewVector3(b.X+hw, roofBase, b.Z-hd), rl.NewVector3(b.X+hw, roofBase, b.Z+hd), rl.NewVector3(b.X, roofTop, b.Z), roofCol)
-			rl.DrawTriangle3D(rl.NewVector3(b.X+hw, roofBase, b.Z+hd), rl.NewVector3(b.X-hw, roofBase, b.Z+hd), rl.NewVector3(b.X, roofTop, b.Z), roofCol)
-			rl.DrawTriangle3D(rl.NewVector3(b.X-hw, roofBase, b.Z+hd), rl.NewVector3(b.X-hw, roofBase, b.Z-hd), rl.NewVector3(b.X, roofTop, b.Z), roofCol)
+			rl.DrawTriangle3D(rl.NewVector3(b.Position.X-hw, roofBase, b.Position.Z-hd), rl.NewVector3(b.Position.X+hw, roofBase, b.Position.Z-hd), rl.NewVector3(b.Position.X, roofTop, b.Position.Z), roofCol)
+			rl.DrawTriangle3D(rl.NewVector3(b.Position.X+hw, roofBase, b.Position.Z-hd), rl.NewVector3(b.Position.X+hw, roofBase, b.Position.Z+hd), rl.NewVector3(b.Position.X, roofTop, b.Position.Z), roofCol)
+			rl.DrawTriangle3D(rl.NewVector3(b.Position.X+hw, roofBase, b.Position.Z+hd), rl.NewVector3(b.Position.X-hw, roofBase, b.Position.Z+hd), rl.NewVector3(b.Position.X, roofTop, b.Position.Z), roofCol)
+			rl.DrawTriangle3D(rl.NewVector3(b.Position.X-hw, roofBase, b.Position.Z+hd), rl.NewVector3(b.Position.X-hw, roofBase, b.Position.Z-hd), rl.NewVector3(b.Position.X, roofTop, b.Position.Z), roofCol)
 		} else {
 			roofY := roofBase + roofH*0.5
-			rl.DrawCube(rl.NewVector3(b.X, roofY, b.Z), b.Width*0.9, roofH*0.9, b.Depth*0.9, roofCol)
+			rl.DrawCube(rl.NewVector3(b.Position.X, roofY, b.Position.Z), b.Width*0.9, roofH*0.9, b.Depth*0.9, roofCol)
 		}
 
 		isLit := isNight
@@ -501,7 +501,7 @@ func (bm *BuildingManager) Draw(h *Heightmap, zm *ZoneManager, isNight bool) {
 						} else if !isLit && (b.Seed+int32(wi+wj+layer))%2 == 0 {
 							col2 = rl.NewColor(120, 140, 160, 200)
 						}
-						rl.DrawCube(rl.NewVector3(b.X+wx, winY+yoff-baseH*0.5+1.25, b.Z+wz), ww, 1.5, wd, col2)
+						rl.DrawCube(rl.NewVector3(b.Position.X+wx, winY+yoff-baseH*0.5+1.25, b.Position.Z+wz), ww, 1.5, wd, col2)
 					}
 				}
 			}

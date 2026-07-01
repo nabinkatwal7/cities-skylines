@@ -177,11 +177,11 @@ func SaveGame(filename string, m *SimulationManager, money float32, timeOfDay in
 
 		if m.Buildings != nil {
 		for _, b := range m.Buildings.Buildings {
-			if b.X < -99998 {
+			if b.HasFlag(FlagRemoved) {
 				continue
 			}
 			bd := BuildingData{
-				X: b.X, Z: b.Z,
+				X: b.Position.X, Z: b.Position.Z,
 				Type:          b.Type,
 				Seed:          b.Seed,
 				Width:         b.Width,
@@ -190,10 +190,10 @@ func SaveGame(filename string, m *SimulationManager, money float32, timeOfDay in
 				Level:         b.Level,
 				Residents:     b.Residents,
 				Workers:       b.Workers,
-				Abandoned:     b.Abandoned,
+				Abandoned:     b.HasFlag(FlagAbandoned),
 				ConstructTimer: b.ConstructTimer,
-				Constructed:   b.Constructed,
-				HasRoad:       b.HasRoad,
+				Constructed:   b.HasFlag(FlagConstructed),
+				HasRoad:       b.HasFlag(FlagHasRoad),
 				UpgradeTimer:  b.UpgradeTimer,
 				AbandonTimer:  b.AbandonTimer,
 				ConsPower:     b.Consumption.Power,
@@ -336,7 +336,7 @@ func LoadGame(filename string, m *SimulationManager) (money float32, timeOfDay i
 		m.Buildings.nextSeed = 0
 		for _, bd := range data.Buildings {
 			b := Building{
-				X: bd.X, Z: bd.Z,
+				Entity:        NewEntity(uint32(bd.Seed), bd.X, 0, bd.Z, OwnerBuilding),
 				Type:          bd.Type,
 				Seed:          bd.Seed,
 				Width:         bd.Width,
@@ -345,12 +345,18 @@ func LoadGame(filename string, m *SimulationManager) (money float32, timeOfDay i
 				Level:         bd.Level,
 				Residents:     bd.Residents,
 				Workers:       bd.Workers,
-				Abandoned:     bd.Abandoned,
 				ConstructTimer: bd.ConstructTimer,
-				Constructed:   bd.Constructed,
-				HasRoad:       bd.HasRoad,
 				UpgradeTimer:  bd.UpgradeTimer,
 				AbandonTimer:  bd.AbandonTimer,
+			}
+			if bd.Abandoned {
+				b.SetFlag(FlagAbandoned)
+			}
+			if bd.Constructed {
+				b.SetFlag(FlagConstructed)
+			}
+			if bd.HasRoad {
+				b.SetFlag(FlagHasRoad)
 			}
 			b.Consumption.Power = bd.ConsPower
 			b.Consumption.Water = bd.ConsWater
