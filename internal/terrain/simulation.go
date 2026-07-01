@@ -84,6 +84,7 @@ func NewSimulationManager(seed int64) *SimulationManager {
 	}
 
 	sm.initScheduler()
+	sm.initEventListeners()
 	return sm
 }
 
@@ -129,6 +130,39 @@ func (sm *SimulationManager) initScheduler() {
 		Priority: SchedPriorityMedium,
 		BudgetMs: 1,
 		Callback: func(dt float64) { sm.collectTax(dt) },
+	})
+}
+
+func (sm *SimulationManager) initEventListeners() {
+	sm.EventBus.On(string(EventRoadRemoved), func(data any) {
+		idx, ok := data.(int)
+		if ok && sm.Vehicles != nil {
+			sm.Vehicles.OnRoadRemoved(idx)
+		}
+	})
+	sm.EventBus.On(string(EventBuildingDemolished), func(data any) {
+		if sm.Zones == nil {
+			return
+		}
+		if cellX, ok := data.(int); ok {
+			_ = cellX
+		}
+	})
+	sm.EventBus.On(string(EventDayNightCycle), func(data any) {
+		isNight, ok := data.(bool)
+		if ok && sm.Roads != nil {
+			sm.Roads.SetNightMode(isNight)
+		}
+	})
+	sm.EventBus.On(string(EventTimeHour), func(data any) {
+		if sm.Buildings != nil {
+			sm.Buildings.FlushStats()
+		}
+	})
+	sm.EventBus.On(string(EventZoneCleared), func(data any) {
+		if sm.Zones == nil {
+			return
+		}
 	})
 }
 

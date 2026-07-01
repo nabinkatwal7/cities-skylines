@@ -105,6 +105,7 @@ type RoadManager struct {
 	NextID     uint32
 	roadTex    rl.Texture2D
 	lightTimer int32
+	nightMode  bool
 }
 
 func NewRoadManager() *RoadManager {
@@ -395,6 +396,10 @@ func (rm *RoadManager) buildSurfaceMesh(h *Heightmap, seg RoadSegment) rl.Model 
 		rl.SetMaterialTexture(&mats[0], rl.MapAlbedo, rm.roadTex)
 	}
 	return model
+}
+
+func (rm *RoadManager) SetNightMode(isNight bool) {
+	rm.nightMode = isNight
 }
 
 func (rm *RoadManager) Update(h *Heightmap) {

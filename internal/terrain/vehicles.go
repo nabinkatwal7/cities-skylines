@@ -276,6 +276,16 @@ func (vm *VehicleManager) Draw(h *Heightmap) {
 	})
 }
 
+func (vm *VehicleManager) OnRoadRemoved(segIdx int) {
+	for i := 0; i < VehiclePoolSize; i++ {
+		v := &vm.Pool[i]
+		if v.Lifecycle == LifecycleActive && v.RoadSeg == segIdx {
+			v.Lifecycle = LifecycleMarkedForRemoval
+			v.RemovalTimer = 0
+		}
+	}
+}
+
 func (vm *VehicleManager) Unload() {
 	for i := 0; i < VehiclePoolSize; i++ {
 		if vm.Pool[i].Lifecycle == LifecycleActive {
