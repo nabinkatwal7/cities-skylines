@@ -15,6 +15,12 @@ type buildState struct {
 	roadType  terrain.RoadType
 	zoneType  terrain.ZoneType
 	zoneMode  bool
+	parkMode  bool
+}
+
+type economy struct {
+	money      float32
+	taxTimer   int32
 }
 
 const (
@@ -50,6 +56,7 @@ func main() {
 
 	uploaded := false
 	bld := buildState{roadType: terrain.RoadTwoLane, zoneType: terrain.ZoneResidentialLow}
+	eco := economy{money: 100000}
 
 	for !rl.WindowShouldClose() {
 		if !uploaded {
@@ -128,8 +135,20 @@ func main() {
 		cam.Position.Y = target.Y + dist*float32(math.Sin(float64(pitch)))
 		cam.Position.Z = target.Z + dist*float32(math.Cos(float64(pitch)))*float32(math.Cos(float64(yaw)))
 
+		eco.taxTimer++
+		if eco.taxTimer > 60 {
+			eco.taxTimer = 0
+			eco.money += float32(len(t.Buildings.Buildings)) * 0.5
+		}
+
 		if rl.IsKeyPressed(rl.KeyTab) {
 			bld.zoneMode = !bld.zoneMode
+			bld.parkMode = false
+			bld.active = false
+		}
+		if rl.IsKeyPressed(rl.KeyF) {
+			bld.parkMode = !bld.parkMode
+			bld.zoneMode = false
 			bld.active = false
 		}
 
@@ -145,15 +164,21 @@ func main() {
 			mouseOnTerrain = true
 		}
 
-		if bld.zoneMode {
+		if bld.parkMode {
+			if rl.IsMouseButtonPressed(rl.MouseButtonLeft) && mouseOnTerrain && eco.money >= 500 {
+				t.Services.AddPark(worldX, worldZ)
+				eco.money -= 500
+			}
+		} else if bld.zoneMode {
 			if rl.IsKeyPressed(rl.KeyR) {
 				bld.zoneType = (bld.zoneType + 1) % 7
 				if bld.zoneType == terrain.ZoneNone {
 					bld.zoneType = 1
 				}
 			}
-			if rl.IsMouseButtonDown(rl.MouseButtonLeft) && mouseOnTerrain && !rl.IsKeyDown(rl.KeyLeftShift) {
+			if rl.IsMouseButtonPressed(rl.MouseButtonLeft) && mouseOnTerrain && eco.money >= 20 {
 				t.Zones.SetZone(worldX, worldZ, bld.zoneType)
+				eco.money -= 20
 			}
 		} else {
 			if rl.IsKeyPressed(rl.KeyR) {
@@ -166,13 +191,19 @@ func main() {
 				cx := clamp(worldX, -240, 240)
 				cz := clamp(worldZ, -240, 240)
 				if !bld.active {
-					bld.active = true
-					bld.startNode = t.Roads.AddNode(cx, cz)
+					if eco.money >= 100 {
+						bld.active = true
+						bld.startNode = t.Roads.AddNode(cx, cz)
+						eco.money -= 100
+					}
 				} else {
-					endNode := t.Roads.AddNode(cx, cz)
-					t.Roads.AddSegment(bld.startNode, endNode, bld.roadType)
-					t.Roads.Rebuild(t.Heightmap)
-					bld.startNode = endNode
+					if eco.money >= 100 {
+						endNode := t.Roads.AddNode(cx, cz)
+						t.Roads.AddSegment(bld.startNode, endNode, bld.roadType)
+						t.Roads.Rebuild(t.Heightmap)
+						bld.startNode = endNode
+						eco.money -= 100
+					}
 				}
 			}
 		}
@@ -188,6 +219,10 @@ func main() {
 			sh := t.Heightmap.WorldHeight(startNode.X, startNode.Z)
 			rl.DrawLine3D(rl.NewVector3(startNode.X, sh+0.2, startNode.Z), rl.NewVector3(worldX, h+0.2, worldZ), rl.Green)
 		}
+		if bld.parkMode && mouseOnTerrain {
+			h := t.Heightmap.WorldHeight(worldX, worldZ)
+			rl.DrawCube(rl.NewVector3(worldX, h+0.3, worldZ), 3, 0.2, 3, rl.NewColor(80, 200, 80, 120))
+		}
 		if bld.zoneMode && mouseOnTerrain {
 			h := t.Heightmap.WorldHeight(worldX, worldZ)
 			rl.DrawCube(rl.NewVector3(worldX, h+0.5, worldZ), 8, 0.3, 8, terrain.ZoneColor(bld.zoneType))
@@ -199,23 +234,53 @@ func main() {
 		rl.DrawGrid(100, 4.0)
 		rl.EndMode3D()
 		rl.DrawFPS(10, 10)
-		helpY := int32(30)
-		if bld.zoneMode {
+		rl.DrawText(fmt.Sprintf("$%.0f", eco.money), 10, 10, 18, rl.NewColor(100, 220, 100, 220))
+		helpY := int32(35)
+		if bld.parkMode {
+			rl.DrawText(fmt.Sprintf("PARK MODE: place parks (L-click) | F=toggle off | TAB=roads | $500 each"), 10, helpY, 15, rl.Green)
+		} else if bld.zoneMode {
 			rl.DrawText(fmt.Sprintf("ZONE MODE: paint zones (L-click drag) | R=change type | TAB=back to roads"), 10, helpY, 15, rl.Blue)
 			rl.DrawText(fmt.Sprintf("Zone: %s", zoneTypeName(bld.zoneType)), 10, helpY+20, 15, rl.Gray)
 		} else if bld.active {
 			rl.DrawText(fmt.Sprintf("ROAD BUILDING: place road (L-click) | R=change type | Esc=cancel | TAB=zones"), 10, helpY, 15, rl.Green)
 			rl.DrawText(fmt.Sprintf("Road type: %s", roadTypeName(bld.roadType)), 10, helpY+20, 15, rl.Gray)
 		} else {
-			rl.DrawText(fmt.Sprintf("L-click=build road | TAB=zone mode | WASD=pan | Scroll=zoom | R-drag=orbit"), 10, helpY, 15, rl.White)
+			rl.DrawText(fmt.Sprintf("L-click=build road | TAB=zone mode | F=parks | WASD=pan | Scroll=zoom | R-drag=orbit"), 10, helpY, 15, rl.White)
 		}
 		if mouseOnTerrain {
 			rl.DrawText(fmt.Sprintf("(%.1f, %.1f)", worldX, worldZ), screenWidth-200, 50, 15, rl.Gray)
+			drawBuildingInfo(t, worldX, worldZ)
 		}
+		drawDemandBars(t)
 		rl.EndDrawing()
 	}
 
 	t.Unload()
+}
+
+func drawBuildingInfo(t *terrain.Manager, wx, wz float32) {
+	info := t.Buildings.NearestInfo(wx, wz, 8)
+	if info != "" {
+		rl.DrawRectangle(screenWidth/2-150, 10, 300, 50, rl.NewColor(0, 0, 0, 180))
+		rl.DrawText(info, screenWidth/2-140, 18, 16, rl.White)
+	}
+}
+
+func drawDemandBars(t *terrain.Manager) {
+	r, c, i := t.Buildings.Demand()
+	bx := int32(screenWidth - 300)
+	by := int32(10)
+	bw := int32(80)
+
+	bar := func(label string, val int, y int32, col rl.Color) {
+		rl.DrawText(label, bx, by+y, 14, rl.Gray)
+		w := clampInt32(int32(val)*10, 0, bw)
+		rl.DrawRectangle(bx+40, by+y, w, 12, col)
+		rl.DrawRectangleLines(bx+40, by+y, bw, 12, rl.DarkGray)
+	}
+	bar("R", r, 0, rl.NewColor(100, 200, 100, 220))
+	bar("C", c, 20, rl.NewColor(100, 150, 255, 220))
+	bar("I", i, 40, rl.NewColor(255, 200, 80, 220))
 }
 
 func clamp(v, min, max float32) float32 {
@@ -241,6 +306,16 @@ func roadTypeName(rt terrain.RoadType) string {
 	default:
 		return "Unknown"
 	}
+}
+
+func clampInt32(v, min, max int32) int32 {
+	if v < min {
+		return min
+	}
+	if v > max {
+		return max
+	}
+	return v
 }
 
 func zoneTypeName(zt terrain.ZoneType) string {

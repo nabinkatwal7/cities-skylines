@@ -1,6 +1,8 @@
 package terrain
 
 import (
+	"fmt"
+
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
 
@@ -166,6 +168,34 @@ func landValue(b *Building, h *Heightmap) int32 {
 
 func roadsNearby(x, z float32, radius float32, h *Heightmap) bool {
 	return true
+}
+
+func (bm *BuildingManager) Demand() (res, com, ind int) {
+	return bm.resDemand, bm.comDemand, bm.indDemand
+}
+
+func (bm *BuildingManager) NearestInfo(wx, wz float32, radius float32) string {
+	best := float32(radius * radius)
+	idx := -1
+	for i, b := range bm.Buildings {
+		dx := b.X - wx
+		dz := b.Z - wz
+		d := dx*dx + dz*dz
+		if d < best {
+			best = d
+			idx = i
+		}
+	}
+	if idx < 0 {
+		return ""
+	}
+	b := bm.Buildings[idx]
+	name := ZoneTypeName(b.Type)
+	lvl := "I"
+	for b.Level > 1 {
+		lvl += "I"
+	}
+	return fmt.Sprintf("%s Lvl %s | %g x %g", name, lvl, b.Width, b.Depth)
 }
 
 func (bm *BuildingManager) Draw(h *Heightmap, zm *ZoneManager) {

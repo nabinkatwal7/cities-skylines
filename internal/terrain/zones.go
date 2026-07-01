@@ -51,6 +51,25 @@ func (zm *ZoneManager) SetZone(worldX, worldZ float32, zt ZoneType) {
 	zm.Cells[z][x].Type = zt
 }
 
+func ZoneTypeName(zt ZoneType) string {
+	switch zt {
+	case ZoneResidentialLow:
+		return "Residential Low"
+	case ZoneResidentialHigh:
+		return "Residential High"
+	case ZoneCommercialLow:
+		return "Commercial Low"
+	case ZoneCommercialHigh:
+		return "Commercial High"
+	case ZoneIndustrial:
+		return "Industrial"
+	case ZoneOffice:
+		return "Office"
+	default:
+		return "None"
+	}
+}
+
 func ZoneColor(zt ZoneType) rl.Color {
 	switch zt {
 	case ZoneResidentialLow:
