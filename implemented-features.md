@@ -2444,3 +2444,67 @@ Destination
 Vehicles never teleport unless explicitly despawned.
 
 ---
+
+## 3.17 Traffic Lights
+
+Traffic lights operate using phases.
+
+```text
+North South
+
+Green
+
+↓
+
+Yellow
+
+↓
+
+Red
+
+↓
+
+East West
+
+Green
+```
+
+Signal timing adapts to junction configuration.
+
+Pedestrian crossings synchronize with vehicle phases.
+
+---
+
+## 3.18 Roundabouts
+
+Roundabouts are treated as specialized junctions.
+
+Rules:
+
+- Entering vehicles yield.
+- Vehicles inside have priority.
+- Lane selection occurs before entry.
+- Exits follow predefined lane connectivity.
+
+---
+
+## 3.19 Parking
+
+Citizens attempt to park near destinations.
+
+Parking options:
+
+- Roadside
+- Parking Lots
+- Parking Garages
+
+If parking is unavailable:
+
+- Search nearby
+- Continue driving
+- Select alternative parking
+- Walk remaining distance
+
+Parking availability influences traffic congestion.
+
+---

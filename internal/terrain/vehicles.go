@@ -179,6 +179,38 @@ func (vm *VehicleManager) chooseLane(v *Vehicle, rm *RoadManager, seg RoadSegmen
 	}
 
 	nextNode := v.Path[v.PathIdx]
+
+	if rm.Nodes[nextNode].JunctionType == 2 {
+		exitCount := 0
+		for ni := v.PathIdx; ni < len(v.Path); ni++ {
+			for _, sid := range rm.Nodes[v.Path[ni]].Connected {
+				other := rm.Segments[sid].NodeA
+				if other == v.Path[ni] {
+					other = rm.Segments[sid].NodeB
+				}
+				if other != v.Path[ni] && ni+1 < len(v.Path) && other == v.Path[ni+1] {
+					exitCount++
+					break
+				}
+			}
+		}
+		switch {
+		case exitCount <= 1:
+			if lanes > 0 {
+				return lanes - 1
+			}
+		case exitCount == 2:
+			if lanes >= 3 {
+				return lanes / 2
+			}
+			if lanes > 0 {
+				return lanes - 1
+			}
+		default:
+			return 0
+		}
+	}
+
 	upcomingTurn := LaneTurnStraight
 
 	var turnSegIdx int32 = -1
@@ -258,12 +290,15 @@ func (vm *VehicleManager) applyTrafficRules(v *Vehicle, rm *RoadManager, seg Roa
 
 	var distToNode float32
 	var rule TrafficRule
+	var approachedNodeIdx uint32
 	if distA < distB {
 		distToNode = distA
 		rule = ruleA
+		approachedNodeIdx = seg.NodeA
 	} else {
 		distToNode = distB
 		rule = ruleB
+		approachedNodeIdx = seg.NodeB
 	}
 
 	approachDist := float32(15)
@@ -308,7 +343,7 @@ func (vm *VehicleManager) applyTrafficRules(v *Vehicle, rm *RoadManager, seg Roa
 			v.Waiting = 0
 		}
 
-	case RuleYield, RuleRoundabout:
+	case RuleYield:
 		if distToNode < approachDist {
 			yieldDist := float32(10)
 			if distToNode < yieldDist {
@@ -319,6 +354,42 @@ func (vm *VehicleManager) applyTrafficRules(v *Vehicle, rm *RoadManager, seg Roa
 				v.Waiting++
 			} else {
 				v.Speed *= 0.97
+				v.Waiting = 0
+			}
+		} else {
+			v.Waiting = 0
+		}
+
+	case RuleRoundabout:
+		if distToNode < approachDist {
+			vehicleInside := false
+			for i := 0; i < VehiclePoolSize; i++ {
+				other := &vm.Pool[i]
+				if other == v || other.Lifecycle != LifecycleActive {
+					continue
+				}
+				if other.RoadSeg == v.RoadSeg {
+					continue
+				}
+				os := rm.Segments[other.RoadSeg]
+				if os.NodeA == approachedNodeIdx || os.NodeB == approachedNodeIdx {
+					vehicleInside = true
+					break
+				}
+			}
+			yieldDist := float32(10)
+			if distToNode < yieldDist && vehicleInside {
+				v.Speed *= 0.85
+				if v.Speed < 0.5 {
+					v.Speed = 0.5
+				}
+				v.Waiting++
+			} else if distToNode < yieldDist {
+				v.Speed *= 0.95
+				if v.Speed < 1 {
+					v.Speed = 1
+				}
+			} else {
 				v.Waiting = 0
 			}
 		} else {

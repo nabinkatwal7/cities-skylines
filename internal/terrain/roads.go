@@ -541,7 +541,6 @@ type RoadManager struct {
 	Models     []rl.Model
 	NextID     uint32
 	roadTex    rl.Texture2D
-	lightTimer int32
 	nightMode  bool
 }
 
@@ -611,16 +610,37 @@ func (rm *RoadManager) AddSegment(a, b uint32, rt RoadType) uint32 {
 	na.Connected = append(na.Connected, id)
 	nb.Connected = append(nb.Connected, id)
 
-	if len(na.Connected) >= 2 && na.TrafficLight == TrafficLightNone {
-		na.TrafficLight = TrafficLightRed
-		na.JunctionType = 1
-	}
-	if len(nb.Connected) >= 2 && nb.TrafficLight == TrafficLightNone {
-		nb.TrafficLight = TrafficLightRed
-		nb.JunctionType = 1
-	}
+	rm.updateJunctionType(a)
+	rm.updateJunctionType(b)
 
 	return id
+}
+
+func (rm *RoadManager) updateJunctionType(nodeIdx uint32) {
+	n := &rm.Nodes[nodeIdx]
+	if len(n.Connected) < 2 {
+		n.TrafficLight = TrafficLightNone
+		n.JunctionType = 0
+		return
+	}
+	isRoundabout := false
+	for _, sid := range n.Connected {
+		if rm.Segments[sid].RoadType == RoadRoundabout {
+			isRoundabout = true
+			break
+		}
+	}
+	if isRoundabout {
+		n.TrafficLight = TrafficLightNone
+		n.JunctionType = 2
+		return
+	}
+	if n.JunctionType != 2 {
+		if n.TrafficLight == TrafficLightNone {
+			n.TrafficLight = TrafficLightRed
+		}
+		n.JunctionType = 1
+	}
 }
 
 func roadMaintenanceCost(rt RoadType) float32 {
@@ -960,21 +980,51 @@ func (rm *RoadManager) SetNightMode(isNight bool) {
 }
 
 func (rm *RoadManager) Update(h *Heightmap) {
-	rm.lightTimer++
-	if rm.lightTimer > 120 {
-		rm.lightTimer = 0
-		for i := range rm.Nodes {
-			n := &rm.Nodes[i]
-			if n.TrafficLight != TrafficLightNone {
-				switch n.TrafficLight {
-				case TrafficLightRed:
-					n.TrafficLight = TrafficLightGreen
-				case TrafficLightGreen:
-					n.TrafficLight = TrafficLightYellow
-				default:
-					n.TrafficLight = TrafficLightRed
+	for i := range rm.Nodes {
+		n := &rm.Nodes[i]
+		if n.TrafficLight == TrafficLightNone {
+			continue
+		}
+		if n.TrafficLightPhase == 0 {
+			maxLanes := int32(2)
+			for _, sid := range n.Connected {
+				l := rm.Segments[sid].LaneCount
+				if l > maxLanes {
+					maxLanes = l
 				}
 			}
+			n.TrafficLightPhase = maxLanes * 20
+		}
+
+		n.TrafficLightPhase--
+		if n.TrafficLightPhase > 0 {
+			continue
+		}
+
+		switch n.TrafficLight {
+		case TrafficLightRed:
+			n.TrafficLight = TrafficLightGreen
+			maxLanes := int32(2)
+			for _, sid := range n.Connected {
+				l := rm.Segments[sid].LaneCount
+				if l > maxLanes {
+					maxLanes = l
+				}
+			}
+			n.TrafficLightPhase = maxLanes * 30
+		case TrafficLightGreen:
+			n.TrafficLight = TrafficLightYellow
+			n.TrafficLightPhase = 30
+		default:
+			n.TrafficLight = TrafficLightRed
+			maxLanes := int32(2)
+			for _, sid := range n.Connected {
+				l := rm.Segments[sid].LaneCount
+				if l > maxLanes {
+					maxLanes = l
+				}
+			}
+			n.TrafficLightPhase = maxLanes * 20
 		}
 	}
 
@@ -1272,6 +1322,32 @@ func (rm *RoadManager) drawJunctionMarkings(h *Heightmap) {
 			}
 			rl.DrawSphere(rl.NewVector3(n.X, hy+2.5, n.Z), 0.4, tlCol)
 			rl.DrawCube(rl.NewVector3(n.X, hy+1.8, n.Z), 0.1, 1.5, 0.1, rl.NewColor(60, 60, 60, 200))
+
+			pedCol := rl.NewColor(255, 0, 0, 200)
+			if n.TrafficLight == TrafficLightGreen {
+				pedCol = rl.NewColor(255, 255, 255, 200)
+			}
+			for _, sid := range n.Connected {
+				seg := rm.Segments[sid]
+				other := seg.NodeA
+				if other == uint32(i) {
+					other = seg.NodeB
+				}
+				on := &rm.Nodes[other]
+				dx := on.X - n.X
+				dz := on.Z - n.Z
+				l := float32(math.Sqrt(float64(dx*dx + dz*dz)))
+				if l < 0.01 {
+					continue
+				}
+				perX := -dz / l
+				perZ := dx / l
+				total := float32(seg.LaneCount) * laneW
+				half := total * 0.5
+				px := n.X + dx/l*3.5 + perX*(half+1.0)
+				pz := n.Z + dz/l*3.5 + perZ*(half+1.0)
+				rl.DrawCube(rl.NewVector3(px, hy+0.8, pz), 0.3, 0.8, 0.1, pedCol)
+			}
 		}
 	}
 }
@@ -1698,14 +1774,8 @@ func (rm *RoadManager) RemoveSegment(idx int) {
 	na.Connected = filter(na.Connected, seg.ID)
 	nb.Connected = filter(nb.Connected, seg.ID)
 
-	if len(na.Connected) < 2 {
-		na.TrafficLight = TrafficLightNone
-		na.JunctionType = 0
-	}
-	if len(nb.Connected) < 2 {
-		nb.TrafficLight = TrafficLightNone
-		nb.JunctionType = 0
-	}
+	rm.updateJunctionType(seg.NodeA)
+	rm.updateJunctionType(seg.NodeB)
 
 	rm.Segments = append(rm.Segments[:idx], rm.Segments[idx+1:]...)
 	rm.Models = append(rm.Models[:idx], rm.Models[idx+1:]...)
