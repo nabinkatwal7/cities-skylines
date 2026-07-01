@@ -2555,3 +2555,20 @@ External highways support:
 Outside traffic follows the same road simulation as local traffic.
 
 ---
+
+## 3.23 Road Serialization
+
+Saved road data includes:
+
+- Nodes
+- Segments
+- Lane Layout
+- Traffic Lights
+- Road Names
+- Elevation
+- Decorations
+- Maintenance State
+
+Procedural meshes are regenerated after loading.
+
+---

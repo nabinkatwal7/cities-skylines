@@ -399,18 +399,64 @@ func lineIntersectsRect(x1, z1, x2, z2, rx0, rz0, rx1, rz1 float32) bool {
 }
 
 func (sm *SimulationManager) PlaceRoadNode(x, z float32) uint32 {
+	if sm.Connections != nil {
+		for _, c := range sm.Connections.GetByType(ConnHighway) {
+			dx := c.WorldX - x
+			dz := c.WorldZ - z
+			if dx*dx+dz*dz < 64 {
+				for idx := range sm.Roads.Nodes {
+					n := &sm.Roads.Nodes[idx]
+					if n.Flags&RoadFlagOutsideConn != 0 {
+						nx := n.X - c.WorldX
+						nz := n.Z - c.WorldZ
+						if nx*nx+nz*nz < 0.01 {
+							return uint32(idx)
+						}
+					}
+				}
+			}
+		}
+	}
 	return sm.Roads.AddNode(x, 0, z)
 }
 
 func (sm *SimulationManager) PlaceRoadSegment(nodeA uint32, x, z float32, roadType RoadType, elevation int32) (uint32, uint32, bool) {
 	na := sm.Roads.Nodes[nodeA]
-	reason := sm.CanPlaceRoad(na.X, na.Z, x, z, roadType, elevation, math.MaxUint32)
+	snapX, snapZ := x, z
+	if sm.Connections != nil {
+		for _, c := range sm.Connections.GetByType(ConnHighway) {
+			dx := c.WorldX - x
+			dz := c.WorldZ - z
+			if dx*dx+dz*dz < 64 {
+				for idx := range sm.Roads.Nodes {
+					n := &sm.Roads.Nodes[idx]
+					if n.Flags&RoadFlagOutsideConn != 0 {
+						nx := n.X - c.WorldX
+						nz := n.Z - c.WorldZ
+						if nx*nx+nz*nz < 0.01 {
+							snapX = n.X
+							snapZ = n.Z
+							nodeB := uint32(idx)
+							segID := sm.Roads.AddSegment(nodeA, nodeB, roadType)
+							sm.finalizeSegment(segID, nodeA, nodeB, roadType, elevation)
+							return nodeB, segID, true
+						}
+					}
+				}
+			}
+		}
+	}
+	reason := sm.CanPlaceRoad(na.X, na.Z, snapX, snapZ, roadType, elevation, math.MaxUint32)
 	if reason != "" {
 		return math.MaxUint32, math.MaxUint32, false
 	}
-
-	nodeB := sm.Roads.AddNode(x, 0, z)
+	nodeB := sm.Roads.AddNode(snapX, 0, snapZ)
 	segID := sm.Roads.AddSegment(nodeA, nodeB, roadType)
+	sm.finalizeSegment(segID, nodeA, nodeB, roadType, elevation)
+	return nodeB, segID, true
+}
+
+func (sm *SimulationManager) finalizeSegment(segID, nodeA, nodeB uint32, roadType RoadType, elevation int32) {
 	if elevation != 0 {
 		for i := range sm.Roads.Segments {
 			if sm.Roads.Segments[i].ID == segID {
@@ -436,7 +482,6 @@ func (sm *SimulationManager) PlaceRoadSegment(nodeA uint32, x, z float32, roadTy
 	sm.Roads.Rebuild(sm.Heightmap)
 	sm.Money -= cost
 	sm.EventBus.Emit(string(EventRoadPlaced), segID)
-	return nodeB, segID, true
 }
 
 func (sm *SimulationManager) RemoveSegment(idx int) {

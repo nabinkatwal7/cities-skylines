@@ -223,6 +223,28 @@ func main() {
 		bInfo := sim.Buildings.NearestInfo(worldX, worldZ, 8)
 		ui.BuildingInfo = bInfo
 
+		// Snap to outside connection for preview
+		previewX, previewZ := worldX, worldZ
+		if mouseOnTerrain && ui.Selected == terrain.ToolRoad {
+			for _, c := range sim.Connections.GetByType(terrain.ConnHighway) {
+				dx := c.WorldX - worldX
+				dz := c.WorldZ - worldZ
+				if dx*dx+dz*dz < 64 {
+					for idx := range sim.Roads.Nodes {
+						n := &sim.Roads.Nodes[idx]
+						if n.Flags&terrain.RoadFlagOutsideConn != 0 {
+							nx := n.X - c.WorldX
+							nz := n.Z - c.WorldZ
+							if nx*nx+nz*nz < 0.01 {
+								previewX = n.X
+								previewZ = n.Z
+							}
+						}
+					}
+				}
+			}
+		}
+
 		// Handle keyboard tool selection
 		ui.HandleInput()
 
@@ -236,22 +258,22 @@ func main() {
 			} else if mouseOnTerrain {
 				switch ui.Selected {
 				case terrain.ToolRoad:
-					cx := clamp(worldX, -240, 240)
-					cz := clamp(worldZ, -240, 240)
-					if sim.Heightmap.IsUnderwater(cx, cz) {
+					px := clamp(previewX, -240, 240)
+					pz := clamp(previewZ, -240, 240)
+					if sim.Heightmap.IsUnderwater(px, pz) {
 						break
 					}
 					if sim.Money >= 100 {
 						if !roadActive {
 							roadActive = true
-							roadStartNode = sim.PlaceRoadNode(cx, cz)
+							roadStartNode = sim.PlaceRoadNode(px, pz)
 						} else {
 							sn := &sim.Roads.Nodes[roadStartNode]
 							if sim.Heightmap.IsUnderwater(sn.X, sn.Z) {
 								roadActive = false
 								break
 							}
-							newNode, _, ok := sim.PlaceRoadSegment(roadStartNode, cx, cz, ui.RoadType, roadElevation)
+							newNode, _, ok := sim.PlaceRoadSegment(roadStartNode, px, pz, ui.RoadType, roadElevation)
 							if ok {
 								roadStartNode = newNode
 							}
@@ -309,11 +331,11 @@ func main() {
 
 			switch ui.Selected {
 			case terrain.ToolRoad:
-				rl.DrawSphere(rl.NewVector3(worldX, h+0.5, worldZ), 0.8, rl.Green)
+				rl.DrawSphere(rl.NewVector3(previewX, h+0.5, previewZ), 0.8, rl.Green)
 				if roadActive {
 					sn := &sim.Roads.Nodes[roadStartNode]
 					sh := sim.Heightmap.WorldHeight(sn.X, sn.Z)
-					rl.DrawLine3D(rl.NewVector3(sn.X, sh+0.2, sn.Z), rl.NewVector3(worldX, h+0.2, worldZ), rl.Green)
+					rl.DrawLine3D(rl.NewVector3(sn.X, sh+0.2, sn.Z), rl.NewVector3(previewX, h+0.2, previewZ), rl.Green)
 				}
 			case terrain.ToolZone:
 				rl.DrawCube(rl.NewVector3(worldX, h+0.5, worldZ), 8, 0.3, 8, terrain.ZoneColor(ui.ZoneType))

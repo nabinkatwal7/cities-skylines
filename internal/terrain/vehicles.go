@@ -155,6 +155,59 @@ func (vm *VehicleManager) SpawnCar(rm *RoadManager) {
 	}
 }
 
+func (vm *VehicleManager) SpawnOutsideCar(rm *RoadManager) {
+	var outsideNodeIdx uint32 = math.MaxUint32
+	for idx := range rm.Nodes {
+		if rm.Nodes[idx].Flags&RoadFlagOutsideConn != 0 && len(rm.Nodes[idx].Connected) > 0 {
+			outsideNodeIdx = uint32(idx)
+			break
+		}
+	}
+	if outsideNodeIdx == math.MaxUint32 {
+		return
+	}
+	n := &rm.Nodes[outsideNodeIdx]
+	firstSeg := rm.Segments[n.Connected[0]]
+	otherNode := firstSeg.NodeA
+	if otherNode == outsideNodeIdx {
+		otherNode = firstSeg.NodeB
+	}
+	if int(otherNode) >= len(rm.Nodes) {
+		return
+	}
+
+	destIdx := int(vm.NextID) % len(rm.Nodes)
+	if destIdx >= len(rm.Nodes) {
+		destIdx = 0
+	}
+	if uint32(destIdx) == outsideNodeIdx {
+		destIdx = (destIdx + 1) % len(rm.Nodes)
+	}
+	cong := vm.buildCongestionMap(rm)
+	path := rm.FindPathWithCongestion(outsideNodeIdx, uint32(destIdx), VehicleCar, cong)
+	if len(path) < 2 {
+		return
+	}
+
+	slot := vm.Alloc()
+	if slot < 0 {
+		return
+	}
+	v := &vm.Pool[slot]
+	v.Entity = NewEntity(vm.NextID, n.X, 0, n.Z, OwnerVehicle)
+	v.Lifecycle = LifecycleActive
+	v.Type = VehicleCar
+	v.TargetSpeed = firstSeg.SpeedLimit * 0.8
+	v.RoadSeg = int(n.Connected[0])
+	v.Lane = 0
+	v.Color = rl.NewColor(uint8(150+vm.NextID%80), uint8(100+vm.NextID%60), uint8(50+vm.NextID%100), 255)
+	v.ParkTimer = 0
+	v.ParkSpotIdx = -1
+	v.Path = path[1:]
+	v.PathIdx = 0
+	vm.NextID++
+}
+
 func (vm *VehicleManager) evictOldest() {
 	oldestFrame := int32(math.MaxInt32)
 	oldestSlot := int32(-1)
@@ -460,6 +513,9 @@ func (vm *VehicleManager) Update(rm *RoadManager, h *Heightmap, pm *ParkingManag
 	vm.Timer++
 	if vm.Timer%30 == 0 && vm.Count < 50 {
 		vm.SpawnCar(rm)
+	}
+	if vm.Timer%60 == 0 && vm.Count < 40 {
+		vm.SpawnOutsideCar(rm)
 	}
 
 	for i := 0; i < VehiclePoolSize; i++ {

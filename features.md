@@ -1,20 +1,3 @@
-## 3.23 Road Serialization
-
-Saved road data includes:
-
-- Nodes
-- Segments
-- Lane Layout
-- Traffic Lights
-- Road Names
-- Elevation
-- Decorations
-- Maintenance State
-
-Procedural meshes are regenerated after loading.
-
----
-
 ## 3.24 Performance Optimization
 
 Road simulation uses:
