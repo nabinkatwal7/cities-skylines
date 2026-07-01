@@ -142,7 +142,7 @@ func (sm *SimulationManager) initScheduler() {
 		Name:     "transport",
 		Priority: SchedPriorityHigh,
 		BudgetMs: 2,
-		Callback: func(dt float64) { sm.Transport.Update(sm.Roads, sm.Heightmap) },
+		Callback: func(dt float64) { sm.Transport.Update(sm.Roads, sm.Districts, sm.Heightmap) },
 	})
 	sm.scheduler.Register(GroupFast, UpdateTask{
 		Name:     "parking",

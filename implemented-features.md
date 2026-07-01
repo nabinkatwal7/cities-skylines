@@ -2771,3 +2771,44 @@ Each mode defines:
 - Infrastructure Requirements
 
 ---
+
+## 4.6 Bus System
+
+Buses operate on road networks.
+
+Requirements:
+
+- Bus Depot
+- Road Access
+- Bus Stops
+- Active Line
+
+Bus vehicles are automatically spawned from depots.
+
+Each bus stores:
+
+```cpp
+Current Stop
+
+Passenger Count
+
+Capacity
+
+Current Path
+
+Fuel Type
+
+Maintenance
+
+Delay State
+```
+
+Buses obey:
+
+- Traffic lights
+- Congestion
+- Lane restrictions
+- One-way roads
+- Speed limits
+
+---

@@ -26,9 +26,13 @@ type TransportStop struct {
 	X, Z        float32
 	Name        string
 	TransType   TransportType
+	ConnectedNetworks []TransportType
 	Passengers  int32
 	IsStation   bool
 	Underground bool
+	DistrictID  int32
+	Accessibility float32
+	Capacity    int32
 }
 
 type TransportLine struct {
@@ -136,12 +140,16 @@ func (tm *TransportManager) AddStop(x, z float32, tt TransportType) uint32 {
 	tm.NextID++
 	isStation := tt == TransMetro || tt == TransTrain || tt == TransMonorail || tt == TransAir || tt == TransShip
 	tm.Stops = append(tm.Stops, TransportStop{
-		ID:          id,
-		X:           x, Z: z,
-		Name:        "Stop",
-		TransType:   tt,
-		IsStation:   isStation,
-		Underground: tt == TransMetro,
+		ID:                id,
+		X:                 x, Z: z,
+		Name:             "Stop",
+		TransType:        tt,
+		ConnectedNetworks: []TransportType{tt},
+		IsStation:        isStation,
+		Underground:      tt == TransMetro,
+		DistrictID:       -1,
+		Accessibility:    0,
+		Capacity:         50,
 	})
 	if int(tt) < len(tm.Networks) {
 		tm.Networks[tt].StopCount++
@@ -168,6 +176,23 @@ func (tm *TransportManager) AddLine(name string, tt TransportType, stopIDs []uin
 		tm.Networks[tt].RouteCount++
 	}
 	return id
+}
+
+func (tm *TransportManager) AddNetworkToStop(stopID uint32, tt TransportType) bool {
+	s := tm.StopByID(stopID)
+	if s == nil {
+		return false
+	}
+	for _, existing := range s.ConnectedNetworks {
+		if existing == tt {
+			return true
+		}
+	}
+	s.ConnectedNetworks = append(s.ConnectedNetworks, tt)
+	if int(tt) < len(tm.Networks) {
+		tm.Networks[tt].StopCount++
+	}
+	return true
 }
 
 func (tm *TransportManager) AddStopToLine(lineID, stopID uint32) {
@@ -357,7 +382,7 @@ func (tm *TransportManager) SpawnVehicle(lineIdx int) {
 	}
 }
 
-func (tm *TransportManager) Update(rm *RoadManager, h *Heightmap) {
+func (tm *TransportManager) Update(rm *RoadManager, dm *DistrictManager, h *Heightmap) {
 	for li := range tm.Lines {
 		line := &tm.Lines[li]
 		if !line.Active {
@@ -404,8 +429,36 @@ func (tm *TransportManager) Update(rm *RoadManager, h *Heightmap) {
 
 	for si := range tm.Stops {
 		s := &tm.Stops[si]
-		if s.Passengers < 5 {
+		if s.Passengers < s.Capacity && s.Passengers < 5 {
 			s.Passengers++
+		}
+		if dm != nil {
+			idx := dm.DistrictAt(s.X, s.Z)
+			if idx >= 0 {
+				s.DistrictID = int32(dm.Districts[idx].ID)
+			}
+		}
+		s.Accessibility = 0
+		if rm != nil {
+			near := rm.NearestSegment(s.X, s.Z)
+			if near >= 0 {
+				seg := rm.Segments[near]
+				na := &rm.Nodes[seg.NodeA]
+				nb := &rm.Nodes[seg.NodeB]
+				mx := (na.X + nb.X) / 2
+				mz := (na.Z + nb.Z) / 2
+				dx := mx - s.X
+				dz := mz - s.Z
+				if dx*dx+dz*dz < 100 {
+					s.Accessibility = 0.6
+				}
+			}
+		}
+		if s.DistrictID >= 0 {
+			s.Accessibility += 0.2
+		}
+		if s.Accessibility > 1 {
+			s.Accessibility = 1
 		}
 	}
 

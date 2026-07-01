@@ -125,11 +125,15 @@ type DistrictData struct {
 }
 
 type TransportStopData struct {
-	X, Z        float32
-	TransType   TransportType
-	Passengers  int32
-	IsStation   bool
-	Underground bool
+	X, Z              float32
+	TransType         TransportType
+	ConnectedNetworks []TransportType
+	Passengers        int32
+	IsStation         bool
+	Underground       bool
+	DistrictID        int32
+	Accessibility     float32
+	Capacity          int32
 }
 
 type TransportLineData struct {
@@ -211,7 +215,7 @@ type SaveStats struct {
 	TotalCount int32
 }
 
-const currentSaveVersion int32 = 7
+const currentSaveVersion int32 = 8
 
 func calcChecksum(data []byte) uint32 {
 	return crc32.ChecksumIEEE(data)
@@ -304,6 +308,19 @@ func migrateSaveData(data *SaveData) bool {
 				}
 			}
 			data.Version = 7
+		case 7:
+			for i := range data.TransportStops {
+				sd := &data.TransportStops[i]
+				if len(sd.ConnectedNetworks) == 0 {
+					sd.ConnectedNetworks = []TransportType{sd.TransType}
+				}
+				if sd.Capacity <= 0 {
+					sd.Capacity = 50
+				}
+				sd.DistrictID = -1
+				sd.Accessibility = 0.5
+			}
+			data.Version = 8
 		}
 	}
 	return true
@@ -498,12 +515,18 @@ func SaveGame(filename string, m *SimulationManager, money float32, timeOfDay in
 
 	if m.Transport != nil {
 		for _, s := range m.Transport.Stops {
+			copyNet := make([]TransportType, len(s.ConnectedNetworks))
+			copy(copyNet, s.ConnectedNetworks)
 			data.TransportStops = append(data.TransportStops, TransportStopData{
 				X: s.X, Z: s.Z,
-				TransType:   s.TransType,
-				Passengers:  s.Passengers,
-				IsStation:   s.IsStation,
-				Underground: s.Underground,
+				TransType:         s.TransType,
+				ConnectedNetworks: copyNet,
+				Passengers:        s.Passengers,
+				IsStation:         s.IsStation,
+				Underground:       s.Underground,
+				DistrictID:        s.DistrictID,
+				Accessibility:     s.Accessibility,
+				Capacity:          s.Capacity,
 			})
 		}
 		for _, l := range m.Transport.Lines {
@@ -792,6 +815,20 @@ func LoadGame(filename string, m *SimulationManager) (money float32, timeOfDay i
 		m.Transport.NextID = 0
 		for _, sd := range data.TransportStops {
 			m.Transport.AddStop(sd.X, sd.Z, sd.TransType)
+			if len(m.Transport.Stops) > 0 {
+				s := &m.Transport.Stops[len(m.Transport.Stops)-1]
+				s.ConnectedNetworks = sd.ConnectedNetworks
+				if len(s.ConnectedNetworks) == 0 {
+					s.ConnectedNetworks = []TransportType{s.TransType}
+				}
+				s.Passengers = sd.Passengers
+				s.DistrictID = sd.DistrictID
+				s.Accessibility = sd.Accessibility
+				s.Capacity = sd.Capacity
+				if s.Capacity <= 0 {
+					s.Capacity = 50
+				}
+			}
 		}
 		for _, ld := range data.TransportLines {
 			col := rl.NewColor(ld.ColorR, ld.ColorG, ld.ColorB, 255)
