@@ -9,11 +9,6 @@ import (
 	"github.com/katwate/js-skylines/internal/terrain"
 )
 
-type economy struct {
-	money    float32
-	taxTimer int32
-}
-
 var timeOfDay = 1 // 0=dawn, 1=day, 2=dusk, 3=night
 
 func skyColor() rl.Color {
@@ -36,8 +31,12 @@ const (
 )
 
 func main() {
-	t := terrain.NewManager(42)
-	t.GenerateData()
+	sim := terrain.NewSimulationManager(42)
+	sim.InitDefaultRoads()
+
+	t := terrain.NewManager(sim)
+	t.InitChunks()
+	sim.InitTerraform(t.Chunks, func(idx int) { t.RebuildChunk(idx) })
 
 	rl.SetConfigFlags(rl.FlagMsaa4xHint)
 	rl.InitWindow(screenWidth, screenHeight, "JS Skylines - Go Edition")
@@ -65,7 +64,6 @@ func main() {
 	target := rl.NewVector3(0, 0, 0)
 
 	uploaded := false
-	eco := economy{money: 100000}
 	roadActive := false
 	roadStartNode := uint32(0)
 	roadElevation := int32(0)
@@ -94,7 +92,7 @@ func main() {
 			continue
 		}
 
-		t.Update(float64(rl.GetFrameTime()))
+		sim.Update(float64(rl.GetFrameTime()))
 
 		// Camera
 		wheel := rl.GetMouseWheelMove()
@@ -161,33 +159,24 @@ func main() {
 		if rl.IsKeyPressed(rl.KeyT) {
 			timeOfDay = (timeOfDay + 1) % 4
 		}
-		t.Night = timeOfDay == 3
+		sim.Night = timeOfDay == 3
 
 		// Road elevation control
 		if rl.IsKeyPressed(rl.KeyPageUp) {
 			if ui.Selected == terrain.ToolRoad {
-				currentEle := &roadElevation
-				*currentEle++
-				if *currentEle > 2 {
-					*currentEle = 2
+				roadElevation++
+				if roadElevation > 2 {
+					roadElevation = 2
 				}
 			}
 		}
 		if rl.IsKeyPressed(rl.KeyPageDown) {
 			if ui.Selected == terrain.ToolRoad {
-				currentEle := &roadElevation
-				*currentEle--
-				if *currentEle < 0 {
-					*currentEle = 0
+				roadElevation--
+				if roadElevation < 0 {
+					roadElevation = 0
 				}
 			}
-		}
-
-		// Economy
-		eco.taxTimer++
-		if eco.taxTimer > 60 {
-			eco.taxTimer = 0
-			eco.money += float32(len(t.Buildings.Buildings)) * 0.5
 		}
 
 		// Mouse ray
@@ -203,9 +192,9 @@ func main() {
 		}
 
 		// Update UI state
-		ui.Money = eco.money
-		ui.Population = t.Buildings.Population()
-		rDem, cDem, iDem := t.Buildings.Demand()
+		ui.Money = sim.Money
+		ui.Population = sim.Buildings.Population()
+		rDem, cDem, iDem := sim.Buildings.Demand()
 		ui.ResDemand = rDem
 		ui.ComDemand = cDem
 		ui.IndDemand = iDem
@@ -214,7 +203,7 @@ func main() {
 		ui.MouseWorldX = worldX
 		ui.MouseWorldZ = worldZ
 		ui.MouseOnGround = mouseOnTerrain
-		bInfo := t.Buildings.NearestInfo(worldX, worldZ, 8)
+		bInfo := sim.Buildings.NearestInfo(worldX, worldZ, 8)
 		ui.BuildingInfo = bInfo
 
 		// Handle keyboard tool selection
@@ -222,7 +211,6 @@ func main() {
 
 		// Handle mouse clicks for tools and toolbar
 		if rl.IsMouseButtonPressed(rl.MouseButtonLeft) {
-			// Check toolbar click first
 			mPos := rl.GetMousePosition()
 			my := int32(mPos.Y)
 			if my >= 660 {
@@ -233,57 +221,53 @@ func main() {
 				case terrain.ToolRoad:
 					cx := clamp(worldX, -240, 240)
 					cz := clamp(worldZ, -240, 240)
-					if t.Heightmap.IsUnderwater(cx, cz) {
+					if sim.Heightmap.IsUnderwater(cx, cz) {
 						break
 					}
-					if eco.money >= 100 {
+					if sim.Money >= 100 {
 						if !roadActive {
 							roadActive = true
-							roadStartNode = t.Roads.AddNode(cx, cz)
-							eco.money -= 100
+							roadStartNode = sim.Roads.AddNode(cx, cz)
+							sim.Money -= 100
 						} else {
-							sn := &t.Roads.Nodes[roadStartNode]
-							if t.Heightmap.IsUnderwater(sn.X, sn.Z) {
+							sn := &sim.Roads.Nodes[roadStartNode]
+							if sim.Heightmap.IsUnderwater(sn.X, sn.Z) {
 								roadActive = false
 								break
 							}
-							endNode := t.Roads.AddNode(cx, cz)
-							segID := t.Roads.AddSegment(roadStartNode, endNode, ui.RoadType)
+							endNode := sim.Roads.AddNode(cx, cz)
+							segID := sim.Roads.AddSegment(roadStartNode, endNode, ui.RoadType)
 							if roadElevation > 0 {
-								for i := range t.Roads.Segments {
-									if t.Roads.Segments[i].ID == segID {
-										t.Roads.Segments[i].Elevation = roadElevation
+								for i := range sim.Roads.Segments {
+									if sim.Roads.Segments[i].ID == segID {
+										sim.Roads.Segments[i].Elevation = roadElevation
 									}
 								}
 							}
-							t.Roads.Rebuild(t.Heightmap)
+							sim.Roads.Rebuild(sim.Heightmap)
 							roadStartNode = endNode
-							eco.money -= 100
+							sim.Money -= 100
 						}
 					}
 				case terrain.ToolZone:
-					if eco.money >= 20 && !t.Heightmap.IsUnderwater(worldX, worldZ) {
-						t.Zones.SetZone(worldX, worldZ, ui.ZoneType, t.Roads)
-						if t.Zones.CellTypeAt(worldX, worldZ) == ui.ZoneType {
-							eco.money -= 20
-						}
+					if sim.Money >= 20 && !sim.Heightmap.IsUnderwater(worldX, worldZ) {
+						sim.SetZone(worldX, worldZ, ui.ZoneType)
 					}
 				case terrain.ToolPark:
-					if eco.money >= 500 && !t.Heightmap.IsUnderwater(worldX, worldZ) {
-						t.Services.AddPark(worldX, worldZ)
-						eco.money -= 500
+					if sim.Money >= 500 && !sim.Heightmap.IsUnderwater(worldX, worldZ) {
+						sim.PlacePark(worldX, worldZ)
 					}
 				case terrain.ToolRemove:
-					idx := t.Roads.NearestSegment(worldX, worldZ)
+					idx := sim.Roads.NearestSegment(worldX, worldZ)
 					if idx >= 0 {
-						t.Roads.RemoveSegment(idx)
-						t.Roads.Rebuild(t.Heightmap)
+						sim.RemoveSegment(idx)
+						sim.Roads.Rebuild(sim.Heightmap)
 					}
 				case terrain.ToolUpgrade:
-					idx := t.Roads.NearestSegment(worldX, worldZ)
+					idx := sim.Roads.NearestSegment(worldX, worldZ)
 					if idx >= 0 {
-						t.Roads.UpgradeSegment(idx, ui.RoadType)
-						t.Roads.Rebuild(t.Heightmap)
+						sim.UpgradeSegment(idx, ui.RoadType)
+						sim.Roads.Rebuild(sim.Heightmap)
 					}
 				}
 			}
@@ -301,14 +285,14 @@ func main() {
 
 		// Draw previews
 		if mouseOnTerrain {
-			h := t.Heightmap.WorldHeight(worldX, worldZ)
+			h := sim.Heightmap.WorldHeight(worldX, worldZ)
 
 			switch ui.Selected {
 			case terrain.ToolRoad:
 				rl.DrawSphere(rl.NewVector3(worldX, h+0.5, worldZ), 0.8, rl.Green)
 				if roadActive {
-					sn := &t.Roads.Nodes[roadStartNode]
-					sh := t.Heightmap.WorldHeight(sn.X, sn.Z)
+					sn := &sim.Roads.Nodes[roadStartNode]
+					sh := sim.Heightmap.WorldHeight(sn.X, sn.Z)
 					rl.DrawLine3D(rl.NewVector3(sn.X, sh+0.2, sn.Z), rl.NewVector3(worldX, h+0.2, worldZ), rl.Green)
 				}
 			case terrain.ToolZone:
@@ -316,23 +300,23 @@ func main() {
 			case terrain.ToolPark:
 				rl.DrawCube(rl.NewVector3(worldX, h+0.3, worldZ), 3, 0.2, 3, rl.NewColor(80, 200, 80, 120))
 			case terrain.ToolRemove:
-				idx := t.Roads.NearestSegment(worldX, worldZ)
+				idx := sim.Roads.NearestSegment(worldX, worldZ)
 				if idx >= 0 {
-					seg := t.Roads.Segments[idx]
-					na := &t.Roads.Nodes[seg.NodeA]
-					nb := &t.Roads.Nodes[seg.NodeB]
-					ha := t.Heightmap.WorldHeight(na.X, na.Z) + 0.5
-					hb := t.Heightmap.WorldHeight(nb.X, nb.Z) + 0.5
+					seg := sim.Roads.Segments[idx]
+					na := &sim.Roads.Nodes[seg.NodeA]
+					nb := &sim.Roads.Nodes[seg.NodeB]
+					ha := sim.Heightmap.WorldHeight(na.X, na.Z) + 0.5
+					hb := sim.Heightmap.WorldHeight(nb.X, nb.Z) + 0.5
 					rl.DrawLine3D(rl.NewVector3(na.X, ha, na.Z), rl.NewVector3(nb.X, hb, nb.Z), rl.Red)
 				}
 			case terrain.ToolUpgrade:
-				idx := t.Roads.NearestSegment(worldX, worldZ)
+				idx := sim.Roads.NearestSegment(worldX, worldZ)
 				if idx >= 0 {
-					seg := t.Roads.Segments[idx]
-					na := &t.Roads.Nodes[seg.NodeA]
-					nb := &t.Roads.Nodes[seg.NodeB]
-					ha := t.Heightmap.WorldHeight(na.X, na.Z) + 0.5
-					hb := t.Heightmap.WorldHeight(nb.X, nb.Z) + 0.5
+					seg := sim.Roads.Segments[idx]
+					na := &sim.Roads.Nodes[seg.NodeA]
+					nb := &sim.Roads.Nodes[seg.NodeB]
+					ha := sim.Heightmap.WorldHeight(na.X, na.Z) + 0.5
+					hb := sim.Heightmap.WorldHeight(nb.X, nb.Z) + 0.5
 					rl.DrawLine3D(rl.NewVector3(na.X, ha, na.Z), rl.NewVector3(nb.X, hb, nb.Z), rl.Yellow)
 				}
 			}

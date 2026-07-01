@@ -13,68 +13,19 @@ type ProgressInfo struct {
 }
 
 type Manager struct {
-	Generator   *Generator
-	Heightmap   *Heightmap
-	Water       *WaterSystem
-	Terraform   *TerraformSystem
-	Trees       *TreeSystem
-	Resources   *ResourceSystem
-	Roads       *RoadManager
-	Zones       *ZoneManager
-	Buildings   *BuildingManager
-	Services    *ServiceManager
-	Connections *ConnectionSystem
-	Vehicles    *VehicleManager
-	Transport   *TransportManager
-	Districts   *DistrictManager
-	Chunks      []*Chunk
-	Models      []rl.Model
-	Seed        int64
-	Night       bool
-	terrainTex  rl.Texture2D
-	uploadIdx   int
+	Sim        *SimulationManager
+	Chunks     []*Chunk
+	Models     []rl.Model
+	terrainTex rl.Texture2D
+	uploadIdx  int
 }
 
-func NewManager(seed int64) *Manager {
-	return &Manager{Seed: seed}
+func NewManager(sim *SimulationManager) *Manager {
+	return &Manager{Sim: sim}
 }
 
-func (m *Manager) GenerateData() {
-	m.Generator = NewGenerator(m.Seed)
-	m.Heightmap = m.Generator.Generate()
-	m.Water = NewWaterSystem()
-	m.Water.Init(m.Heightmap)
-	m.Terraform = NewTerraformSystem(m)
-	m.Trees = NewTreeSystem(m.Seed)
-	m.Trees.Generate(m.Heightmap, m.Water)
-	m.Resources = NewResourceSystem(m.Seed, m.Heightmap)
-	m.Connections = NewConnectionSystem()
-	m.Roads = NewRoadManager()
-	m.Roads.LoadAssets()
-	m.Roads.InitOutsideConnections(m.Connections)
-	m.Zones = NewZoneManager(128, 128)
-	m.Buildings = NewBuildingManager()
-	m.Services = NewServiceManager()
-	m.Vehicles = NewVehicleManager()
-	m.Transport = NewTransportManager()
-	m.Districts = NewDistrictManager()
-	n0 := m.Roads.AddNode(-50, -50)
-	n1 := m.Roads.AddNode(-50, 50)
-	n2 := m.Roads.AddNode(50, 50)
-	n3 := m.Roads.AddNode(50, -50)
-	n4 := m.Roads.AddNode(-80, 0)
-	n5 := m.Roads.AddNode(80, 0)
-	n6 := m.Roads.AddNode(0, -80)
-	n7 := m.Roads.AddNode(0, 80)
-	m.Roads.AddSegment(n0, n1, RoadTwoLane)
-	m.Roads.AddSegment(n1, n2, RoadTwoLane)
-	m.Roads.AddSegment(n2, n3, RoadTwoLane)
-	m.Roads.AddSegment(n3, n0, RoadTwoLane)
-	m.Roads.AddSegment(n4, n0, RoadFourLane)
-	m.Roads.AddSegment(n5, n2, RoadFourLane)
-	m.Roads.AddSegment(n6, n3, RoadTwoLane)
-	m.Roads.AddSegment(n7, n1, RoadTwoLane)
-	m.Chunks = BuildChunks(m.Heightmap)
+func (m *Manager) InitChunks() {
+	m.Chunks = BuildChunks(m.Sim.Heightmap)
 	for _, c := range m.Chunks {
 		BuildChunkMesh(c)
 	}
@@ -83,7 +34,7 @@ func (m *Manager) GenerateData() {
 func (m *Manager) LoadAssets() error {
 	model := rl.LoadModel("assets/tree/leaftree.obj")
 	if rl.IsModelValid(model) {
-		m.Trees.Model = model
+		m.Sim.Trees.Model = model
 	} else {
 		rl.UnloadModel(model)
 		return fmt.Errorf("failed to load tree model")
@@ -155,28 +106,8 @@ func (m *Manager) RebuildChunk(chunkIdx int) {
 	m.Models[chunkIdx] = model
 }
 
-func (m *Manager) Update(dt float64) {
-	if m.Water != nil {
-		m.Water.Update(dt)
-	}
-	if m.Trees != nil {
-		m.Trees.Update(dt)
-	}
-	if m.Roads != nil {
-		m.Roads.Update(m.Heightmap)
-	}
-	if m.Vehicles != nil {
-		m.Vehicles.Update(m.Roads, m.Heightmap)
-	}
-	if m.Transport != nil {
-		m.Transport.Update(m.Roads, m.Heightmap)
-	}
-	if m.Buildings != nil {
-		m.Buildings.Update(m.Zones, m.Heightmap, m.Roads, m.Districts)
-	}
-}
-
 func (m *Manager) Draw(camX, camZ float32) {
+	sim := m.Sim
 	maxChunkDist := float32(3000)
 	for i, model := range m.Models {
 		cx, cz := chunkCenter(m.Chunks[i])
@@ -187,32 +118,32 @@ func (m *Manager) Draw(camX, camZ float32) {
 		}
 		rl.DrawModel(model, rl.NewVector3(0, 0, 0), 1, rl.White)
 	}
-	if m.Trees != nil {
-		m.Trees.Draw(m.Heightmap, camX, camZ)
+	if sim.Trees != nil {
+		sim.Trees.Draw(sim.Heightmap, camX, camZ)
 	}
-	if m.Water != nil {
-		m.Water.Draw()
+	if sim.Water != nil {
+		sim.Water.Draw()
 	}
-	if m.Roads != nil {
-		m.Roads.Draw(m.Heightmap)
+	if sim.Roads != nil {
+		sim.Roads.Draw(sim.Heightmap)
 	}
-	if m.Zones != nil {
-		m.Zones.Draw(m.Heightmap)
+	if sim.Zones != nil {
+		sim.Zones.Draw(sim.Heightmap)
 	}
-	if m.Buildings != nil {
-		m.Buildings.Draw(m.Heightmap, m.Zones, m.Night)
+	if sim.Buildings != nil {
+		sim.Buildings.Draw(sim.Heightmap, sim.Zones, sim.Night)
 	}
-	if m.Vehicles != nil {
-		m.Vehicles.Draw(m.Heightmap)
+	if sim.Vehicles != nil {
+		sim.Vehicles.Draw(sim.Heightmap)
 	}
-	if m.Transport != nil {
-		m.Transport.Draw(m.Heightmap)
+	if sim.Transport != nil {
+		sim.Transport.Draw(sim.Heightmap)
 	}
-	if m.Districts != nil {
-		m.Districts.Draw(m.Heightmap)
+	if sim.Districts != nil {
+		sim.Districts.Draw(sim.Heightmap)
 	}
-	if m.Services != nil {
-		m.Services.Draw(m.Heightmap)
+	if sim.Services != nil {
+		sim.Services.Draw(sim.Heightmap)
 	}
 }
 
@@ -220,23 +151,23 @@ func (m *Manager) Unload() {
 	for _, model := range m.Models {
 		rl.UnloadModel(model)
 	}
-	if m.Trees.Model.MeshCount > 0 {
-		rl.UnloadModel(m.Trees.Model)
+	if m.Sim.Trees.Model.MeshCount > 0 {
+		rl.UnloadModel(m.Sim.Trees.Model)
 	}
-	if m.Buildings != nil {
-		m.Buildings.Unload()
+	if m.Sim.Buildings != nil {
+		m.Sim.Buildings.Unload()
 	}
-	if m.Vehicles != nil {
-		m.Vehicles.Unload()
+	if m.Sim.Vehicles != nil {
+		m.Sim.Vehicles.Unload()
 	}
-	if m.Transport != nil {
-		m.Transport.Unload()
+	if m.Sim.Transport != nil {
+		m.Sim.Transport.Unload()
 	}
-	if m.Districts != nil {
-		m.Districts.Unload()
+	if m.Sim.Districts != nil {
+		m.Sim.Districts.Unload()
 	}
-	if m.Roads != nil {
-		m.Roads.Unload()
+	if m.Sim.Roads != nil {
+		m.Sim.Roads.Unload()
 	}
 	rl.UnloadTexture(m.terrainTex)
 	m.Models = nil

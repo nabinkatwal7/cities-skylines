@@ -21,16 +21,20 @@ type Brush struct {
 }
 
 type TerraformSystem struct {
-	active     bool
-	brush      Brush
-	heightmap  *Heightmap
-	manager    *Manager
+	active       bool
+	brush        Brush
+	heightmap    *Heightmap
+	water        *WaterSystem
+	rebuildChunk func(idx int)
+	chunks       []*Chunk
 }
 
-func NewTerraformSystem(m *Manager) *TerraformSystem {
+func NewTerraformSystem(h *Heightmap, water *WaterSystem, chunks []*Chunk, rebuildChunk func(idx int)) *TerraformSystem {
 	return &TerraformSystem{
-		heightmap: m.Heightmap,
-		manager:   m,
+		heightmap:    h,
+		water:        water,
+		chunks:       chunks,
+		rebuildChunk: rebuildChunk,
 		brush: Brush{
 			Radius:   10,
 			Strength: 0.02,
@@ -123,8 +127,8 @@ func (ts *TerraformSystem) Apply(worldX, worldZ float32) {
 		ts.rebuildChunkData(idx)
 	}
 
-	if ts.manager != nil {
-		ts.manager.Water.Init(ts.heightmap)
+	if ts.water != nil {
+		ts.water.Init(ts.heightmap)
 	}
 }
 
@@ -148,7 +152,7 @@ func (ts *TerraformSystem) rebuildChunkData(chunkIdx int) {
 	if chunkIdx < 0 || chunkIdx >= NumChunks {
 		return
 	}
-	c := ts.manager.Chunks[chunkIdx]
+	c := ts.chunks[chunkIdx]
 	baseX := c.IndexX * (ChunkSize - 1)
 	baseZ := c.IndexZ * (ChunkSize - 1)
 	for lz := 0; lz < ChunkSize; lz++ {
@@ -159,7 +163,9 @@ func (ts *TerraformSystem) rebuildChunkData(chunkIdx int) {
 		}
 	}
 	c.Dirty = true
-	ts.manager.RebuildChunk(chunkIdx)
+	if ts.rebuildChunk != nil {
+		ts.rebuildChunk(chunkIdx)
+	}
 }
 
 func (ts *TerraformSystem) SetActive(a bool) {

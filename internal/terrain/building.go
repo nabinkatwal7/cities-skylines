@@ -53,6 +53,7 @@ type BuildingManager struct {
 	resDemand int
 	comDemand int
 	indDemand int
+	offDemand int
 	TotalPowerUsed  float32
 	TotalWaterUsed  float32
 	TotalGarbage    float32
@@ -69,6 +70,11 @@ func (bm *BuildingManager) LoadAssets() {
 
 func (bm *BuildingManager) Update(zm *ZoneManager, h *Heightmap, roads *RoadManager, dm *DistrictManager) {
 	bm.calcDemand(zm)
+	bm.TotalPowerUsed = 0
+	bm.TotalWaterUsed = 0
+	bm.TotalGarbage = 0
+	bm.TotalWealth = 0
+	bm.TotalHappiness = 0
 	cellSize := WorldSize / float32(zm.width)
 	for z := 0; z < zm.height; z++ {
 		for x := 0; x < zm.width; x++ {
@@ -237,6 +243,7 @@ func (bm *BuildingManager) calcDemand(zm *ZoneManager) {
 	resPop := int32(0)
 	comJobs := int32(0)
 	indJobs := int32(0)
+	offJobs := int32(0)
 	total := 0
 	for _, b := range bm.Buildings {
 		total++
@@ -248,16 +255,31 @@ func (bm *BuildingManager) calcDemand(zm *ZoneManager) {
 		case ZoneIndustrial:
 			indJobs += b.Workers
 		case ZoneOffice:
+			offJobs += b.Workers
 		}
 	}
-	availableJobs := comJobs + indJobs
+	availableJobs := comJobs + indJobs + offJobs
 	bm.resDemand = int(availableJobs-resPop) / 2
 	bm.comDemand = int(resPop/2-comJobs) / 2
 	bm.indDemand = int(resPop/3-indJobs) / 3
+	bm.offDemand = int(resPop/4-offJobs) / 2
 	if total == 0 {
 		bm.resDemand = 10
 		bm.comDemand = 5
 		bm.indDemand = 3
+		bm.offDemand = 2
+	}
+	if bm.resDemand < 1 {
+		bm.resDemand = 1
+	}
+	if bm.comDemand < 1 {
+		bm.comDemand = 1
+	}
+	if bm.indDemand < 1 {
+		bm.indDemand = 1
+	}
+	if bm.offDemand < 1 {
+		bm.offDemand = 1
 	}
 }
 
@@ -270,7 +292,7 @@ func (bm *BuildingManager) shouldDevelop(cell *ZoneCell) bool {
 	case ZoneIndustrial:
 		return bm.indDemand > 0
 	case ZoneOffice:
-		return true
+		return bm.offDemand > 0
 	}
 	return false
 }
@@ -294,7 +316,7 @@ func buildingHeight(zt ZoneType, seed int32) float32 {
 
 func landValue(b *Building, h *Heightmap) int32 {
 	val := int32(30)
-	if roadsNearby(b.X, b.Z, 30, h) {
+	if b.HasRoad {
 		val += 20
 	}
 	switch b.Type {
@@ -310,10 +332,6 @@ func landValue(b *Building, h *Heightmap) int32 {
 		val += 15
 	}
 	return val
-}
-
-func roadsNearby(x, z float32, radius float32, h *Heightmap) bool {
-	return true
 }
 
 func (bm *BuildingManager) Demand() (res, com, ind int) {

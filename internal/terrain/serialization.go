@@ -65,6 +65,16 @@ type BuildingData struct {
 	ConstructTimer  int32
 	Constructed     bool
 	HasRoad         bool
+	UpgradeTimer    int32
+	AbandonTimer    int32
+	HouseholdWealth    int32
+	HouseholdEducation int32
+	HouseholdHappiness int32
+	BusinessGoodsStored    int32
+	BusinessProfitability  int32
+	ConsPower  float32
+	ConsWater  float32
+	ConsGarbage float32
 }
 
 type DistrictData struct {
@@ -104,7 +114,7 @@ type ResourceCell struct {
 	Oil       float32
 }
 
-func SaveGame(filename string, m *Manager, money float32, timeOfDay int32) error {
+func SaveGame(filename string, m *SimulationManager, money float32, timeOfDay int32) error {
 	data := SaveData{
 		Version:  1,
 		Seed:     m.Seed,
@@ -165,12 +175,12 @@ func SaveGame(filename string, m *Manager, money float32, timeOfDay int32) error
 		}
 	}
 
-	if m.Buildings != nil {
+		if m.Buildings != nil {
 		for _, b := range m.Buildings.Buildings {
 			if b.X < -99998 {
 				continue
 			}
-			data.Buildings = append(data.Buildings, BuildingData{
+			bd := BuildingData{
 				X: b.X, Z: b.Z,
 				Type:          b.Type,
 				Seed:          b.Seed,
@@ -184,7 +194,22 @@ func SaveGame(filename string, m *Manager, money float32, timeOfDay int32) error
 				ConstructTimer: b.ConstructTimer,
 				Constructed:   b.Constructed,
 				HasRoad:       b.HasRoad,
-			})
+				UpgradeTimer:  b.UpgradeTimer,
+				AbandonTimer:  b.AbandonTimer,
+				ConsPower:     b.Consumption.Power,
+				ConsWater:     b.Consumption.Water,
+				ConsGarbage:   b.Consumption.Garbage,
+			}
+			if b.Household != nil {
+				bd.HouseholdWealth = b.Household.Wealth
+				bd.HouseholdEducation = b.Household.Education
+				bd.HouseholdHappiness = b.Household.Happiness
+			}
+			if b.Business != nil {
+				bd.BusinessGoodsStored = b.Business.GoodsStored
+				bd.BusinessProfitability = b.Business.Profitability
+			}
+			data.Buildings = append(data.Buildings, bd)
 		}
 	}
 
@@ -236,7 +261,7 @@ func SaveGame(filename string, m *Manager, money float32, timeOfDay int32) error
 	return nil
 }
 
-func LoadGame(filename string, m *Manager) (money float32, timeOfDay int32, err error) {
+func LoadGame(filename string, m *SimulationManager) (money float32, timeOfDay int32, err error) {
 	f, err := os.Open(filename)
 	if err != nil {
 		return 0, 0, fmt.Errorf("open save: %w", err)
@@ -324,19 +349,24 @@ func LoadGame(filename string, m *Manager) (money float32, timeOfDay int32, err 
 				ConstructTimer: bd.ConstructTimer,
 				Constructed:   bd.Constructed,
 				HasRoad:       bd.HasRoad,
+				UpgradeTimer:  bd.UpgradeTimer,
+				AbandonTimer:  bd.AbandonTimer,
 			}
+			b.Consumption.Power = bd.ConsPower
+			b.Consumption.Water = bd.ConsWater
+			b.Consumption.Garbage = bd.ConsGarbage
 			if bd.Type == ZoneResidentialLow || bd.Type == ZoneResidentialHigh {
 				b.Household = &HouseholdInfo{
 					FamilyMembers: bd.Residents,
-					Wealth:        30,
-					Education:     10,
-					Happiness:     50,
+					Wealth:        bd.HouseholdWealth,
+					Education:     bd.HouseholdEducation,
+					Happiness:     bd.HouseholdHappiness,
 				}
 			}
 			if bd.Type == ZoneCommercialLow || bd.Type == ZoneCommercialHigh || bd.Type == ZoneIndustrial || bd.Type == ZoneOffice {
 				b.Business = &BusinessInfo{
-					GoodsStored:   10,
-					Profitability: 50,
+					GoodsStored:   bd.BusinessGoodsStored,
+					Profitability: bd.BusinessProfitability,
 				}
 			}
 			m.Buildings.Buildings = append(m.Buildings.Buildings, b)
