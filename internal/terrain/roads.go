@@ -836,19 +836,23 @@ func SetWaterForRoads(ws *WaterSystem) {
 func (rm *RoadManager) Draw(h *Heightmap) {
 	if rm.roadTex.ID == 0 {
 		rm.drawFallback(h)
-		return
-	}
-	if len(rm.Models) == 0 {
-		rm.UploadGPU(h)
-	}
-	for _, model := range rm.Models {
-		if model.MeshCount > 0 {
-			rl.DrawModel(model, rl.NewVector3(0, 0, 0), 1, rl.White)
+	} else {
+		if len(rm.Models) == 0 {
+			rm.UploadGPU(h)
 		}
+		for _, model := range rm.Models {
+			if model.MeshCount > 0 {
+				rl.DrawModel(model, rl.NewVector3(0, 0, 0), 1, rl.White)
+			}
+		}
+		rm.drawMarkings(h)
 	}
-	rm.drawMarkings(h)
 	rm.drawJunctionMarkings(h)
 	rm.drawOutsideConnections(h)
+	rm.drawCurbs(h)
+	rm.drawSidewalks(h)
+	rm.drawStreetLights(h)
+	rm.drawRoadsideTrees(h)
 }
 
 func (rm *RoadManager) drawFallback(h *Heightmap) {
@@ -1044,6 +1048,255 @@ func (rm *RoadManager) drawOutsideConnections(h *Heightmap) {
 		if n.Flags&RoadFlagOutsideConn != 0 {
 			hy := h.WorldHeight(n.X, n.Z)
 			rl.DrawCube(rl.NewVector3(n.X, hy+1, n.Z), 8, 2, 8, rl.NewColor(150, 100, 50, 200))
+		}
+	}
+}
+
+func (rm *RoadManager) drawCurbs(h *Heightmap) {
+	curbW := float32(0.3)
+	curbH := float32(0.15)
+	curbCol := rl.NewColor(160, 160, 160, 255)
+
+	for _, seg := range rm.Segments {
+		if seg.Damaged {
+			continue
+		}
+		xs, zs, _ := rm.SampleSegment(seg, int(seg.Length/2))
+		if len(xs) < 2 {
+			continue
+		}
+		total := float32(seg.LaneCount) * 3.0
+		half := total * 0.5
+
+		for si := 0; si < len(xs)-1; si++ {
+			dx := xs[si+1] - xs[si]
+			dz := zs[si+1] - zs[si]
+			l := float32(math.Sqrt(float64(dx*dx + dz*dz)))
+			if l < 0.01 {
+				continue
+			}
+			perX := -dz / l
+			perZ := dx / l
+
+			var h0, h1 float32
+			if seg.Elevation > 0 {
+				h0 = float32(seg.Elevation) * 5
+				h1 = float32(seg.Elevation) * 5
+			} else {
+				h0 = h.WorldHeight(xs[si], zs[si])
+				h1 = h.WorldHeight(xs[si+1], zs[si+1])
+			}
+
+			// left curb
+			rm.drawCurbSegment(xs[si], zs[si], xs[si+1], zs[si+1], perX, perZ, h0, h1, -half, -half+curbW, curbH, curbCol)
+			// right curb
+			rm.drawCurbSegment(xs[si], zs[si], xs[si+1], zs[si+1], perX, perZ, h0, h1, half-curbW, half, curbH, curbCol)
+		}
+	}
+}
+
+func (rm *RoadManager) drawCurbSegment(x0, z0, x1, z1, perX, perZ, h0, h1, inner, outer, height float32, col rl.Color) {
+	topIn0 := rl.NewVector3(x0+perX*inner, h0+height, z0+perZ*inner)
+	topOut0 := rl.NewVector3(x0+perX*outer, h0+height, z0+perZ*outer)
+	topIn1 := rl.NewVector3(x1+perX*inner, h1+height, z1+perZ*inner)
+	topOut1 := rl.NewVector3(x1+perX*outer, h1+height, z1+perZ*outer)
+	botOut0 := rl.NewVector3(x0+perX*outer, h0, z0+perZ*outer)
+	botOut1 := rl.NewVector3(x1+perX*outer, h1, z1+perZ*outer)
+
+	drawQuad(topIn0, topOut0, topIn1, topOut1, col)
+	drawQuad(botOut0, botOut1, topOut0, topOut1, col)
+}
+
+func (rm *RoadManager) drawSidewalks(h *Heightmap) {
+	swW := float32(2.0)
+	swH := float32(0.1)
+	swCol := rl.NewColor(180, 180, 180, 255)
+
+	for _, seg := range rm.Segments {
+		if seg.Damaged {
+			continue
+		}
+		if !roadHasSidewalk(seg.RoadType) {
+			continue
+		}
+		xs, zs, _ := rm.SampleSegment(seg, int(seg.Length/2))
+		if len(xs) < 2 {
+			continue
+		}
+		total := float32(seg.LaneCount) * 3.0
+		half := total * 0.5
+
+		for si := 0; si < len(xs)-1; si++ {
+			dx := xs[si+1] - xs[si]
+			dz := zs[si+1] - zs[si]
+			l := float32(math.Sqrt(float64(dx*dx + dz*dz)))
+			if l < 0.01 {
+				continue
+			}
+			perX := -dz / l
+			perZ := dx / l
+
+			var h0, h1 float32
+			if seg.Elevation > 0 {
+				h0 = float32(seg.Elevation) * 5
+				h1 = float32(seg.Elevation) * 5
+			} else {
+				h0 = h.WorldHeight(xs[si], zs[si])
+				h1 = h.WorldHeight(xs[si+1], zs[si+1])
+			}
+
+			rm.drawSwath(xs[si], zs[si], xs[si+1], zs[si+1], perX, perZ, h0, h1, -half-0.3-swW, -half-0.3, swH, swCol)
+			rm.drawSwath(xs[si], zs[si], xs[si+1], zs[si+1], perX, perZ, h0, h1, half+0.3, half+0.3+swW, swH, swCol)
+		}
+	}
+}
+
+func (rm *RoadManager) drawSwath(x0, z0, x1, z1, perX, perZ, h0, h1, inner, outer, height float32, col rl.Color) {
+	a := rl.NewVector3(x0+perX*inner, h0+height, z0+perZ*inner)
+	b := rl.NewVector3(x0+perX*outer, h0+height, z0+perZ*outer)
+	c := rl.NewVector3(x1+perX*inner, h1+height, z1+perZ*inner)
+	d := rl.NewVector3(x1+perX*outer, h1+height, z1+perZ*outer)
+	drawQuad(a, b, c, d, col)
+}
+
+func (rm *RoadManager) drawStreetLights(h *Heightmap) {
+	interval := float32(20.0)
+	poleCol := rl.NewColor(60, 60, 60, 255)
+	lightCol := rl.NewColor(255, 230, 180, 255)
+	if rm.nightMode {
+		lightCol = rl.NewColor(255, 255, 200, 255)
+	}
+
+	for _, seg := range rm.Segments {
+		if seg.Damaged {
+			continue
+		}
+		if !roadHasLighting(seg.RoadType) {
+			continue
+		}
+		xs, zs, ds := rm.SampleSegment(seg, int(seg.Length/2))
+		if len(xs) < 2 {
+			continue
+		}
+		totalLen := ds[len(ds)-1]
+		if totalLen < 0.01 {
+			continue
+		}
+
+		placed := float32(interval)
+		for placed < totalLen {
+			t := placed / totalLen
+			idx := int(t * float32(len(xs)-1))
+			if idx >= len(xs)-1 {
+				break
+			}
+			frac := t*float32(len(xs)-1) - float32(idx)
+
+			var perX, perZ float32
+			if idx < len(xs)-1 {
+				dx := xs[idx+1] - xs[idx]
+				dz := zs[idx+1] - zs[idx]
+				l := float32(math.Sqrt(float64(dx*dx + dz*dz)))
+				if l > 0.01 {
+					perX = -dz / l
+					perZ = dx / l
+				}
+			}
+
+			lx := xs[idx] + (xs[idx+1]-xs[idx])*frac
+			lz := zs[idx] + (zs[idx+1]-zs[idx])*frac
+
+			var hy float32
+			if seg.Elevation > 0 {
+				hy = float32(seg.Elevation) * 5
+			} else {
+				hy = h.WorldHeight(lx, lz)
+			}
+
+			total := float32(seg.LaneCount) * 3.0
+			half := total * 0.5
+
+			for side := float32(-1); side <= 1; side += 2 {
+				sx := lx + perX*half*side
+				sz := lz + perZ*half*side
+
+				rm.drawLightPole(sx, sz, hy, poleCol, lightCol)
+			}
+
+			placed += interval
+		}
+	}
+}
+
+func (rm *RoadManager) drawLightPole(x, z, groundH float32, poleCol, lightCol rl.Color) {
+	poleH := float32(3.0)
+	rl.DrawCube(rl.NewVector3(x, groundH+poleH*0.5, z), 0.1, poleH, 0.1, poleCol)
+	rl.DrawSphere(rl.NewVector3(x, groundH+poleH+0.3, z), 0.25, lightCol)
+}
+
+func (rm *RoadManager) drawRoadsideTrees(h *Heightmap) {
+	interval := float32(10.0)
+
+	for _, seg := range rm.Segments {
+		if seg.Damaged {
+			continue
+		}
+		if seg.RoadType != RoadTreeLined {
+			continue
+		}
+		xs, zs, ds := rm.SampleSegment(seg, int(seg.Length/2))
+		if len(xs) < 2 {
+			continue
+		}
+		totalLen := ds[len(ds)-1]
+		if totalLen < 0.01 {
+			continue
+		}
+
+		placed := float32(interval)
+		side := float32(-1)
+		for placed < totalLen {
+			t := placed / totalLen
+			idx := int(t * float32(len(xs)-1))
+			if idx >= len(xs)-1 {
+				break
+			}
+			frac := t*float32(len(xs)-1) - float32(idx)
+
+			var perX, perZ float32
+			if idx < len(xs)-1 {
+				dx := xs[idx+1] - xs[idx]
+				dz := zs[idx+1] - zs[idx]
+				l := float32(math.Sqrt(float64(dx*dx + dz*dz)))
+				if l > 0.01 {
+					perX = -dz / l
+					perZ = dx / l
+				}
+			}
+
+			tx := xs[idx] + (xs[idx+1]-xs[idx])*frac
+			tz := zs[idx] + (zs[idx+1]-zs[idx])*frac
+
+			var hy float32
+			if seg.Elevation > 0 {
+				hy = float32(seg.Elevation) * 5
+			} else {
+				hy = h.WorldHeight(tx, tz)
+			}
+
+			total := float32(seg.LaneCount) * 3.0
+			half := total*0.5 + 2.5 + 1.5
+
+			tx += perX * half * side
+			tz += perZ * half * side
+
+			trunkCol := rl.NewColor(80, 50, 20, 255)
+			leafCol := rl.NewColor(50, 180, 50, 255)
+			rl.DrawCube(rl.NewVector3(tx, hy+0.8, tz), 0.2, 1.6, 0.2, trunkCol)
+			rl.DrawSphere(rl.NewVector3(tx, hy+2.0, tz), 1.0, leafCol)
+
+			side = -side
+			placed += interval
 		}
 	}
 }
