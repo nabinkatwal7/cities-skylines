@@ -176,10 +176,7 @@ func SaveGame(filename string, m *SimulationManager, money float32, timeOfDay in
 	}
 
 		if m.Buildings != nil {
-		for _, b := range m.Buildings.Buildings {
-			if b.HasFlag(FlagRemoved) {
-				continue
-			}
+		m.Buildings.ForEach(func(b *Building, _ int32) {
 			bd := BuildingData{
 				X: b.Position.X, Z: b.Position.Z,
 				Type:          b.Type,
@@ -210,7 +207,7 @@ func SaveGame(filename string, m *SimulationManager, money float32, timeOfDay in
 				bd.BusinessProfitability = b.Business.Profitability
 			}
 			data.Buildings = append(data.Buildings, bd)
-		}
+		})
 	}
 
 	if m.Districts != nil {
@@ -332,23 +329,24 @@ func LoadGame(filename string, m *SimulationManager) (money float32, timeOfDay i
 	}
 
 	if m.Buildings != nil {
-		m.Buildings.Buildings = nil
-		m.Buildings.nextSeed = 0
 		for _, bd := range data.Buildings {
-			b := Building{
-				Entity:        NewEntity(uint32(bd.Seed), bd.X, 0, bd.Z, OwnerBuilding),
-				Type:          bd.Type,
-				Seed:          bd.Seed,
-				Width:         bd.Width,
-				Depth:         bd.Depth,
-				Height:        bd.Height,
-				Level:         bd.Level,
-				Residents:     bd.Residents,
-				Workers:       bd.Workers,
-				ConstructTimer: bd.ConstructTimer,
-				UpgradeTimer:  bd.UpgradeTimer,
-				AbandonTimer:  bd.AbandonTimer,
+			slot := m.Buildings.Alloc()
+			if slot < 0 {
+				continue
 			}
+			b := &m.Buildings.Pool[slot]
+			b.Entity = NewEntity(uint32(bd.Seed), bd.X, 0, bd.Z, OwnerBuilding)
+			b.Type = bd.Type
+			b.Seed = bd.Seed
+			b.Width = bd.Width
+			b.Depth = bd.Depth
+			b.Height = bd.Height
+			b.Level = bd.Level
+			b.Residents = bd.Residents
+			b.Workers = bd.Workers
+			b.ConstructTimer = bd.ConstructTimer
+			b.UpgradeTimer = bd.UpgradeTimer
+			b.AbandonTimer = bd.AbandonTimer
 			if bd.Abandoned {
 				b.SetFlag(FlagAbandoned)
 			}
@@ -375,7 +373,6 @@ func LoadGame(filename string, m *SimulationManager) (money float32, timeOfDay i
 					Profitability: bd.BusinessProfitability,
 				}
 			}
-			m.Buildings.Buildings = append(m.Buildings.Buildings, b)
 			if bd.Seed >= m.Buildings.nextSeed {
 				m.Buildings.nextSeed = bd.Seed + 1
 			}

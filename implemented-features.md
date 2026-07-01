@@ -229,3 +229,259 @@ Advantages include:
 Destroyed entities return to a free list for immediate reuse without reallocating memory.
 
 ---
+
+## 1.5 Simulation Scheduler ✅
+
+Unlike frame-based games, Cities: Skylines separates rendering from simulation.
+
+Rendering attempts to maintain the highest possible framerate.
+
+Simulation advances independently according to scheduled update groups.
+
+```text
+Frame
+
+↓
+
+Input Processing
+
+↓
+
+Simulation Scheduler
+
+↓
+
+Fast Updates
+
+↓
+
+Medium Updates
+
+↓
+
+Slow Updates
+
+↓
+
+Very Slow Updates
+
+↓
+
+Renderer
+```
+
+Simulation time advances even if rendering slows down.
+
+Likewise, rendering can exceed simulation frequency without affecting gameplay.
+
+---
+
+### Fast Update Group
+
+Runs every simulation frame.
+
+Responsible for:
+
+- vehicle steering
+- lane changing
+- citizen walking
+- traffic lights
+- intersections
+- train movement
+- aircraft movement
+- ship movement
+- animations
+- pedestrian crossings
+
+Budget
+
+```
+1–3 ms
+```
+
+---
+
+### Medium Update Group
+
+Runs several times per second.
+
+Responsible for:
+
+- power propagation
+- water distribution
+- sewage flow
+- garbage routing
+- ambulance dispatch
+- fire propagation
+- police dispatch
+- service requests
+- district updates
+
+Budget
+
+```
+2–5 ms
+```
+
+---
+
+### Slow Update Group
+
+Runs approximately once every in-game hour.
+
+Responsible for:
+
+- tax collection
+- building upgrades
+- employment calculations
+- education progression
+- happiness updates
+- land value recalculation
+- production chains
+- resource balancing
+
+Budget
+
+```
+5–10 ms
+```
+
+---
+
+### Very Slow Update Group
+
+Runs once every in-game day.
+
+Responsible for:
+
+- immigration
+- emigration
+- births
+- deaths
+- milestone evaluation
+- tourism generation
+- economic reports
+- statistics generation
+- achievement checks
+
+---
+
+## Scheduler Priorities
+
+Each simulation task belongs to a priority class.
+
+```text
+CRITICAL
+
+Road Connectivity
+Vehicle Safety
+Citizen State
+Pathfinding
+
+HIGH
+
+Utilities
+Emergency Services
+Transport
+Fire
+
+MEDIUM
+
+Economy
+Education
+Healthcare
+Garbage
+Crime
+
+LOW
+
+Statistics
+Heatmaps
+Achievements
+UI Updates
+Chirper
+```
+
+When the simulation exceeds its frame budget, lower-priority tasks are postponed to future updates while critical systems continue running uninterrupted.
+
+---
+
+## Deterministic Update Order
+
+Every simulation frame follows the same execution order.
+
+```text
+1. Read Player Commands
+
+2. Process Construction
+
+3. Update Road Network
+
+4. Update Utility Networks
+
+5. Update Public Services
+
+6. Update Buildings
+
+7. Update Citizens
+
+8. Update Vehicles
+
+9. Update Public Transport
+
+10. Update Economy
+
+11. Update District Policies
+
+12. Update Weather
+
+13. Update Statistics
+
+14. Queue Events
+
+15. Render Frame
+```
+
+Maintaining a fixed execution order prevents race conditions and guarantees consistent simulation outcomes across save/load cycles.
+
+---
+
+## Simulation Performance Budget
+
+To maintain responsiveness on large cities, each subsystem receives a fixed processing budget.
+
+| System               |          Target Budget |
+| -------------------- | ---------------------: |
+| Traffic              |                   3 ms |
+| Citizens             |                   2 ms |
+| Buildings            |                   1 ms |
+| Utilities            |                   1 ms |
+| Economy              |                   1 ms |
+| Public Services      |                   2 ms |
+| Transport            |                   2 ms |
+| Weather              |                 0.5 ms |
+| Statistics           |                 0.5 ms |
+| Rendering Submission | Remaining Frame Budget |
+
+If a subsystem exceeds its allocation, remaining work is deferred using incremental processing queues rather than blocking the main thread.
+
+---
+
+## Core Design Goals
+
+The engine architecture is designed to support:
+
+- Cities containing hundreds of thousands of simulated citizens.
+- Tens of thousands of buildings.
+- Thousands of simultaneously active vehicles.
+- Fully simulated utility networks.
+- Deterministic save/load behavior.
+- High-performance pathfinding.
+- Incremental simulation updates.
+- Extensible manager-based gameplay systems.
+- Efficient multithreading.
+- Large-scale modding support.
+- Long-running simulations without memory fragmentation.
+- Consistent gameplay regardless of rendering performance.
+
+This architecture forms the foundation upon which every subsequent gameplay system—including zoning, traffic, public transport, economy, citizen AI, utilities, and disasters—is built.

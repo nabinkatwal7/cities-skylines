@@ -153,7 +153,7 @@ func (sm *SimulationManager) collectTax(dt float64) {
 	sm.TaxTimer++
 	if sm.TaxTimer > 60 {
 		pop := sm.Buildings.Population()
-		tax := float32(len(sm.Buildings.Buildings)) * 0.5
+		tax := float32(sm.Buildings.Count) * 0.5
 		if pop > 0 {
 			tax += float32(pop) * 0.1
 		}

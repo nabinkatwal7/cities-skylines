@@ -27,30 +27,23 @@ type ServiceConsumption struct {
 
 type Building struct {
 	Entity
-	Type         ZoneType
-	Seed         int32
-	Width, Depth float32
-	Height       float32
-	Level        int32
-	UpgradeTimer int32
-	Workers      int32
-	Residents    int32
-	AbandonTimer int32
-	CellX, CellZ int
+	Type          ZoneType
+	Seed          int32
+	Width, Depth  float32
+	Height        float32
+	Level         int32
+	UpgradeTimer  int32
+	Workers       int32
+	Residents     int32
+	AbandonTimer  int32
+	CellX, CellZ  int
 	ConstructTimer int32
-	Household    *HouseholdInfo
-	Business     *BusinessInfo
-	Consumption  ServiceConsumption
+	Household     *HouseholdInfo
+	Business      *BusinessInfo
+	Consumption   ServiceConsumption
 }
 
-type BuildingManager struct {
-	Buildings []Building
-	nextSeed  int32
-	models    map[ZoneType]rl.Model
-	resDemand int
-	comDemand int
-	indDemand int
-	offDemand int
+type BuildingStats struct {
 	TotalPowerUsed   float32
 	TotalWaterUsed   float32
 	TotalGarbage     float32
@@ -58,194 +51,242 @@ type BuildingManager struct {
 	TotalHappiness   int32
 }
 
+type BuildingCmdType uint8
+
+const (
+	CmdBuildCreate  BuildingCmdType = iota
+	CmdBuildDestroy
+	CmdBuildUpgrade
+	CmdBuildDowngrade
+	CmdBuildFireDamage
+	CmdBuildCollapse
+)
+
+type BuildingCommand struct {
+	Type     BuildingCmdType
+	Slot     int32
+	ZoneCellX int
+	ZoneCellZ int
+	ZoneType ZoneType
+}
+
+const BuildingPoolSize = 20000
+
+type BuildingManager struct {
+	Pool     [BuildingPoolSize]Building
+	FreeList []int32
+	Count    int32
+
+	CmdQueue []BuildingCommand
+
+	CellBuildings map[int][]int32
+
+	Stats BuildingStats
+
+	nextSeed  int32
+	models    map[ZoneType]rl.Model
+	resDemand int
+	comDemand int
+	indDemand int
+	offDemand int
+}
+
 func NewBuildingManager() *BuildingManager {
-	return &BuildingManager{models: make(map[ZoneType]rl.Model)}
+	bm := &BuildingManager{
+		models:   make(map[ZoneType]rl.Model),
+		FreeList: make([]int32, BuildingPoolSize),
+	}
+	for i := 0; i < BuildingPoolSize; i++ {
+		bm.Pool[i].Lifecycle = LifecycleUnallocated
+		bm.FreeList[i] = int32(BuildingPoolSize - 1 - i)
+	}
+	return bm
+}
+
+func (bm *BuildingManager) Alloc() int32 {
+	if len(bm.FreeList) == 0 {
+		return -1
+	}
+	idx := bm.FreeList[len(bm.FreeList)-1]
+	bm.FreeList = bm.FreeList[:len(bm.FreeList)-1]
+	b := &bm.Pool[idx]
+	b.Lifecycle = LifecycleActive
+	bm.Count++
+	return idx
+}
+
+func (bm *BuildingManager) Free(slot int32) {
+	if slot < 0 || int(slot) >= BuildingPoolSize {
+		return
+	}
+	bm.Pool[slot] = Building{}
+	bm.Pool[slot].Lifecycle = LifecycleReturnedToPool
+	bm.FreeList = append(bm.FreeList, slot)
+	bm.Count--
+}
+
+func (bm *BuildingManager) ForEach(fn func(*Building, int32)) {
+	for i := 0; i < BuildingPoolSize; i++ {
+		if bm.Pool[i].Lifecycle == LifecycleActive {
+			fn(&bm.Pool[i], int32(i))
+		}
+	}
+}
+
+func (bm *BuildingManager) PushCmd(cmd BuildingCommand) {
+	bm.CmdQueue = append(bm.CmdQueue, cmd)
+}
+
+func (bm *BuildingManager) processCommands(zm *ZoneManager) {
+	for _, cmd := range bm.CmdQueue {
+		switch cmd.Type {
+		case CmdBuildCreate:
+			bm.createBuilding(zm, cmd.ZoneCellX, cmd.ZoneCellZ, cmd.ZoneType)
+		case CmdBuildDestroy:
+			if cmd.Slot >= 0 && int(cmd.Slot) < BuildingPoolSize {
+				b := &bm.Pool[cmd.Slot]
+				if zm != nil && b.CellX >= 0 && b.CellX < zm.width && b.CellZ >= 0 && b.CellZ < zm.height {
+					zm.Cells[b.CellZ][b.CellX].Density = 0
+				}
+				bm.Free(cmd.Slot)
+			}
+		case CmdBuildUpgrade:
+			bm.upgradeBuilding(cmd.Slot)
+		case CmdBuildDowngrade:
+			bm.downgradeBuilding(cmd.Slot)
+		case CmdBuildFireDamage:
+			bm.fireDamageBuilding(cmd.Slot)
+		case CmdBuildCollapse:
+			bm.collapseBuilding(cmd.Slot, zm)
+		}
+	}
+	bm.CmdQueue = bm.CmdQueue[:0]
+	bm.rebuildSpatialIndex(zm)
+}
+
+func (bm *BuildingManager) rebuildSpatialIndex(zm *ZoneManager) {
+	if zm == nil {
+		return
+	}
+	bm.CellBuildings = make(map[int][]int32)
+	bm.ForEach(func(b *Building, slot int32) {
+		key := b.CellZ*zm.width + b.CellX
+		bm.CellBuildings[key] = append(bm.CellBuildings[key], slot)
+	})
+}
+
+func (bm *BuildingManager) createBuilding(zm *ZoneManager, cellX, cellZ int, zt ZoneType) {
+	slot := bm.Alloc()
+	if slot < 0 {
+		return
+	}
+	cellSize := WorldSize / float32(zm.width)
+	cx := float32(cellX)*cellSize - WorldSize/2 + cellSize*0.5
+	cz := float32(cellZ)*cellSize - WorldSize/2 + cellSize*0.5
+
+	w := 5 + float32(bm.nextSeed%3)*1.5
+	d := 5 + float32((bm.nextSeed+1)%3)*1.5
+	hgt := buildingHeight(zt, bm.nextSeed)
+	res, workers := calcPopulation(zt, bm.nextSeed)
+
+	b := &bm.Pool[slot]
+	b.Entity = NewEntity(uint32(bm.nextSeed), cx, 0, cz, OwnerBuilding)
+	b.Type = zt
+	b.Seed = bm.nextSeed
+	b.Width = w
+	b.Depth = d
+	b.Height = hgt
+	b.Level = 1
+	b.Residents = res
+	b.Workers = workers
+	b.CellX = cellX
+	b.CellZ = cellZ
+	b.SetFlag(FlagHasRoad)
+
+	if zt == ZoneResidentialLow || zt == ZoneResidentialHigh {
+		b.Household = &HouseholdInfo{
+			FamilyMembers: res,
+			Wealth:        30 + bm.nextSeed%30,
+			Education:     10 + bm.nextSeed%20,
+			Happiness:     50,
+		}
+		b.Consumption.Power = 1.0 + float32(b.Level)*0.5
+		b.Consumption.Water = 0.8 + float32(b.Level)*0.3
+		b.Consumption.Garbage = 0.5 + float32(b.Level)*0.2
+	}
+	if zt == ZoneCommercialLow || zt == ZoneCommercialHigh || zt == ZoneIndustrial || zt == ZoneOffice {
+		b.Business = &BusinessInfo{
+			GoodsStored:   10,
+			Profitability: 50,
+		}
+		b.Consumption.Power = 2.0 + float32(b.Level)
+		b.Consumption.Water = 1.0 + float32(b.Level)*0.5
+		b.Consumption.Garbage = 1.0 + float32(b.Level)*0.5
+	}
+	bm.nextSeed++
+}
+
+func (bm *BuildingManager) upgradeBuilding(slot int32) {
+	if slot < 0 || int(slot) >= BuildingPoolSize {
+		return
+	}
+	b := &bm.Pool[slot]
+	if b.Level >= 5 {
+		return
+	}
+	b.Level++
+	b.Height = buildingHeight(b.Type, b.Seed+b.Level*10)
+	res, workers := calcPopulation(b.Type, b.Seed+b.Level*10)
+	b.Residents = res
+	b.Workers = workers
+}
+
+func (bm *BuildingManager) downgradeBuilding(slot int32) {
+	if slot < 0 || int(slot) >= BuildingPoolSize {
+		return
+	}
+	b := &bm.Pool[slot]
+	if b.Level <= 1 {
+		return
+	}
+	b.Level--
+	b.Height = buildingHeight(b.Type, b.Seed+b.Level*10)
+	res, workers := calcPopulation(b.Type, b.Seed+b.Level*10)
+	b.Residents = res
+	b.Workers = workers
+}
+
+func (bm *BuildingManager) fireDamageBuilding(slot int32) {
+}
+
+func (bm *BuildingManager) collapseBuilding(slot int32, zm *ZoneManager) {
+	if slot < 0 || int(slot) >= BuildingPoolSize {
+		return
+	}
+	b := &bm.Pool[slot]
+	if zm != nil && b.CellX >= 0 && b.CellX < zm.width && b.CellZ >= 0 && b.CellZ < zm.height {
+		zm.Cells[b.CellZ][b.CellX].Density = 0
+	}
+	bm.Free(slot)
 }
 
 func (bm *BuildingManager) LoadAssets() {
 }
 
 func (bm *BuildingManager) Update(zm *ZoneManager, h *Heightmap, roads *RoadManager, dm *DistrictManager) {
-	bm.calcDemand(zm)
-	bm.TotalPowerUsed = 0
-	bm.TotalWaterUsed = 0
-	bm.TotalGarbage = 0
-	bm.TotalWealth = 0
-	bm.TotalHappiness = 0
-	cellSize := WorldSize / float32(zm.width)
-	for z := 0; z < zm.height; z++ {
-		for x := 0; x < zm.width; x++ {
-			cell := &zm.Cells[z][x]
-			if cell.Type == ZoneNone {
-				continue
-			}
-			cx := float32(x)*cellSize - WorldSize/2 + cellSize*0.5
-			cz := float32(z)*cellSize - WorldSize/2 + cellSize*0.5
-			canDevelop := roads.HasNearbyRoad(cx, cz, cellSize*2)
-			if !canDevelop {
-				continue
-			}
-			if cell.Density >= 0.5 {
-				continue
-			}
-			if bm.shouldDevelop(cell) {
-				cell.Density += 0.005
-			}
-			if cell.Density >= 0.5 {
-				w := 5 + float32(bm.nextSeed%3)*1.5
-				d := 5 + float32((bm.nextSeed+1)%3)*1.5
-				hgt := buildingHeight(cell.Type, bm.nextSeed)
-				res, workers := calcPopulation(cell.Type, bm.nextSeed)
-				bld := Building{
-					Entity:    NewEntity(uint32(bm.nextSeed), cx, 0, cz, OwnerBuilding),
-					Type:      cell.Type,
-					Seed:      bm.nextSeed,
-					Width:     w,
-					Depth:     d,
-					Height:    hgt,
-					Level:     1,
-					Residents: res,
-					Workers:   workers,
-					CellX:     x,
-					CellZ:     z,
-				}
-				bld.SetFlag(FlagHasRoad)
-				if cell.Type == ZoneResidentialLow || cell.Type == ZoneResidentialHigh {
-					bld.Household = &HouseholdInfo{
-						FamilyMembers: res,
-						Wealth:        30 + bm.nextSeed%30,
-						Education:     10 + bm.nextSeed%20,
-						Happiness:     50,
-					}
-					bld.Consumption.Power = 1.0 + float32(bld.Level)*0.5
-					bld.Consumption.Water = 0.8 + float32(bld.Level)*0.3
-					bld.Consumption.Garbage = 0.5 + float32(bld.Level)*0.2
-				}
-				if cell.Type == ZoneCommercialLow || cell.Type == ZoneCommercialHigh || cell.Type == ZoneIndustrial || cell.Type == ZoneOffice {
-					bld.Business = &BusinessInfo{
-						GoodsStored:   10,
-						Profitability: 50,
-					}
-					bld.Consumption.Power = 2.0 + float32(bld.Level)
-					bld.Consumption.Water = 1.0 + float32(bld.Level)*0.5
-					bld.Consumption.Garbage = 1.0 + float32(bld.Level)*0.5
-				}
-				bm.Buildings = append(bm.Buildings, bld)
-				bm.nextSeed++
-			}
-		}
-	}
-	for i := range bm.Buildings {
-		b := &bm.Buildings[i]
-		if b.HasFlag(FlagAbandoned) {
-			b.AbandonTimer++
-			if b.AbandonTimer > 1800 {
-				if b.CellX >= 0 && b.CellX < zm.width && b.CellZ >= 0 && b.CellZ < zm.height {
-					zm.Cells[b.CellZ][b.CellX].Density = 0
-				}
-				b.SetFlag(FlagRemoved)
-				b.Residents = 0
-				b.Workers = 0
-			}
-			continue
-		}
-
-		cellSize := WorldSize / float32(zm.width)
-		hasRoad := roads.HasNearbyRoad(b.Position.X, b.Position.Z, cellSize*2)
-		if hasRoad {
-			b.SetFlag(FlagHasRoad)
-		} else {
-			b.ClearFlag(FlagHasRoad)
-		}
-		if !hasRoad {
-			b.SetFlag(FlagAbandoned)
-			b.AbandonTimer = 0
-			b.Residents = 0
-			b.Workers = 0
-			continue
-		}
-
-		if !b.HasFlag(FlagConstructed) {
-			b.ConstructTimer++
-			if b.ConstructTimer > 300 {
-				b.SetFlag(FlagConstructed)
-			}
-			continue
-		}
-
-		if b.Household != nil {
-			bm.TotalWealth += b.Household.Wealth
-			bm.TotalHappiness += b.Household.Happiness
-			bm.TotalPowerUsed += b.Consumption.Power
-			bm.TotalWaterUsed += b.Consumption.Water
-			bm.TotalGarbage += b.Consumption.Garbage
-			if b.Household.Happiness < 80 {
-				b.Household.Happiness++
-			}
-			if b.Household.Wealth < 70 {
-				b.Household.Wealth++
-			}
-		}
-		if b.Business != nil {
-			bm.TotalPowerUsed += b.Consumption.Power
-			bm.TotalWaterUsed += b.Consumption.Water
-			if b.Business.GoodsStored < 50 {
-				b.Business.GoodsStored++
-			}
-			if b.Business.Profitability < 60 {
-				b.Business.Profitability++
-			}
-		}
-		if dm != nil {
-			dm.ApplyPolicies(b)
-		}
-
-		if b.Level >= 5 {
-			continue
-		}
-		b.UpgradeTimer++
-		needed := int32(600-b.Level*100) + b.Seed%60
-		if b.UpgradeTimer > needed {
-			lv := landValue(b, h)
-			if lv > b.Level*10 {
-				b.Level++
-				b.Height = buildingHeight(b.Type, b.Seed+b.Level*10)
-				res, workers := calcPopulation(b.Type, b.Seed+b.Level*10)
-				b.Residents = res
-				b.Workers = workers
-			}
-		}
-	}
+	bm.processCommands(zm)
+	bm.calcDemand()
+	bm.developZones(zm, roads)
+	bm.updateBuildings(zm, h, roads, dm)
 }
 
-func calcPopulation(zt ZoneType, seed int32) (res int32, workers int32) {
-	switch zt {
-	case ZoneResidentialLow:
-		return 2 + seed%4, 0
-	case ZoneResidentialHigh:
-		return 6 + seed%8, 0
-	case ZoneCommercialLow:
-		return 0, 2 + seed%3
-	case ZoneCommercialHigh:
-		return 0, 6 + seed%6
-	case ZoneIndustrial:
-		return 0, 4 + seed%5
-	case ZoneOffice:
-		return 0, 5 + seed%5
-	}
-	return 0, 0
-}
-
-func (bm *BuildingManager) calcDemand(zm *ZoneManager) {
+func (bm *BuildingManager) calcDemand() {
 	resPop := int32(0)
 	comJobs := int32(0)
 	indJobs := int32(0)
 	offJobs := int32(0)
 	total := 0
-	for _, b := range bm.Buildings {
-		if b.HasFlag(FlagRemoved) {
-			continue
-		}
+	bm.ForEach(func(b *Building, _ int32) {
 		total++
 		switch b.Type {
 		case ZoneResidentialLow, ZoneResidentialHigh:
@@ -257,7 +298,7 @@ func (bm *BuildingManager) calcDemand(zm *ZoneManager) {
 		case ZoneOffice:
 			offJobs += b.Workers
 		}
-	}
+	})
 	availableJobs := comJobs + indJobs + offJobs
 	bm.resDemand = int(availableJobs-resPop) / 2
 	bm.comDemand = int(resPop/2-comJobs) / 2
@@ -295,6 +336,140 @@ func (bm *BuildingManager) shouldDevelop(cell *ZoneCell) bool {
 		return bm.offDemand > 0
 	}
 	return false
+}
+
+func (bm *BuildingManager) developZones(zm *ZoneManager, roads *RoadManager) {
+	cellSize := WorldSize / float32(zm.width)
+	for z := 0; z < zm.height; z++ {
+		for x := 0; x < zm.width; x++ {
+			cell := &zm.Cells[z][x]
+			if cell.Type == ZoneNone {
+				continue
+			}
+			cx := float32(x)*cellSize - WorldSize/2 + cellSize*0.5
+			cz := float32(z)*cellSize - WorldSize/2 + cellSize*0.5
+			canDevelop := roads.HasNearbyRoad(cx, cz, cellSize*2)
+			if !canDevelop {
+				continue
+			}
+			if cell.Density >= 0.5 {
+				continue
+			}
+			if bm.shouldDevelop(cell) {
+				cell.Density += 0.005
+			}
+			if cell.Density >= 0.5 {
+				bm.PushCmd(BuildingCommand{
+					Type:      CmdBuildCreate,
+					ZoneCellX: x,
+					ZoneCellZ: z,
+					ZoneType:  cell.Type,
+				})
+			}
+		}
+	}
+}
+
+func (bm *BuildingManager) updateBuildings(zm *ZoneManager, h *Heightmap, roads *RoadManager, dm *DistrictManager) {
+	bm.Stats = BuildingStats{}
+
+	bm.ForEach(func(b *Building, slot int32) {
+		if b.HasFlag(FlagAbandoned) {
+			b.AbandonTimer++
+			if b.AbandonTimer > 1800 {
+				bm.PushCmd(BuildingCommand{
+					Type:      CmdBuildDestroy,
+					Slot:      slot,
+					ZoneCellX: b.CellX,
+					ZoneCellZ: b.CellZ,
+				})
+			}
+			return
+		}
+
+		cellSize := WorldSize / float32(zm.width)
+		hasRoad := roads.HasNearbyRoad(b.Position.X, b.Position.Z, cellSize*2)
+		if hasRoad {
+			b.SetFlag(FlagHasRoad)
+		} else {
+			b.ClearFlag(FlagHasRoad)
+		}
+		if !hasRoad {
+			b.SetFlag(FlagAbandoned)
+			b.AbandonTimer = 0
+			b.Residents = 0
+			b.Workers = 0
+			return
+		}
+
+		if !b.HasFlag(FlagConstructed) {
+			b.ConstructTimer++
+			if b.ConstructTimer > 300 {
+				b.SetFlag(FlagConstructed)
+			}
+			return
+		}
+
+		if b.Household != nil {
+			bm.Stats.TotalWealth += b.Household.Wealth
+			bm.Stats.TotalHappiness += b.Household.Happiness
+			bm.Stats.TotalPowerUsed += b.Consumption.Power
+			bm.Stats.TotalWaterUsed += b.Consumption.Water
+			bm.Stats.TotalGarbage += b.Consumption.Garbage
+			if b.Household.Happiness < 80 {
+				b.Household.Happiness++
+			}
+			if b.Household.Wealth < 70 {
+				b.Household.Wealth++
+			}
+		}
+		if b.Business != nil {
+			bm.Stats.TotalPowerUsed += b.Consumption.Power
+			bm.Stats.TotalWaterUsed += b.Consumption.Water
+			if b.Business.GoodsStored < 50 {
+				b.Business.GoodsStored++
+			}
+			if b.Business.Profitability < 60 {
+				b.Business.Profitability++
+			}
+		}
+		if dm != nil {
+			dm.ApplyPolicies(b)
+		}
+
+		if b.Level >= 5 {
+			return
+		}
+		b.UpgradeTimer++
+		needed := int32(600-b.Level*100) + b.Seed%60
+		if b.UpgradeTimer > needed {
+			lv := landValue(b, h)
+			if lv > b.Level*10 {
+				bm.PushCmd(BuildingCommand{
+					Type: CmdBuildUpgrade,
+					Slot: slot,
+				})
+			}
+		}
+	})
+}
+
+func calcPopulation(zt ZoneType, seed int32) (res int32, workers int32) {
+	switch zt {
+	case ZoneResidentialLow:
+		return 2 + seed%4, 0
+	case ZoneResidentialHigh:
+		return 6 + seed%8, 0
+	case ZoneCommercialLow:
+		return 0, 2 + seed%3
+	case ZoneCommercialHigh:
+		return 0, 6 + seed%6
+	case ZoneIndustrial:
+		return 0, 4 + seed%5
+	case ZoneOffice:
+		return 0, 5 + seed%5
+	}
+	return 0, 0
 }
 
 func buildingHeight(zt ZoneType, seed int32) float32 {
@@ -340,66 +515,56 @@ func (bm *BuildingManager) Demand() (res, com, ind int) {
 
 func (bm *BuildingManager) Population() int32 {
 	total := int32(0)
-	for _, b := range bm.Buildings {
-		if b.HasFlag(FlagRemoved) {
-			continue
-		}
+	bm.ForEach(func(b *Building, _ int32) {
 		total += b.Residents
-	}
+	})
 	return total
 }
 
 func (bm *BuildingManager) NearestInfo(wx, wz float32, radius float32) string {
 	best := float32(radius * radius)
-	idx := -1
-	for i, b := range bm.Buildings {
-		if b.HasFlag(FlagRemoved) {
-			continue
-		}
+	var nearest *Building
+	bm.ForEach(func(b *Building, _ int32) {
 		dx := b.Position.X - wx
 		dz := b.Position.Z - wz
 		d := dx*dx + dz*dz
 		if d < best {
 			best = d
-			idx = i
+			nearest = b
 		}
-	}
-	if idx < 0 {
+	})
+	if nearest == nil {
 		return ""
 	}
-	b := bm.Buildings[idx]
-	name := ZoneTypeName(b.Type)
-	levelCount := b.Level
+	name := ZoneTypeName(nearest.Type)
+	levelCount := nearest.Level
 	lvl := ""
 	for i := int32(0); i < levelCount; i++ {
 		lvl += "I"
 	}
 	extra := " | "
-	if b.HasFlag(FlagAbandoned) {
+	if nearest.HasFlag(FlagAbandoned) {
 		extra += "ABANDONED"
-	} else if b.Residents > 0 {
-		extra += fmt.Sprintf("Pop: %d", b.Residents)
-		if b.Household != nil {
-			extra += fmt.Sprintf(" W:%.0f H:%d", b.Consumption.Power, b.Household.Happiness)
+	} else if nearest.Residents > 0 {
+		extra += fmt.Sprintf("Pop: %d", nearest.Residents)
+		if nearest.Household != nil {
+			extra += fmt.Sprintf(" W:%.0f H:%d", nearest.Consumption.Power, nearest.Household.Happiness)
 		}
-	} else if b.Workers > 0 {
-		extra += fmt.Sprintf("Jobs: %d", b.Workers)
-		if b.Business != nil {
-			extra += fmt.Sprintf(" P:%d%%", b.Business.Profitability)
+	} else if nearest.Workers > 0 {
+		extra += fmt.Sprintf("Jobs: %d", nearest.Workers)
+		if nearest.Business != nil {
+			extra += fmt.Sprintf(" P:%d%%", nearest.Business.Profitability)
 		}
 	}
-	if !b.HasFlag(FlagConstructed) {
-		pct := int(float32(b.ConstructTimer) / 300.0 * 100)
+	if !nearest.HasFlag(FlagConstructed) {
+		pct := int(float32(nearest.ConstructTimer) / 300.0 * 100)
 		extra += fmt.Sprintf(" Building %d%%", pct)
 	}
 	return fmt.Sprintf("%s Lvl %s%s", name, lvl, extra)
 }
 
 func (bm *BuildingManager) Draw(h *Heightmap, zm *ZoneManager, isNight bool) {
-	for _, b := range bm.Buildings {
-		if b.HasFlag(FlagRemoved) {
-			continue
-		}
+	bm.ForEach(func(b *Building, _ int32) {
 		hy := h.WorldHeight(b.Position.X, b.Position.Z)
 		col := ZoneColor(b.Type)
 		col.A = 255
@@ -413,13 +578,13 @@ func (bm *BuildingManager) Draw(h *Heightmap, zm *ZoneManager, isNight bool) {
 			}
 			axis := rl.NewVector3(0, 1, 0)
 			rl.DrawModelEx(m, b.Position, axis, b.Rotation.W*rl.Rad2deg, rl.NewVector3(s, s, s), rl.White)
-			continue
+			return
 		}
 
 		if b.HasFlag(FlagAbandoned) {
 			grey := rl.NewColor(80, 80, 80, 255)
 			rl.DrawCube(rl.NewVector3(b.Position.X, hy+b.Height*0.5*lvlScale, b.Position.Z), b.Width, b.Height*lvlScale, b.Depth, grey)
-			continue
+			return
 		}
 
 		if !b.HasFlag(FlagConstructed) {
@@ -439,7 +604,7 @@ func (bm *BuildingManager) Draw(h *Heightmap, zm *ZoneManager, isNight bool) {
 			} else {
 				rl.DrawCube(rl.NewVector3(b.Position.X, hy+currH*0.5, b.Position.Z), b.Width, currH, b.Depth, constructCol)
 			}
-			continue
+			return
 		}
 
 		baseH := b.Height * 0.7 * lvlScale
@@ -506,7 +671,7 @@ func (bm *BuildingManager) Draw(h *Heightmap, zm *ZoneManager, isNight bool) {
 				}
 			}
 		}
-	}
+	})
 }
 
 func (bm *BuildingManager) Unload() {

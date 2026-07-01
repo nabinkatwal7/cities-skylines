@@ -29,13 +29,14 @@ const (
 )
 
 type Entity struct {
-	ID       uint32
-	Position rl.Vector3
-	Rotation rl.Vector4
-	Bounds   rl.BoundingBox
-	Flags    EntityFlags
-	Owner    OwnerType
-	LODLevel uint16
+	ID        uint32
+	Position  rl.Vector3
+	Rotation  rl.Vector4
+	Bounds    rl.BoundingBox
+	Flags     EntityFlags
+	Owner     OwnerType
+	LODLevel  uint16
+	Lifecycle LifecycleState
 }
 
 func NewEntity(id uint32, x, y, z float32, owner OwnerType) Entity {
