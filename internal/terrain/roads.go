@@ -531,6 +531,7 @@ type RoadSegment struct {
 	MaintenanceCost  float32
 	ConstructionCost float32
 	Damaged          bool
+	RepairTimer      int32
 	Curve            CurveData
 	Lanes            []Lane
 }
@@ -1073,11 +1074,45 @@ func (rm *RoadManager) Update(h *Heightmap) {
 		if isFlooded {
 			if !seg.Damaged {
 				seg.Damaged = true
+				seg.RepairTimer = 600
 			}
-		} else {
-			seg.Damaged = false
+		}
+		if seg.Damaged && !isFlooded && seg.RepairTimer > 0 {
+			seg.RepairTimer--
+			if seg.RepairTimer <= 0 {
+				seg.Damaged = false
+			}
 		}
 	}
+}
+
+func (rm *RoadManager) DamageNearby(x, z, radius float32) {
+	for i := range rm.Segments {
+		seg := &rm.Segments[i]
+		na := &rm.Nodes[seg.NodeA]
+		nb := &rm.Nodes[seg.NodeB]
+		dx := (na.X+nb.X)*0.5 - x
+		dz := (na.Z+nb.Z)*0.5 - z
+		if dx*dx+dz*dz < radius*radius {
+			if !seg.Damaged {
+				seg.Damaged = true
+				seg.RepairTimer = 900
+			}
+		}
+	}
+}
+
+func (rm *RoadManager) RepairSegment(idx int) bool {
+	if idx < 0 || idx >= len(rm.Segments) {
+		return false
+	}
+	seg := &rm.Segments[idx]
+	if !seg.Damaged {
+		return false
+	}
+	seg.Damaged = false
+	seg.RepairTimer = 0
+	return true
 }
 
 var waterForRoads *WaterSystem
@@ -1108,6 +1143,35 @@ func (rm *RoadManager) Draw(h *Heightmap) {
 	rm.drawRoadsideTrees(h)
 	rm.drawBridgePillars(h)
 	rm.drawTunnelPortals(h)
+	rm.drawDamageOverlay(h)
+}
+
+func (rm *RoadManager) drawDamageOverlay(h *Heightmap) {
+	for _, seg := range rm.Segments {
+		if !seg.Damaged {
+			continue
+		}
+		xs, zs, _ := rm.SampleSegment(seg, int(seg.Length/4))
+		if len(xs) < 2 {
+			continue
+		}
+		for si := 0; si < len(xs)-1; si++ {
+			x0, z0 := xs[si], zs[si]
+			x1, z1 := xs[si+1], zs[si+1]
+			var h0, h1 float32
+			if seg.Elevation > 0 {
+				h0 = float32(seg.Elevation) * 5
+				h1 = float32(seg.Elevation) * 5
+			} else {
+				h0 = h.WorldHeight(x0, z0) + 0.2
+				h1 = h.WorldHeight(x1, z1) + 0.2
+			}
+			rl.DrawCube(rl.NewVector3((x0+x1)*0.5, (h0+h1)*0.5, (z0+z1)*0.5), 0.8, 0.3, 0.6, rl.NewColor(120, 60, 30, 180))
+			if si%3 == 0 {
+				rl.DrawCube(rl.NewVector3((x0+x1)*0.5-0.5, (h0+h1)*0.5, (z0+z1)*0.5), 0.5, 0.2, 0.4, rl.NewColor(80, 40, 20, 200))
+			}
+		}
+	}
 }
 
 func (rm *RoadManager) drawFallback(h *Heightmap) {
@@ -1125,6 +1189,9 @@ func (rm *RoadManager) drawFallback(h *Heightmap) {
 		total := float32(lanes) * laneW
 		half := total * 0.5
 		col := rl.NewColor(80, 80, 80, 255)
+		if seg.Damaged {
+			col = rl.NewColor(100, 50, 30, 255)
+		}
 
 		for si := 0; si < len(xs)-1; si++ {
 			x0, z0 := xs[si], zs[si]

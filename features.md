@@ -1,19 +1,3 @@
-## 3.22 Outside Connections
-
-Certain roads connect to external regions.
-
-External highways support:
-
-- Imports
-- Exports
-- Immigration
-- Tourists
-- Service Requests
-
-Outside traffic follows the same road simulation as local traffic.
-
----
-
 ## 3.23 Road Serialization
 
 Saved road data includes:

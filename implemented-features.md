@@ -2539,3 +2539,19 @@ Roads may become temporarily unusable due to:
 Blocked roads trigger automatic path recalculation.
 
 ---
+
+## 3.22 Outside Connections
+
+Certain roads connect to external regions.
+
+External highways support:
+
+- Imports
+- Exports
+- Immigration
+- Tourists
+- Service Requests
+
+Outside traffic follows the same road simulation as local traffic.
+
+---

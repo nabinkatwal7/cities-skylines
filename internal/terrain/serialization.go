@@ -65,6 +65,7 @@ type RoadSegmentData struct {
 	MaintenanceCost  float32
 	ConstructionCost float32
 	Damaged          bool
+	RepairTimer      int32
 	CurveP1x         float32
 	CurveP1z         float32
 	CurveP2x         float32
@@ -368,6 +369,7 @@ func SaveGame(filename string, m *SimulationManager, money float32, timeOfDay in
 				MaintenanceCost:  s.MaintenanceCost,
 				ConstructionCost: s.ConstructionCost,
 				Damaged:          s.Damaged,
+				RepairTimer:      s.RepairTimer,
 				CurveP1x:         s.Curve.P1x,
 				CurveP1z:         s.Curve.P1z,
 				CurveP2x:         s.Curve.P2x,
@@ -573,6 +575,7 @@ func LoadGame(filename string, m *SimulationManager) (money float32, timeOfDay i
 					m.Roads.Segments[i].MaintenanceCost = sd.MaintenanceCost
 					m.Roads.Segments[i].ConstructionCost = sd.ConstructionCost
 					m.Roads.Segments[i].Damaged = sd.Damaged
+					m.Roads.Segments[i].RepairTimer = sd.RepairTimer
 					m.Roads.Segments[i].Curve = CurveData{P1x: sd.CurveP1x, P1z: sd.CurveP1z, P2x: sd.CurveP2x, P2z: sd.CurveP2z}
 					if len(sd.Lanes) > 0 {
 						m.Roads.Segments[i].Lanes = make([]Lane, len(sd.Lanes))

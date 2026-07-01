@@ -100,6 +100,7 @@ func NewSimulationManager(seed int64) *SimulationManager {
 	sm.initEventListeners()
 	sm.Water.SetEventBus(sm.EventBus)
 	SetWaterForBuildings(sm.Water)
+	SetRoadsForBuildings(sm.Roads)
 	SetWaterForRoads(sm.Water)
 	sm.Buildability = NewBuildabilityChecker(sm.Heightmap, sm.Water, sm.Trees, sm.Buildings, sm.Roads, sm.Zones, sm.Resources)
 	SetBuildabilityChecker(sm.Buildability)
@@ -462,6 +463,16 @@ func (sm *SimulationManager) UpgradeSegment(idx int, newType RoadType) bool {
 	}
 	old := sm.Roads.Segments[idx]
 	if old.RoadType == newType {
+		if old.Damaged {
+			cost := sm.Roads.Segments[idx].MaintenanceCost * 5
+			if sm.Money < cost {
+				return false
+			}
+			if sm.Roads.RepairSegment(idx) {
+				sm.Money -= cost
+				return true
+			}
+		}
 		return true
 	}
 	oldCost := roadConstructionCost(old.RoadType)

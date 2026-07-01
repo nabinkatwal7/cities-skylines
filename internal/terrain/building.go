@@ -267,6 +267,9 @@ func (bm *BuildingManager) collapseBuilding(slot int32, zm *ZoneManager) {
 	if zm != nil && b.CellX >= 0 && b.CellX < zm.width && b.CellZ >= 0 && b.CellZ < zm.height {
 		zm.Cells[b.CellZ][b.CellX].Density = 0
 	}
+	if roadsForBuildings != nil {
+		roadsForBuildings.DamageNearby(b.Position.X, b.Position.Z, 15)
+	}
 	bm.Free(slot)
 }
 
@@ -794,6 +797,12 @@ var waterForBuildings *WaterSystem
 
 func SetWaterForBuildings(ws *WaterSystem) {
 	waterForBuildings = ws
+}
+
+var roadsForBuildings *RoadManager
+
+func SetRoadsForBuildings(rm *RoadManager) {
+	roadsForBuildings = rm
 }
 
 func (bm *BuildingManager) Unload() {
