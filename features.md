@@ -1,3 +1,18 @@
+## 4.7 Tram System
+
+Trams operate on dedicated tram tracks.
+
+Unlike buses:
+
+- Ignore road congestion where segregated.
+- Share intersections.
+- Require tram-enabled roads.
+- Use tram depots.
+
+Passengers board only at tram stops.
+
+---
+
 ## 4.8 Metro System
 
 Metro networks operate underground or elevated.
