@@ -1,27 +1,3 @@
-## 3.13 Road Hierarchy
-
-Roads are classified by importance.
-
-```text
-Highway
-
-↓
-
-Arterial
-
-↓
-
-Collector
-
-↓
-
-Local Road
-```
-
-Traffic prefers higher hierarchy roads whenever possible.
-
----
-
 ## 3.14 Vehicle Pathfinding
 
 Vehicles use graph-based pathfinding.

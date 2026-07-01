@@ -1793,6 +1793,16 @@ func (rm *RoadManager) FindPath(startNode, endNode uint32, vehicleType int) []ui
 				other = seg.NodeB
 			}
 			cost := seg.Length / seg.SpeedLimit
+			switch roadHierarchy(seg.RoadType) {
+			case HierarchyHighway:
+				cost *= 0.6
+			case HierarchyArterial:
+				cost *= 0.8
+			case HierarchyLocal:
+				cost *= 1.5
+			default:
+				cost *= 1.0
+			}
 			nd := nodes[best].dist + cost
 			if nd < nodes[other].dist {
 				nodes[other].dist = nd

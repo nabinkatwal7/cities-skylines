@@ -2352,3 +2352,27 @@ Right
 These connections form the navigation graph used by vehicles.
 
 ---
+
+## 3.13 Road Hierarchy
+
+Roads are classified by importance.
+
+```text
+Highway
+
+↓
+
+Arterial
+
+↓
+
+Collector
+
+↓
+
+Local Road
+```
+
+Traffic prefers higher hierarchy roads whenever possible.
+
+---
