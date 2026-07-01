@@ -568,14 +568,55 @@ func (rm *RoadManager) drawJunctionMarkings(h *Heightmap) {
 		if n.JunctionType == 2 {
 			col = rl.NewColor(100, 100, 200, 200)
 		}
+
 		rl.DrawCube(rl.NewVector3(n.X, hy, n.Z), 2, 0.1, 2, col)
 
-		if n.HasTrafficLight && n.TrafficLightPhase < 2 {
-			tlCol := rl.Green
-			if n.TrafficLightPhase == 0 {
-				tlCol = rl.NewColor(255, 0, 0, 255)
+		for _, sid := range n.Connected {
+			seg := rm.Segments[sid]
+			other := seg.NodeA
+			if other == uint32(i) {
+				other = seg.NodeB
 			}
-			rl.DrawSphere(rl.NewVector3(n.X, hy+2, n.Z), 0.5, tlCol)
+			on := &rm.Nodes[other]
+			dx := on.X - n.X
+			dz := on.Z - n.Z
+			l := float32(math.Sqrt(float64(dx*dx + dz*dz)))
+			if l < 0.01 {
+				continue
+			}
+
+			perX := -dz / l
+			perZ := dx / l
+
+			lanes := roadLanes(seg.RoadType)
+			total := float32(lanes) * laneW
+			half := total * 0.5
+
+			stopX := n.X + dx/l*1.5
+			stopZ := n.Z + dz/l*1.5
+
+			rl.DrawCube(rl.NewVector3(stopX, hy, stopZ), 0.3, 0.05, total*0.8, rl.NewColor(255, 255, 255, 200))
+
+			crossX := n.X + dx/l*3
+			crossZ := n.Z + dz/l*3
+			for ci := 0; ci < 3; ci++ {
+				off := float32(ci)*0.5 - 0.5
+				rl.DrawCube(rl.NewVector3(crossX+perX*half*off, hy, crossZ+perZ*half*off), 0.2, 0.05, total*0.3, rl.NewColor(255, 255, 255, 180))
+			}
+		}
+
+		if n.HasTrafficLight {
+			tlCol := rl.NewColor(255, 200, 50, 255)
+			switch n.TrafficLightPhase {
+			case 0:
+				tlCol = rl.NewColor(255, 0, 0, 255)
+			case 1:
+				tlCol = rl.NewColor(255, 200, 0, 255)
+			case 2:
+				tlCol = rl.NewColor(0, 255, 0, 255)
+			}
+			rl.DrawSphere(rl.NewVector3(n.X, hy+2.5, n.Z), 0.4, tlCol)
+			rl.DrawCube(rl.NewVector3(n.X, hy+1.8, n.Z), 0.1, 1.5, 0.1, rl.NewColor(60, 60, 60, 200))
 		}
 	}
 }

@@ -67,7 +67,7 @@ func NewBuildingManager() *BuildingManager {
 func (bm *BuildingManager) LoadAssets() {
 }
 
-func (bm *BuildingManager) Update(zm *ZoneManager, h *Heightmap, roads *RoadManager) {
+func (bm *BuildingManager) Update(zm *ZoneManager, h *Heightmap, roads *RoadManager, dm *DistrictManager) {
 	bm.calcDemand(zm)
 	cellSize := WorldSize / float32(zm.width)
 	for z := 0; z < zm.height; z++ {
@@ -192,6 +192,9 @@ func (bm *BuildingManager) Update(zm *ZoneManager, h *Heightmap, roads *RoadMana
 			if b.Business.Profitability < 60 {
 				b.Business.Profitability++
 			}
+		}
+		if dm != nil {
+			dm.ApplyPolicies(b)
 		}
 
 		if b.Level >= 5 {

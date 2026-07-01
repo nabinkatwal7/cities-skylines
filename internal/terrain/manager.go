@@ -26,6 +26,7 @@ type Manager struct {
 	Connections *ConnectionSystem
 	Vehicles    *VehicleManager
 	Transport   *TransportManager
+	Districts   *DistrictManager
 	Chunks      []*Chunk
 	Models      []rl.Model
 	Seed        int64
@@ -56,6 +57,7 @@ func (m *Manager) GenerateData() {
 	m.Services = NewServiceManager()
 	m.Vehicles = NewVehicleManager()
 	m.Transport = NewTransportManager()
+	m.Districts = NewDistrictManager()
 	n0 := m.Roads.AddNode(-50, -50)
 	n1 := m.Roads.AddNode(-50, 50)
 	n2 := m.Roads.AddNode(50, 50)
@@ -170,7 +172,7 @@ func (m *Manager) Update(dt float64) {
 		m.Transport.Update(m.Roads, m.Heightmap)
 	}
 	if m.Buildings != nil {
-		m.Buildings.Update(m.Zones, m.Heightmap, m.Roads)
+		m.Buildings.Update(m.Zones, m.Heightmap, m.Roads, m.Districts)
 	}
 }
 
@@ -206,6 +208,9 @@ func (m *Manager) Draw(camX, camZ float32) {
 	if m.Transport != nil {
 		m.Transport.Draw(m.Heightmap)
 	}
+	if m.Districts != nil {
+		m.Districts.Draw(m.Heightmap)
+	}
 	if m.Services != nil {
 		m.Services.Draw(m.Heightmap)
 	}
@@ -226,6 +231,9 @@ func (m *Manager) Unload() {
 	}
 	if m.Transport != nil {
 		m.Transport.Unload()
+	}
+	if m.Districts != nil {
+		m.Districts.Unload()
 	}
 	if m.Roads != nil {
 		m.Roads.Unload()

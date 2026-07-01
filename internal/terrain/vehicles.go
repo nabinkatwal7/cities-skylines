@@ -28,6 +28,9 @@ type Vehicle struct {
 	Waiting        int32
 	Parked         bool
 	Color          rl.Color
+	Lane           int
+	TurnSignal     int
+	SignalTimer    int32
 }
 
 type VehicleManager struct {
@@ -48,6 +51,9 @@ func (vm *VehicleManager) SpawnCar(rm *RoadManager) {
 	seg := rm.Segments[segIdx]
 	na := &rm.Nodes[seg.NodeA]
 
+	lanes := roadLanes(seg.RoadType)
+	lane := int(vm.NextID) % lanes
+
 	vm.Vehicles = append(vm.Vehicles, Vehicle{
 		ID:          vm.NextID,
 		Type:        VehicleCar,
@@ -55,6 +61,7 @@ func (vm *VehicleManager) SpawnCar(rm *RoadManager) {
 		Z:           na.Z,
 		TargetSpeed: roadSpeed(seg.RoadType) * 0.8,
 		RoadSeg:     segIdx,
+		Lane:        lane,
 		Color:       rl.NewColor(uint8(100+vm.NextID%100), uint8(50+vm.NextID%80), uint8(80+vm.NextID%100), 255),
 	})
 	vm.NextID++
@@ -62,6 +69,27 @@ func (vm *VehicleManager) SpawnCar(rm *RoadManager) {
 	if len(vm.Vehicles) > 200 {
 		vm.Vehicles = vm.Vehicles[1:]
 	}
+}
+
+func (vm *VehicleManager) chooseLane(v *Vehicle, rm *RoadManager, seg RoadSegment) int {
+	lanes := roadLanes(seg.RoadType)
+	if lanes <= 1 {
+		return 0
+	}
+	na := &rm.Nodes[seg.NodeA]
+	nb := &rm.Nodes[seg.NodeB]
+
+	connCount := len(na.Connected)
+	if connCount <= 2 {
+		_ = nb
+		return v.Lane
+	}
+
+	rightmost := lanes - 1
+	if connCount >= 3 {
+		return rightmost
+	}
+	return 0
 }
 
 func (vm *VehicleManager) Update(rm *RoadManager, h *Heightmap) {
@@ -89,29 +117,20 @@ func (vm *VehicleManager) Update(rm *RoadManager, h *Heightmap) {
 			}
 		}
 
+		v.Lane = vm.chooseLane(v, rm, seg)
+
 		na := &rm.Nodes[seg.NodeA]
-		nb := &rm.Nodes[seg.NodeB]
 
 		if na.HasTrafficLight && na.JunctionType == 1 {
-			distToNode := float32(0)
-			if v.PathIdx == 0 || (v.PathIdx > 0 && v.Path[v.PathIdx] == seg.NodeA) {
-				dx := na.X - v.X
-				dz := na.Z - v.Z
-				distToNode = float32(math.Sqrt(float64(dx*dx + dz*dz)))
-			} else if v.PathIdx > 0 && v.Path[v.PathIdx] == seg.NodeB {
-				dx := nb.X - v.X
-				dz := nb.Z - v.Z
-				distToNode = float32(math.Sqrt(float64(dx*dx + dz*dz)))
-			}
+			dx := na.X - v.X
+			dz := na.Z - v.Z
+			distToNode := float32(math.Sqrt(float64(dx*dx + dz*dz)))
 			if distToNode < 15 && na.TrafficLightPhase >= 2 {
 				v.Speed *= 0.9
 				if v.Speed < 2 {
 					v.Speed = 2
 				}
 				v.Waiting++
-				if v.Waiting > 120 {
-					v.Waiting = 0
-				}
 			} else {
 				v.Waiting = 0
 			}
@@ -139,6 +158,9 @@ func (vm *VehicleManager) Update(rm *RoadManager, h *Heightmap) {
 			v.SegProgress = 0
 		}
 
+		lanes := roadLanes(seg.RoadType)
+		halfLane := float32(lanes)*laneW*0.5 - float32(v.Lane)*laneW - laneW*0.5
+
 		t := v.SegProgress / totalLen
 		if t > 1 {
 			t = 1
@@ -148,8 +170,20 @@ func (vm *VehicleManager) Update(rm *RoadManager, h *Heightmap) {
 			idx = len(xs) - 2
 		}
 		frac := t*float32(len(xs)-1) - float32(idx)
-		v.X = xs[idx] + (xs[idx+1]-xs[idx])*frac
-		v.Z = zs[idx] + (zs[idx+1]-zs[idx])*frac
+
+		var perX, perZ float32
+		if idx < len(xs)-1 {
+			dx := xs[idx+1] - xs[idx]
+			dz := zs[idx+1] - zs[idx]
+			l := float32(math.Sqrt(float64(dx*dx + dz*dz)))
+			if l > 0.01 {
+				perX = -dz / l
+				perZ = dx / l
+			}
+		}
+
+		v.X = xs[idx] + (xs[idx+1]-xs[idx])*frac + perX*halfLane
+		v.Z = zs[idx] + (zs[idx+1]-zs[idx])*frac + perZ*halfLane
 
 		if v.SegProgress >= totalLen {
 			v.Parked = true
