@@ -1,16 +1,3 @@
-## 3.21 Road Damage
-
-Roads may become temporarily unusable due to:
-
-- Flooding
-- Natural disasters
-- Construction
-- Collapsed buildings
-
-Blocked roads trigger automatic path recalculation.
-
----
-
 ## 3.22 Outside Connections
 
 Certain roads connect to external regions.

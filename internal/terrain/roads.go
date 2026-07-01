@@ -598,7 +598,7 @@ func (rm *RoadManager) AddSegment(a, b uint32, rt RoadType) uint32 {
 		SpeedLimit:       roadSpeed(rt),
 		LaneCount:        int32(roadLanes(rt)),
 		Direction:        0,
-		MaintenanceCost:  roadMaintenanceCost(rt),
+		MaintenanceCost:  rm.calcSegmentMaintenance(rt, length, 0),
 		ConstructionCost: roadConstructionCost(rt),
 		Curve: CurveData{
 			P1x: tx0, P1z: tz0,
@@ -664,6 +664,33 @@ func roadMaintenanceCost(rt RoadType) float32 {
 	default:
 		return 1.0
 	}
+}
+
+func (rm *RoadManager) calcSegmentMaintenance(rt RoadType, length float32, elevation int32) float32 {
+	base := roadMaintenanceCost(rt)
+	lengthFactor := length / 10.0
+	elevFactor := float32(1.0)
+	switch {
+	case elevation > 0:
+		elevFactor = 1.5
+	case elevation < 0:
+		elevFactor = 2.5
+	case rm.anyElevated():
+		if elevation == 0 {
+			break
+		}
+	}
+	decFactor := float32(1.0)
+	if roadHasSidewalk(rt) {
+		decFactor += 0.2
+	}
+	if roadHasLighting(rt) {
+		decFactor += 0.1
+	}
+	if rt == RoadTreeLined {
+		decFactor += 0.3
+	}
+	return base * lengthFactor * elevFactor * decFactor
 }
 
 func roadConstructionCost(rt RoadType) float32 {
@@ -1720,6 +1747,14 @@ func (rm *RoadManager) anyElevated() bool {
 	return false
 }
 
+func (rm *RoadManager) TotalMaintenance() float32 {
+	var total float32
+	for _, seg := range rm.Segments {
+		total += seg.MaintenanceCost
+	}
+	return total
+}
+
 func (rm *RoadManager) AddShortSegment(x1, z1, x2, z2 float32, rt RoadType) {
 	na := rm.AddNode(x1, 0, z1)
 	nb := rm.AddNode(x2, 0, z2)
@@ -1805,7 +1840,7 @@ func (rm *RoadManager) UpgradeSegment(idx int, newType RoadType) {
 	s.RoadType = newType
 	s.SpeedLimit = roadSpeed(newType)
 	s.LaneCount = int32(roadLanes(newType))
-	s.MaintenanceCost = roadMaintenanceCost(newType)
+	s.MaintenanceCost = rm.calcSegmentMaintenance(newType, s.Length, s.Elevation)
 	s.ConstructionCost = roadConstructionCost(newType)
 	s.Lanes = generateLanes(newType, s.Direction, s.SpeedLimit, s.LaneCount)
 }

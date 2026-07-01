@@ -293,6 +293,12 @@ func (sm *SimulationManager) collectTax(dt float64) {
 			tax += float32(pop) * 0.1
 		}
 		sm.Money += tax
+
+		if sm.Roads != nil {
+			maint := sm.Roads.TotalMaintenance()
+			sm.Money -= maint
+		}
+
 		sm.EventBus.Emit(string(EventTaxCollected), tax)
 		sm.TaxTimer = 0
 	}
@@ -408,6 +414,7 @@ func (sm *SimulationManager) PlaceRoadSegment(nodeA uint32, x, z float32, roadTy
 		for i := range sm.Roads.Segments {
 			if sm.Roads.Segments[i].ID == segID {
 				sm.Roads.Segments[i].Elevation = elevation
+				sm.Roads.Segments[i].MaintenanceCost = sm.Roads.calcSegmentMaintenance(roadType, sm.Roads.Segments[i].Length, elevation)
 				if elevation > 0 {
 					sm.Roads.Nodes[nodeA].Flags |= RoadFlagBridge
 					sm.Roads.Nodes[nodeB].Flags |= RoadFlagBridge
