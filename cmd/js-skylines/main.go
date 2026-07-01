@@ -59,6 +59,9 @@ func main() {
 	roadActive := false
 	roadStartNode := uint32(0)
 	roadElevation := int32(0)
+	transportActive := false
+	transportStartStopID := uint32(0)
+	transportLineID := uint32(0)
 
 	for !rl.WindowShouldClose() {
 		if !uploaded {
@@ -298,6 +301,23 @@ func main() {
 				if sim.Money >= cost && !sim.Heightmap.IsUnderwater(worldX, worldZ) {
 					sim.PlaceParkingLot(worldX, worldZ, ui.ParkingGarage)
 				}
+			case terrain.ToolTransport:
+				if !sim.Heightmap.IsUnderwater(worldX, worldZ) {
+					if !transportActive {
+						stopID := sim.Transport.AddStop(previewX, previewZ, ui.TransportType)
+						transportStartStopID = stopID
+						transportActive = true
+					} else {
+						stopID := sim.Transport.AddStop(previewX, previewZ, ui.TransportType)
+						if transportLineID == 0 {
+							col := terrain.TransportStopColor(ui.TransportType)
+							transportLineID = sim.Transport.AddLine("Line", ui.TransportType, []uint32{transportStartStopID, stopID}, col)
+						} else {
+							sim.Transport.AddStopToLine(transportLineID, stopID)
+						}
+						transportStartStopID = stopID
+					}
+				}
 				case terrain.ToolRemove:
 					idx := sim.Roads.NearestSegment(worldX, worldZ)
 					if idx >= 0 {
@@ -317,6 +337,8 @@ func main() {
 
 		if rl.IsKeyPressed(rl.KeyEscape) {
 			roadActive = false
+			transportActive = false
+			transportLineID = 0
 		}
 
 		// --- Draw ---
@@ -348,6 +370,14 @@ func main() {
 				}
 				rl.DrawCube(rl.NewVector3(worldX, h+0.3, worldZ), 20, 0.3, 15, col)
 				rl.DrawCubeWires(rl.NewVector3(worldX, h+0.3, worldZ), 20, 0.3, 15, rl.NewColor(60, 60, 100, 150))
+			case terrain.ToolTransport:
+				stopCol := terrain.TransportStopColor(ui.TransportType)
+				if transportActive {
+					sn := &sim.Transport.Stops[transportStartStopID]
+					sh := sim.Heightmap.WorldHeight(sn.X, sn.Z)
+					rl.DrawLine3D(rl.NewVector3(sn.X, sh+0.5, sn.Z), rl.NewVector3(previewX, h+0.5, previewZ), stopCol)
+				}
+				rl.DrawSphere(rl.NewVector3(previewX, h+0.5, previewZ), 0.6, stopCol)
 			case terrain.ToolRemove:
 				idx := sim.Roads.NearestSegment(worldX, worldZ)
 				if idx >= 0 {

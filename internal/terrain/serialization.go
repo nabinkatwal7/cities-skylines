@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"math"
 	"os"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
@@ -39,6 +40,8 @@ type SaveData struct {
 
 	TransportStops    []TransportStopData
 	TransportLines    []TransportLineData
+	TransportNetworks []TransportNetworkData
+	TransportVehicles []TransportVehicleData
 
 	ParkingSpots []ParkingSpotData
 	ParkingLots  []ParkingLotData
@@ -136,6 +139,34 @@ type TransportLineData struct {
 	ColorR    uint8
 	ColorG    uint8
 	ColorB    uint8
+}
+
+type TransportNetworkData struct {
+	Type             TransportType
+	Active           bool
+	VehicleCount     int32
+	RouteCount       int32
+	StopCount        int32
+	StationCount     int32
+	PassengersPerDay int32
+	TotalIncome      float32
+	MaintenanceCost  float32
+	Capacity         int32
+}
+
+type TransportVehicleData struct {
+	ID         uint32
+	LineID     uint32
+	TransType  TransportType
+	X, Z       float32
+	Speed      float32
+	StopIdx    int32
+	Passengers int32
+	Capacity   int32
+	Forward    bool
+	Moving     bool
+	TargetX    float32
+	TargetZ    float32
 }
 
 type ParkingSpotData struct {
@@ -472,6 +503,57 @@ func SaveGame(filename string, m *SimulationManager, money float32, timeOfDay in
 				ColorB:    col.B,
 			})
 		}
+		for _, n := range m.Transport.Networks {
+			data.TransportNetworks = append(data.TransportNetworks, TransportNetworkData{
+				Type:             n.Type,
+				Active:           n.Active,
+				VehicleCount:     n.VehicleCount,
+				RouteCount:       n.RouteCount,
+				StopCount:        n.StopCount,
+				StationCount:     n.StationCount,
+				PassengersPerDay: n.PassengersPerDay,
+				TotalIncome:      n.TotalIncome,
+				MaintenanceCost:  n.MaintenanceCost,
+				Capacity:         n.Capacity,
+			})
+		}
+		for _, v := range m.Transport.Vehicles {
+			data.TransportVehicles = append(data.TransportVehicles, TransportVehicleData{
+				ID:         v.ID,
+				LineID:     v.LineID,
+				TransType:  v.TransType,
+				X:          v.X,
+				Z:          v.Z,
+				Speed:      v.Speed,
+				StopIdx:    int32(v.StopIdx),
+				Passengers: v.Passengers,
+				Capacity:   v.Capacity,
+				Forward:    v.Forward,
+				Moving:     v.Moving,
+				TargetX:    v.TargetX,
+				TargetZ:    v.TargetZ,
+			})
+		}
+		for _, v := range m.Transport.Pool {
+			if v.ID == math.MaxUint32 {
+				continue
+			}
+			data.TransportVehicles = append(data.TransportVehicles, TransportVehicleData{
+				ID:         v.ID,
+				LineID:     v.LineID,
+				TransType:  v.TransType,
+				X:          v.X,
+				Z:          v.Z,
+				Speed:      v.Speed,
+				StopIdx:    int32(v.StopIdx),
+				Passengers: v.Passengers,
+				Capacity:   v.Capacity,
+				Forward:    v.Forward,
+				Moving:     v.Moving,
+				TargetX:    v.TargetX,
+				TargetZ:    v.TargetZ,
+			})
+		}
 	}
 
 	if m.Parking != nil {
@@ -694,6 +776,50 @@ func LoadGame(filename string, m *SimulationManager) (money float32, timeOfDay i
 		for _, ld := range data.TransportLines {
 			col := rl.NewColor(ld.ColorR, ld.ColorG, ld.ColorB, 255)
 			m.Transport.AddLine("Line", ld.TransType, ld.StopIDs, col)
+		}
+		for i, nd := range data.TransportNetworks {
+			if i < len(m.Transport.Networks) {
+				m.Transport.Networks[i].Active = nd.Active
+				m.Transport.Networks[i].VehicleCount = nd.VehicleCount
+				m.Transport.Networks[i].RouteCount = nd.RouteCount
+				m.Transport.Networks[i].StopCount = nd.StopCount
+				m.Transport.Networks[i].StationCount = nd.StationCount
+				m.Transport.Networks[i].PassengersPerDay = nd.PassengersPerDay
+				m.Transport.Networks[i].TotalIncome = nd.TotalIncome
+				m.Transport.Networks[i].MaintenanceCost = nd.MaintenanceCost
+				m.Transport.Networks[i].Capacity = nd.Capacity
+			}
+		}
+		m.Transport.Vehicles = make([]TransportVehicle, 0, len(data.TransportVehicles))
+		m.Transport.PoolNext = 0
+		for i := range m.Transport.Pool {
+			m.Transport.Pool[i].ID = math.MaxUint32
+		}
+		m.Transport.FreeList = make([]int32, TransportVehiclePoolSize)
+		for i := 0; i < TransportVehiclePoolSize; i++ {
+			m.Transport.FreeList[i] = int32(TransportVehiclePoolSize - 1 - i)
+		}
+		for _, vd := range data.TransportVehicles {
+			slot := m.Transport.allocVehicle()
+			if slot >= 0 {
+				v := &m.Transport.Pool[slot]
+				v.ID = vd.ID
+				v.LineID = vd.LineID
+				v.TransType = vd.TransType
+				v.X = vd.X
+				v.Z = vd.Z
+				v.Speed = vd.Speed
+				v.StopIdx = int(vd.StopIdx)
+				v.Passengers = vd.Passengers
+				v.Capacity = vd.Capacity
+				v.Forward = vd.Forward
+				v.Moving = vd.Moving
+				v.TargetX = vd.TargetX
+				v.TargetZ = vd.TargetZ
+				if vd.ID >= m.Transport.PoolNext {
+					m.Transport.PoolNext = vd.ID + 1
+				}
+			}
 		}
 	}
 

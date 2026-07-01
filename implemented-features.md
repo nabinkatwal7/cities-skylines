@@ -2608,3 +2608,71 @@ The road network is designed to support:
 - High-performance simulation
 
 The road system serves as the central navigation graph for citizens, vehicles, emergency services, public transportation, zoning, utilities, and city growth.
+
+# 4. Public Transportation & External Connections
+
+The public transportation system provides citizens and tourists with alternatives to private vehicle travel. Every transport mode operates on top of the road and network infrastructure while integrating directly with citizen pathfinding, traffic simulation, land value, tourism, and the city's economy.
+
+Unlike simple waypoint systems, every transport vehicle is simulated as an independent entity that follows schedules, capacities, routing rules, and traffic conditions.
+
+---
+
+## 4.1 Transport Network Architecture
+
+The transport system consists of independent network types.
+
+```text
+TransportManager
+
+├── Bus Network
+├── Tram Network
+├── Metro Network
+├── Train Network
+├── Ferry Network
+├── Monorail Network
+├── Cable Car Network
+├── Taxi System
+├── Air Transport
+└── Ship Transport
+```
+
+Each transport mode maintains:
+
+- Routes
+- Stops
+- Stations
+- Vehicles
+- Passenger Statistics
+- Maintenance
+- Ticket Income
+- Capacity
+
+---
+
+## 4.2 Transport Entity Model
+
+Every transport system consists of four core objects.
+
+```text
+Transport Line
+
+↓
+
+Stops
+
+↓
+
+Vehicles
+
+↓
+
+Passengers
+```
+
+Each object exists independently.
+
+Deleting a route does not delete stations.
+
+Removing a station automatically updates affected routes.
+
+---

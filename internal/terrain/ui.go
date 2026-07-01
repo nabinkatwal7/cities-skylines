@@ -14,6 +14,7 @@ const (
 	ToolZone
 	ToolPark
 	ToolParking
+	ToolTransport
 	ToolRemove
 	ToolUpgrade
 )
@@ -33,6 +34,7 @@ type GameUI struct {
 	RoadType      RoadType
 	ParkMode      bool
 	ParkingGarage bool
+	TransportType TransportType
 	Money         float32
 	Population    int32
 	ResDemand     int
@@ -60,8 +62,9 @@ var toolbarItems = []ToolbarItem{
 	{ToolZone, "Zones", rl.KeyThree, rl.NewColor(100, 200, 100, 255), []string{"Res Low", "Res High", "Com Low", "Com High", "Industrial", "Office"}, 0},
 	{ToolPark, "Parks", rl.KeyFour, rl.NewColor(80, 200, 80, 255), nil, 0},
 	{ToolParking, "Parking", rl.KeyFive, rl.NewColor(100, 100, 200, 255), []string{"Lot", "Garage"}, 0},
-	{ToolRemove, "Remove", rl.KeySix, rl.NewColor(200, 80, 80, 255), nil, 0},
-	{ToolUpgrade, "Upgrade", rl.KeySeven, rl.NewColor(200, 200, 80, 255), nil, 0},
+	{ToolTransport, "Transport", rl.KeySix, rl.NewColor(50, 150, 200, 255), []string{"Bus", "Tram", "Metro", "Train", "Ferry", "Monorail", "Cable Car", "Taxi", "Air", "Ship"}, 0},
+	{ToolRemove, "Remove", rl.KeySeven, rl.NewColor(200, 80, 80, 255), nil, 0},
+	{ToolUpgrade, "Upgrade", rl.KeyEight, rl.NewColor(200, 200, 80, 255), nil, 0},
 }
 
 const (
@@ -95,6 +98,11 @@ func (ui *GameUI) HandleInput() GameTool {
 		item := &toolbarItems[4]
 		item.OptIndex = (item.OptIndex + 1) % len(item.Options)
 		ui.ParkingGarage = item.OptIndex == 1
+	}
+	if ui.Selected == ToolTransport && rl.IsKeyPressed(rl.KeyR) {
+		item := &toolbarItems[5]
+		item.OptIndex = (item.OptIndex + 1) % len(item.Options)
+		ui.TransportType = TransportType(item.OptIndex)
 	}
 	if rl.IsKeyPressed(rl.KeyEscape) {
 		ui.Selected = ToolPointer
@@ -255,6 +263,23 @@ func (ui *GameUI) drawOptions() {
 				ui.ParkingGarage = oi == 1
 			}
 		}
+	case ToolTransport:
+		item := &toolbarItems[5]
+		optW := int32(75)
+		total := len(item.Options) * int(optW+ToolbarPad)
+		sx := (1280 - total) / 2
+		for oi, opt := range item.Options {
+			bx := int32(sx + oi*(int(optW)+int(ToolbarPad)))
+			by := int32(ToolbarY - OptionsBarH + 4)
+			sel := oi == item.OptIndex
+			col := TransportStopColor(TransportType(oi))
+			col.A = 200
+			uiBtn(bx, by, optW, OptionsBarH-8, opt, col, rl.White, sel)
+			if rl.IsMouseButtonPressed(rl.MouseButtonLeft) && mx >= bx && mx < bx+optW && my >= by && my < by+OptionsBarH-8 {
+				item.OptIndex = oi
+				ui.TransportType = TransportType(oi)
+			}
+		}
 	}
 }
 
@@ -276,6 +301,8 @@ func (ui *GameUI) drawHelpText() {
 		} else {
 			rl.DrawText("Current: Surface Lot ($1000)", 10, helpY+18, 14, rl.White)
 		}
+	case ToolTransport:
+		rl.DrawText(fmt.Sprintf("L-click to place %s stop | R=cycle type | Esc=deselect | Current: %s", toolbarItems[5].Options[toolbarItems[5].OptIndex], toolbarItems[5].Options[toolbarItems[5].OptIndex]), 10, helpY, 14, rl.White)
 	case ToolRemove:
 		rl.DrawText("L-click on road to remove | Esc=deselect", 10, helpY, 14, rl.White)
 	case ToolUpgrade:
