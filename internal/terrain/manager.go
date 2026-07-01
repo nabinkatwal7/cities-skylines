@@ -71,6 +71,9 @@ func (m *Manager) GenerateData() {
 }
 
 func (m *Manager) LoadAssets() error {
+	if m.Buildings != nil {
+		m.Buildings.LoadAssets()
+	}
 	model := rl.LoadModel("assets/tree/leaftree.obj")
 	if rl.IsModelValid(model) {
 		m.Trees.Model = model
@@ -188,6 +191,9 @@ func (m *Manager) Unload() {
 	}
 	if m.Trees.Model.MeshCount > 0 {
 		rl.UnloadModel(m.Trees.Model)
+	}
+	if m.Buildings != nil {
+		m.Buildings.Unload()
 	}
 	if m.Roads != nil {
 		m.Roads.Unload()

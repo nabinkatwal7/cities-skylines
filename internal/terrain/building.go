@@ -5,20 +5,32 @@ import (
 )
 
 type Building struct {
-	X, Z       float32
-	Type       ZoneType
-	Seed       int32
+	X, Z         float32
+	Type         ZoneType
+	Seed         int32
 	Width, Depth float32
-	Height     float32
+	Height       float32
 }
 
 type BuildingManager struct {
 	Buildings []Building
 	nextSeed  int32
+	models    map[ZoneType]rl.Model
 }
 
 func NewBuildingManager() *BuildingManager {
-	return &BuildingManager{}
+	return &BuildingManager{models: make(map[ZoneType]rl.Model)}
+}
+
+func (bm *BuildingManager) LoadAssets() {
+	m := rl.LoadModel("assets/building/my_panel16_14.obj")
+	if rl.IsModelValid(m) {
+		bm.models[ZoneResidentialHigh] = m
+	}
+	m = rl.LoadModel("assets/building/tiny/house.obj")
+	if rl.IsModelValid(m) {
+		bm.models[ZoneResidentialLow] = m
+	}
 }
 
 func (bm *BuildingManager) Update(zm *ZoneManager, h *Heightmap, roads *RoadManager) {
@@ -82,6 +94,17 @@ func (bm *BuildingManager) Draw(h *Heightmap, zm *ZoneManager) {
 		col := ZoneColor(b.Type)
 		col.A = 255
 
+		if m, ok := bm.models[b.Type]; ok && m.MeshCount > 0 {
+			s := b.Width * 0.18
+			if b.Type == ZoneResidentialLow {
+				s = b.Width * 0.12
+			}
+			pos := rl.NewVector3(b.X, hy+0.5, b.Z)
+			axis := rl.NewVector3(0, 1, 0)
+			rl.DrawModelEx(m, pos, axis, float32(b.Seed)*60, rl.NewVector3(s, s, s), rl.White)
+			continue
+		}
+
 		baseH := b.Height * 0.7
 		roofH := b.Height * 0.3
 
@@ -101,32 +124,15 @@ func (bm *BuildingManager) Draw(h *Heightmap, zm *ZoneManager) {
 		} else if b.Type == ZoneResidentialLow {
 			hw := b.Width * 0.5
 			hd := b.Depth * 0.5
-			rl.DrawTriangle3D(
-				rl.NewVector3(b.X-hw, roofBase, b.Z-hd),
-				rl.NewVector3(b.X+hw, roofBase, b.Z-hd),
-				rl.NewVector3(b.X, roofTop, b.Z), roofCol,
-			)
-			rl.DrawTriangle3D(
-				rl.NewVector3(b.X+hw, roofBase, b.Z-hd),
-				rl.NewVector3(b.X+hw, roofBase, b.Z+hd),
-				rl.NewVector3(b.X, roofTop, b.Z), roofCol,
-			)
-			rl.DrawTriangle3D(
-				rl.NewVector3(b.X+hw, roofBase, b.Z+hd),
-				rl.NewVector3(b.X-hw, roofBase, b.Z+hd),
-				rl.NewVector3(b.X, roofTop, b.Z), roofCol,
-			)
-			rl.DrawTriangle3D(
-				rl.NewVector3(b.X-hw, roofBase, b.Z+hd),
-				rl.NewVector3(b.X-hw, roofBase, b.Z-hd),
-				rl.NewVector3(b.X, roofTop, b.Z), roofCol,
-			)
+			rl.DrawTriangle3D(rl.NewVector3(b.X-hw, roofBase, b.Z-hd), rl.NewVector3(b.X+hw, roofBase, b.Z-hd), rl.NewVector3(b.X, roofTop, b.Z), roofCol)
+			rl.DrawTriangle3D(rl.NewVector3(b.X+hw, roofBase, b.Z-hd), rl.NewVector3(b.X+hw, roofBase, b.Z+hd), rl.NewVector3(b.X, roofTop, b.Z), roofCol)
+			rl.DrawTriangle3D(rl.NewVector3(b.X+hw, roofBase, b.Z+hd), rl.NewVector3(b.X-hw, roofBase, b.Z+hd), rl.NewVector3(b.X, roofTop, b.Z), roofCol)
+			rl.DrawTriangle3D(rl.NewVector3(b.X-hw, roofBase, b.Z+hd), rl.NewVector3(b.X-hw, roofBase, b.Z-hd), rl.NewVector3(b.X, roofTop, b.Z), roofCol)
 		} else {
 			roofY := roofBase + roofH*0.5
 			rl.DrawCube(rl.NewVector3(b.X, roofY, b.Z), b.Width*0.9, roofH*0.9, b.Depth*0.9, roofCol)
 		}
 
-		// windows
 		wCol := rl.NewColor(200, 220, 240, 200)
 		ww := b.Width * 0.12
 		wd := b.Depth * 0.12
@@ -160,4 +166,10 @@ func (bm *BuildingManager) Draw(h *Heightmap, zm *ZoneManager) {
 	}
 }
 
-
+func (bm *BuildingManager) Unload() {
+	for _, m := range bm.models {
+		if m.MeshCount > 0 {
+			rl.UnloadModel(m)
+		}
+	}
+}
