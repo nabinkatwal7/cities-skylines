@@ -2393,3 +2393,18 @@ Each request evaluates:
 The resulting path consists of road segments rather than world positions.
 
 ---
+
+## 3.15 Lane Selection
+
+After a path is found, vehicles choose lanes.
+
+Selection depends on:
+
+- Upcoming turns
+- Current congestion
+- Lane availability
+- Vehicle type
+
+Lane changes occur before intersections whenever possible.
+
+---

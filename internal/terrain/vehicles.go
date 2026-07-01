@@ -169,20 +169,79 @@ func (vm *VehicleManager) chooseLane(v *Vehicle, rm *RoadManager, seg RoadSegmen
 	if lanes <= 1 {
 		return 0
 	}
-	na := &rm.Nodes[seg.NodeA]
-	nb := &rm.Nodes[seg.NodeB]
 
-	connCount := len(na.Connected)
-	if connCount <= 2 {
-		_ = nb
+	if v.Path == nil || v.PathIdx >= len(v.Path) {
+		rightmost := lanes - 1
+		if rightmost >= 0 {
+			return rightmost
+		}
+		return 0
+	}
+
+	nextNode := v.Path[v.PathIdx]
+	upcomingTurn := LaneTurnStraight
+
+	var turnSegIdx int32 = -1
+	for _, sid := range rm.Nodes[nextNode].Connected {
+		if int(sid) == v.RoadSeg {
+			continue
+		}
+		turnSegIdx = int32(sid)
+		break
+	}
+	if turnSegIdx >= 0 {
+		routes := rm.JunctionLaneRoutes(nextNode)
+		for _, rc := range routes {
+			if int(rc.FromSegIdx) == v.RoadSeg && int(rc.ToSegIdx) == int(turnSegIdx) {
+				upcomingTurn = rc.Turn
+				break
+			}
+		}
+	}
+
+	var preferredLane int
+	switch upcomingTurn {
+	case LaneTurnLeft:
+		preferredLane = 0
+	case LaneTurnRight:
+		preferredLane = lanes - 1
+	default:
+		preferredLane = lanes / 2
+	}
+
+	if preferredLane >= lanes {
+		preferredLane = lanes - 1
+	}
+	if preferredLane < 0 {
+		preferredLane = 0
+	}
+
+	if v.Lane == preferredLane {
+		return preferredLane
+	}
+
+	distToNode := float32(0)
+	if seg.NodeA == nextNode || seg.NodeB == nextNode {
+		na := &rm.Nodes[seg.NodeA]
+		nb := &rm.Nodes[seg.NodeB]
+		var nodeX, nodeZ float32
+		if seg.NodeA == nextNode {
+			nodeX = na.X
+			nodeZ = na.Z
+		} else {
+			nodeX = nb.X
+			nodeZ = nb.Z
+		}
+		dx := nodeX - v.Position.X
+		dz := nodeZ - v.Position.Z
+		distToNode = float32(math.Sqrt(float64(dx*dx + dz*dz)))
+	}
+
+	if distToNode > 25 {
 		return v.Lane
 	}
 
-	rightmost := lanes - 1
-	if connCount >= 3 {
-		return rightmost
-	}
-	return 0
+	return preferredLane
 }
 
 func (vm *VehicleManager) applyTrafficRules(v *Vehicle, rm *RoadManager, seg RoadSegment) {

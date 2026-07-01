@@ -1,18 +1,3 @@
-## 3.15 Lane Selection
-
-After a path is found, vehicles choose lanes.
-
-Selection depends on:
-
-- Upcoming turns
-- Current congestion
-- Lane availability
-- Vehicle type
-
-Lane changes occur before intersections whenever possible.
-
----
-
 ## 3.16 Vehicle AI
 
 Each vehicle continuously updates:
