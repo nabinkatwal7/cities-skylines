@@ -1752,13 +1752,42 @@ func (rm *RoadManager) removeNodeByIndex(idx uint32) {
 	}
 }
 
+type LanePathStep struct {
+	SegIdx  int
+	LaneIdx int32
+}
+
+func segmentAllowsVehicle(seg RoadSegment, vt VehicleType) bool {
+	allowed := roadAllowedVehicles(seg.RoadType)
+	if allowed == "all" {
+		return true
+	}
+	switch vt {
+	case VehicleCar, VehicleTruck, VehicleEmergency:
+		return allowed == "all"
+	case VehicleBus:
+		return allowed == "bus" || allowed == "all"
+	case VehicleTram:
+		return allowed == "tram" || allowed == "all"
+	case VehicleBike:
+		return allowed == "bike" || allowed == "all"
+	case VehiclePedestrian:
+		return allowed == "pedestrian" || allowed == "all"
+	}
+	return false
+}
+
 func (rm *RoadManager) FindPath(startNode, endNode uint32, vehicleType int) []uint32 {
+	return rm.FindPathWithCongestion(startNode, endNode, VehicleType(vehicleType), nil)
+}
+
+func (rm *RoadManager) FindPathWithCongestion(startNode, endNode uint32, vt VehicleType, congestion map[int]float32) []uint32 {
 	if startNode == endNode {
 		return nil
 	}
 	type nodeDist struct {
-		prev  int32
-		dist  float32
+		prev    int32
+		dist    float32
 		visited bool
 	}
 	nodes := make([]nodeDist, len(rm.Nodes))
@@ -1788,11 +1817,16 @@ func (rm *RoadManager) FindPath(startNode, endNode uint32, vehicleType int) []ui
 			if seg.Damaged {
 				continue
 			}
+			if !segmentAllowsVehicle(seg, vt) {
+				continue
+			}
+
 			other := seg.NodeA
 			if other == uint32(best) {
 				other = seg.NodeB
 			}
 			cost := seg.Length / seg.SpeedLimit
+
 			switch roadHierarchy(seg.RoadType) {
 			case HierarchyHighway:
 				cost *= 0.6
@@ -1800,9 +1834,13 @@ func (rm *RoadManager) FindPath(startNode, endNode uint32, vehicleType int) []ui
 				cost *= 0.8
 			case HierarchyLocal:
 				cost *= 1.5
-			default:
-				cost *= 1.0
 			}
+			if congestion != nil {
+				if c, ok := congestion[int(sid)]; ok {
+					cost *= c
+				}
+			}
+
 			nd := nodes[best].dist + cost
 			if nd < nodes[other].dist {
 				nodes[other].dist = nd
@@ -1825,11 +1863,6 @@ func (rm *RoadManager) FindPath(startNode, endNode uint32, vehicleType int) []ui
 		path[i], path[j] = path[j], path[i]
 	}
 	return path
-}
-
-type LanePathStep struct {
-	SegIdx  int
-	LaneIdx int32
 }
 
 func (rm *RoadManager) FindLanePath(startNode, endNode uint32, startLane, endLane int32) []LanePathStep {

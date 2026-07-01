@@ -84,6 +84,24 @@ func (vm *VehicleManager) ForEach(fn func(*Vehicle, int32)) {
 	}
 }
 
+func (vm *VehicleManager) buildCongestionMap(rm *RoadManager) map[int]float32 {
+	cong := make(map[int]float32)
+	for i := 0; i < VehiclePoolSize; i++ {
+		if vm.Pool[i].Lifecycle == LifecycleActive {
+			cong[vm.Pool[i].RoadSeg]++
+		}
+	}
+	for k, v := range cong {
+		cap := float32(20)
+		if v >= cap {
+			cong[k] = 3.0
+		} else {
+			cong[k] = 1.0 + v/cap*2.0
+		}
+	}
+	return cong
+}
+
 func (vm *VehicleManager) SpawnCar(rm *RoadManager) {
 	if len(rm.Segments) == 0 {
 		return
@@ -93,7 +111,12 @@ func (vm *VehicleManager) SpawnCar(rm *RoadManager) {
 	na := &rm.Nodes[seg.NodeA]
 
 	lanes := int(seg.LaneCount)
-	lane := int(vm.NextID) % lanes
+	lane := int(vm.NextID)
+	if lanes > 0 {
+		lane %= lanes
+	} else {
+		lane = 0
+	}
 
 	slot := vm.Alloc()
 	if slot < 0 {
@@ -108,6 +131,19 @@ func (vm *VehicleManager) SpawnCar(rm *RoadManager) {
 	v.Lane = lane
 	v.Color = rl.NewColor(uint8(100+vm.NextID%100), uint8(50+vm.NextID%80), uint8(80+vm.NextID%100), 255)
 	vm.NextID++
+
+	destIdx := int(vm.NextID) % len(rm.Nodes)
+	if destIdx >= len(rm.Nodes) {
+		destIdx = 0
+	}
+	cong := vm.buildCongestionMap(rm)
+	v.Path = rm.FindPathWithCongestion(seg.NodeA, uint32(destIdx), v.Type, cong)
+	v.PathIdx = 0
+	if len(v.Path) > 0 {
+		v.Path = v.Path[1:]
+	} else {
+		v.Path = nil
+	}
 
 	if vm.Count > VehiclePoolSize-10 {
 		vm.evictOldest()
@@ -347,8 +383,33 @@ func (vm *VehicleManager) Update(rm *RoadManager, h *Heightmap) {
 		v.Position.Z = zs[idx] + (zs[idx+1]-zs[idx])*frac + perZ*laneOffset
 
 		if v.SegProgress >= totalLen {
-			v.RemovalTimer = 0
-			v.Lifecycle = LifecycleMarkedForRemoval
+			if v.Path != nil && v.PathIdx < len(v.Path) {
+				nextNode := v.Path[v.PathIdx]
+				v.PathIdx++
+
+				found := false
+				for _, sid := range rm.Nodes[seg.NodeA].Connected {
+					if int(sid) == v.RoadSeg {
+						continue
+					}
+					s := rm.Segments[sid]
+					if (s.NodeA == seg.NodeA && s.NodeB == nextNode) || (s.NodeA == nextNode && s.NodeB == seg.NodeA) ||
+						(s.NodeA == seg.NodeB && s.NodeB == nextNode) || (s.NodeA == nextNode && s.NodeB == seg.NodeB) {
+						v.RoadSeg = int(sid)
+						v.SegProgress = 0
+						seg = s
+						found = true
+						break
+					}
+				}
+				if !found {
+					v.RemovalTimer = 0
+					v.Lifecycle = LifecycleMarkedForRemoval
+				}
+			} else {
+				v.RemovalTimer = 0
+				v.Lifecycle = LifecycleMarkedForRemoval
+			}
 		}
 	}
 

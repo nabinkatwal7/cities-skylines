@@ -1,20 +1,3 @@
-## 3.14 Vehicle Pathfinding
-
-Vehicles use graph-based pathfinding.
-
-Each request evaluates:
-
-- Distance
-- Speed limits
-- Road hierarchy
-- Congestion
-- Allowed vehicle types
-- Lane restrictions
-
-The resulting path consists of road segments rather than world positions.
-
----
-
 ## 3.15 Lane Selection
 
 After a path is found, vehicles choose lanes.

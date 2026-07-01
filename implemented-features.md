@@ -2376,3 +2376,20 @@ Local Road
 Traffic prefers higher hierarchy roads whenever possible.
 
 ---
+
+## 3.14 Vehicle Pathfinding
+
+Vehicles use graph-based pathfinding.
+
+Each request evaluates:
+
+- Distance
+- Speed limits
+- Road hierarchy
+- Congestion
+- Allowed vehicle types
+- Lane restrictions
+
+The resulting path consists of road segments rather than world positions.
+
+---
