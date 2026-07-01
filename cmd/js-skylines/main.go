@@ -68,6 +68,7 @@ func main() {
 	eco := economy{money: 100000}
 	roadActive := false
 	roadStartNode := uint32(0)
+	roadElevation := int32(0)
 
 	for !rl.WindowShouldClose() {
 		if !uploaded {
@@ -162,6 +163,26 @@ func main() {
 		}
 		t.Night = timeOfDay == 3
 
+		// Road elevation control
+		if rl.IsKeyPressed(rl.KeyPageUp) {
+			if ui.Selected == terrain.ToolRoad {
+				currentEle := &roadElevation
+				*currentEle++
+				if *currentEle > 2 {
+					*currentEle = 2
+				}
+			}
+		}
+		if rl.IsKeyPressed(rl.KeyPageDown) {
+			if ui.Selected == terrain.ToolRoad {
+				currentEle := &roadElevation
+				*currentEle--
+				if *currentEle < 0 {
+					*currentEle = 0
+				}
+			}
+		}
+
 		// Economy
 		eco.taxTimer++
 		if eco.taxTimer > 60 {
@@ -227,7 +248,14 @@ func main() {
 								break
 							}
 							endNode := t.Roads.AddNode(cx, cz)
-							t.Roads.AddSegment(roadStartNode, endNode, ui.RoadType)
+							segID := t.Roads.AddSegment(roadStartNode, endNode, ui.RoadType)
+							if roadElevation > 0 {
+								for i := range t.Roads.Segments {
+									if t.Roads.Segments[i].ID == segID {
+										t.Roads.Segments[i].Elevation = roadElevation
+									}
+								}
+							}
 							t.Roads.Rebuild(t.Heightmap)
 							roadStartNode = endNode
 							eco.money -= 100

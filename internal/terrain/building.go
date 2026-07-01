@@ -6,22 +6,44 @@ import (
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
 
+type HouseholdInfo struct {
+	FamilyMembers int32
+	Wealth        int32 // 0-100
+	Education     int32 // 0-100
+	Happiness     int32 // 0-100
+}
+
+type BusinessInfo struct {
+	Production   int32
+	GoodsStored  int32
+	Profitability int32 // 0-100
+}
+
+type ServiceConsumption struct {
+	Power  float32
+	Water  float32
+	Garbage float32
+}
+
 type Building struct {
-	X, Z           float32
-	Type           ZoneType
-	Seed           int32
-	Width, Depth   float32
-	Height         float32
-	Level          int32
-	UpgradeTimer   int32
-	Workers        int32
-	Residents      int32
-	Abandoned      bool
-	AbandonTimer   int32
-	HasRoad        bool
-	CellX, CellZ   int
-	ConstructTimer int32
-	Constructed    bool
+	X, Z              float32
+	Type              ZoneType
+	Seed              int32
+	Width, Depth      float32
+	Height            float32
+	Level             int32
+	UpgradeTimer      int32
+	Workers           int32
+	Residents         int32
+	Abandoned         bool
+	AbandonTimer      int32
+	HasRoad           bool
+	CellX, CellZ      int
+	ConstructTimer    int32
+	Constructed       bool
+	Household         *HouseholdInfo
+	Business          *BusinessInfo
+	Consumption       ServiceConsumption
 }
 
 type BuildingManager struct {
@@ -31,6 +53,11 @@ type BuildingManager struct {
 	resDemand int
 	comDemand int
 	indDemand int
+	TotalPowerUsed  float32
+	TotalWaterUsed  float32
+	TotalGarbage    float32
+	TotalWealth     int32
+	TotalHappiness  int32
 }
 
 func NewBuildingManager() *BuildingManager {
@@ -66,24 +93,45 @@ func (bm *BuildingManager) Update(zm *ZoneManager, h *Heightmap, roads *RoadMana
 				d := 5 + float32((bm.nextSeed+1)%3)*1.5
 				hgt := buildingHeight(cell.Type, bm.nextSeed)
 				res, workers := calcPopulation(cell.Type, bm.nextSeed)
-				bm.Buildings = append(bm.Buildings, Building{
-					X: cx, Z: cz,
-					Type:      cell.Type,
-					Seed:      bm.nextSeed,
-					Width:     w,
-					Depth:     d,
-					Height:    hgt,
-					Level:     1,
-					Residents: res,
-					Workers:   workers,
-					HasRoad:   true,
-					CellX:     x,
-					CellZ:     z,
-					Constructed: false,
-				})
-				bm.nextSeed++
+				bld := Building{
+				X: cx, Z: cz,
+				Type:        cell.Type,
+				Seed:        bm.nextSeed,
+				Width:       w,
+				Depth:       d,
+				Height:      hgt,
+				Level:       1,
+				Residents:   res,
+				Workers:     workers,
+				HasRoad:     true,
+				CellX:       x,
+				CellZ:       z,
+				Constructed: false,
 			}
+			if cell.Type == ZoneResidentialLow || cell.Type == ZoneResidentialHigh {
+				bld.Household = &HouseholdInfo{
+					FamilyMembers: res,
+					Wealth:        30 + bm.nextSeed%30,
+					Education:     10 + bm.nextSeed%20,
+					Happiness:     50,
+				}
+				bld.Consumption.Power = 1.0 + float32(bld.Level)*0.5
+				bld.Consumption.Water = 0.8 + float32(bld.Level)*0.3
+				bld.Consumption.Garbage = 0.5 + float32(bld.Level)*0.2
+			}
+			if cell.Type == ZoneCommercialLow || cell.Type == ZoneCommercialHigh || cell.Type == ZoneIndustrial || cell.Type == ZoneOffice {
+				bld.Business = &BusinessInfo{
+					GoodsStored:   10,
+					Profitability: 50,
+				}
+				bld.Consumption.Power = 2.0 + float32(bld.Level)
+				bld.Consumption.Water = 1.0 + float32(bld.Level)*0.5
+				bld.Consumption.Garbage = 1.0 + float32(bld.Level)*0.5
+			}
+			bm.Buildings = append(bm.Buildings, bld)
+			bm.nextSeed++
 		}
+	}
 	}
 	for i := range bm.Buildings {
 		b := &bm.Buildings[i]
@@ -118,6 +166,32 @@ func (bm *BuildingManager) Update(zm *ZoneManager, h *Heightmap, roads *RoadMana
 				b.Constructed = true
 			}
 			continue
+		}
+
+		if b.Household != nil {
+			bm.TotalWealth += b.Household.Wealth
+			bm.TotalHappiness += b.Household.Happiness
+			bm.TotalPowerUsed += b.Consumption.Power
+			bm.TotalWaterUsed += b.Consumption.Water
+			bm.TotalGarbage += b.Consumption.Garbage
+			if b.Constructed {
+				if b.Household.Happiness < 80 {
+					b.Household.Happiness++
+				}
+				if b.Household.Wealth < 70 {
+					b.Household.Wealth++
+				}
+			}
+		}
+		if b.Business != nil {
+			bm.TotalPowerUsed += b.Consumption.Power
+			bm.TotalWaterUsed += b.Consumption.Water
+			if b.Constructed && b.Business.GoodsStored < 50 {
+				b.Business.GoodsStored++
+			}
+			if b.Business.Profitability < 60 {
+				b.Business.Profitability++
+			}
 		}
 
 		if b.Level >= 5 {
@@ -278,13 +352,23 @@ func (bm *BuildingManager) NearestInfo(wx, wz float32, radius float32) string {
 	for b.Level > 1 {
 		lvl += "I"
 	}
-	extra := ""
+	extra := " | "
 	if b.Abandoned {
-		extra = " | ABANDONED"
+		extra += "ABANDONED"
 	} else if b.Residents > 0 {
-		extra = fmt.Sprintf(" | Pop: %d", b.Residents)
+		extra += fmt.Sprintf("Pop: %d", b.Residents)
+		if b.Household != nil {
+			extra += fmt.Sprintf(" W:%.0f H:%d", b.Consumption.Power, b.Household.Happiness)
+		}
 	} else if b.Workers > 0 {
-		extra = fmt.Sprintf(" | Jobs: %d", b.Workers)
+		extra += fmt.Sprintf("Jobs: %d", b.Workers)
+		if b.Business != nil {
+			extra += fmt.Sprintf(" P:%d%%", b.Business.Profitability)
+		}
+	}
+	if !b.Constructed {
+		pct := int(float32(b.ConstructTimer) / 300.0 * 100)
+		extra += fmt.Sprintf(" Building %d%%", pct)
 	}
 	return fmt.Sprintf("%s Lvl %s%s", name, lvl, extra)
 }

@@ -24,6 +24,8 @@ type Manager struct {
 	Buildings   *BuildingManager
 	Services    *ServiceManager
 	Connections *ConnectionSystem
+	Vehicles    *VehicleManager
+	Transport   *TransportManager
 	Chunks      []*Chunk
 	Models      []rl.Model
 	Seed        int64
@@ -48,9 +50,12 @@ func (m *Manager) GenerateData() {
 	m.Connections = NewConnectionSystem()
 	m.Roads = NewRoadManager()
 	m.Roads.LoadAssets()
+	m.Roads.InitOutsideConnections(m.Connections)
 	m.Zones = NewZoneManager(128, 128)
 	m.Buildings = NewBuildingManager()
 	m.Services = NewServiceManager()
+	m.Vehicles = NewVehicleManager()
+	m.Transport = NewTransportManager()
 	n0 := m.Roads.AddNode(-50, -50)
 	n1 := m.Roads.AddNode(-50, 50)
 	n2 := m.Roads.AddNode(50, 50)
@@ -155,6 +160,15 @@ func (m *Manager) Update(dt float64) {
 	if m.Trees != nil {
 		m.Trees.Update(dt)
 	}
+	if m.Roads != nil {
+		m.Roads.Update(m.Heightmap)
+	}
+	if m.Vehicles != nil {
+		m.Vehicles.Update(m.Roads, m.Heightmap)
+	}
+	if m.Transport != nil {
+		m.Transport.Update(m.Roads, m.Heightmap)
+	}
 	if m.Buildings != nil {
 		m.Buildings.Update(m.Zones, m.Heightmap, m.Roads)
 	}
@@ -186,6 +200,12 @@ func (m *Manager) Draw(camX, camZ float32) {
 	if m.Buildings != nil {
 		m.Buildings.Draw(m.Heightmap, m.Zones, m.Night)
 	}
+	if m.Vehicles != nil {
+		m.Vehicles.Draw(m.Heightmap)
+	}
+	if m.Transport != nil {
+		m.Transport.Draw(m.Heightmap)
+	}
 	if m.Services != nil {
 		m.Services.Draw(m.Heightmap)
 	}
@@ -200,6 +220,12 @@ func (m *Manager) Unload() {
 	}
 	if m.Buildings != nil {
 		m.Buildings.Unload()
+	}
+	if m.Vehicles != nil {
+		m.Vehicles.Unload()
+	}
+	if m.Transport != nil {
+		m.Transport.Unload()
 	}
 	if m.Roads != nil {
 		m.Roads.Unload()
