@@ -1,3 +1,5 @@
+# 1. Core Engine Architecture
+
 ## 1.1 Design Philosophy
 
 The simulation engine is the authoritative source of truth for the entire game. Rendering, user interface, audio, animations, visual effects, camera movement, and editor tools never modify gameplay data directly. Every gameplay system operates on centralized simulation data managed by dedicated subsystem managers.
@@ -1351,7 +1353,7 @@ The main thread remains dedicated to input processing, simulation coordination, 
 
 These systems establish the backbone of the simulation engine. Together with Sections **1.1–1.5**, they define how every entity is created, updated, communicated, serialized, and processed efficiently, providing a scalable foundation for large cities with hundreds of thousands of citizens and thousands of active vehicles.
 
-2
+# 2. Terrain & Map Generation System
 
 The terrain system is the foundation of every city. Unlike traditional tile-based city builders, the world exists as a continuous heightfield that supports terrain deformation, water simulation, road adaptation, zoning, and environmental simulation.
 
@@ -1968,3 +1970,79 @@ The terrain system is designed to support:
 - Large-scale environmental simulation
 
 The terrain engine serves as the foundation for roads, zoning, buildings, utilities, transportation, disasters, and every other simulation system within the city.
+
+# 3. Road Network & Traffic Simulation
+
+The road network is the backbone of the entire city simulation. Nearly every gameplay system—including zoning, utilities, public services, pathfinding, economy, public transportation, emergency response, and citizen AI—depends on a connected road graph.
+
+Unlike tile-based systems, roads are represented as a graph of nodes and segments with procedurally generated geometry.
+
+---
+
+## 3.1 Road Network Architecture
+
+The road system consists of two fundamental components:
+
+```text
+Road Node
+    │
+Road Segment
+    │
+Road Node
+```
+
+### Road Nodes
+
+Nodes represent:
+
+- Dead ends
+- Intersections
+- Roundabouts
+- Highway junctions
+- Bridge endpoints
+- Tunnel entrances
+- Network transitions
+
+Each node stores:
+
+```cpp
+struct RoadNode
+{
+    uint32 id;
+    Vector3 position;
+    uint8 connectedSegments;
+    TrafficLightState trafficLight;
+    JunctionType junctionType;
+    uint32 flags;
+}
+```
+
+---
+
+### Road Segments
+
+Segments connect two nodes.
+
+Each segment contains:
+
+```cpp
+Road Type
+
+Length
+
+Speed Limit
+
+Lane Count
+
+Elevation
+
+Direction
+
+Maintenance Cost
+
+Construction Cost
+
+Curve Data
+```
+
+---

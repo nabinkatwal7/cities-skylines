@@ -42,18 +42,30 @@ type SaveData struct {
 }
 
 type RoadNodeData struct {
-	X, Z            float32
+	X, Y, Z         float32
+	TrafficLight    TrafficLightState
+	JunctionType    uint8
+	Flags           RoadFlags
 	HasTrafficLight bool
 	IsOutsideConn   bool
 }
 
 type RoadSegmentData struct {
-	NodeA    uint32
-	NodeB    uint32
-	RoadType RoadType
-	Length   float32
-	Elevation int32
-	Damaged  bool
+	NodeA            uint32
+	NodeB            uint32
+	RoadType         RoadType
+	Length           float32
+	SpeedLimit       float32
+	LaneCount        int32
+	Direction        int8
+	Elevation        int32
+	MaintenanceCost  float32
+	ConstructionCost float32
+	Damaged          bool
+	CurveP1x         float32
+	CurveP1z         float32
+	CurveP2x         float32
+	CurveP2z         float32
 }
 
 type ZoneCellData struct {
@@ -128,7 +140,7 @@ type SaveStats struct {
 	TotalCount int32
 }
 
-const currentSaveVersion int32 = 2
+const currentSaveVersion int32 = 3
 
 func calcChecksum(data []byte) uint32 {
 	return crc32.ChecksumIEEE(data)
@@ -145,6 +157,28 @@ func migrateSaveData(data *SaveData) bool {
 		switch v {
 		case 1:
 			data.Version = 2
+		case 2:
+			for i := range data.RoadNodes {
+				nd := &data.RoadNodes[i]
+				if nd.Flags == 0 {
+					if nd.HasTrafficLight {
+						nd.TrafficLight = TrafficLightRed
+					}
+					if nd.IsOutsideConn {
+						nd.Flags |= RoadFlagOutsideConn
+					}
+				}
+			}
+			for i := range data.RoadSegments {
+				sd := &data.RoadSegments[i]
+				if sd.SpeedLimit == 0 {
+					sd.SpeedLimit = roadSpeed(sd.RoadType)
+				}
+				if sd.LaneCount == 0 {
+					sd.LaneCount = int32(roadLanes(sd.RoadType))
+				}
+			}
+			data.Version = 3
 		}
 	}
 	return true
@@ -206,7 +240,7 @@ func readSaveFile(filename string) (*SaveData, error) {
 
 func SaveGame(filename string, m *SimulationManager, money float32, timeOfDay int32) error {
 	data := SaveData{
-		Version:  1,
+		Version:  currentSaveVersion,
 		Seed:     m.Seed,
 		Money:    money,
 		TimeOfDay: timeOfDay,
@@ -236,18 +270,29 @@ func SaveGame(filename string, m *SimulationManager, money float32, timeOfDay in
 	if m.Roads != nil {
 		for _, n := range m.Roads.Nodes {
 			data.RoadNodes = append(data.RoadNodes, RoadNodeData{
-				X: n.X, Z: n.Z,
-				HasTrafficLight: n.HasTrafficLight,
-				IsOutsideConn:   n.IsOutsideConn,
+				X: n.X, Y: n.Y, Z: n.Z,
+				TrafficLight: n.TrafficLight,
+				JunctionType: n.JunctionType,
+				Flags:        n.Flags,
 			})
 		}
 		for _, s := range m.Roads.Segments {
 			data.RoadSegments = append(data.RoadSegments, RoadSegmentData{
-				NodeA: s.NodeA, NodeB: s.NodeB,
-				RoadType:  s.RoadType,
-				Length:    s.Length,
-				Elevation: s.Elevation,
-				Damaged:   s.Damaged,
+				NodeA:            s.NodeA,
+				NodeB:            s.NodeB,
+				RoadType:         s.RoadType,
+				Length:           s.Length,
+				SpeedLimit:       s.SpeedLimit,
+				LaneCount:        s.LaneCount,
+				Direction:        s.Direction,
+				Elevation:        s.Elevation,
+				MaintenanceCost:  s.MaintenanceCost,
+				ConstructionCost: s.ConstructionCost,
+				Damaged:          s.Damaged,
+				CurveP1x:         s.Curve.P1x,
+				CurveP1z:         s.Curve.P1z,
+				CurveP2x:         s.Curve.P2x,
+				CurveP2z:         s.Curve.P2z,
 			})
 		}
 	}
@@ -402,12 +447,26 @@ func LoadGame(filename string, m *SimulationManager) (money float32, timeOfDay i
 		m.Roads.Segments = nil
 		m.Roads.NextID = 0
 		for _, nd := range data.RoadNodes {
-			idx := m.Roads.AddNode(nd.X, nd.Z)
-			m.Roads.Nodes[idx].HasTrafficLight = nd.HasTrafficLight
-			m.Roads.Nodes[idx].IsOutsideConn = nd.IsOutsideConn
+			idx := m.Roads.AddNode(nd.X, nd.Y, nd.Z)
+			m.Roads.Nodes[idx].TrafficLight = nd.TrafficLight
+			m.Roads.Nodes[idx].JunctionType = nd.JunctionType
+			m.Roads.Nodes[idx].Flags = nd.Flags
 		}
 		for _, sd := range data.RoadSegments {
-			m.Roads.AddSegment(sd.NodeA, sd.NodeB, sd.RoadType)
+			segID := m.Roads.AddSegment(sd.NodeA, sd.NodeB, sd.RoadType)
+			for i := range m.Roads.Segments {
+				if m.Roads.Segments[i].ID == segID {
+					m.Roads.Segments[i].SpeedLimit = sd.SpeedLimit
+					m.Roads.Segments[i].LaneCount = sd.LaneCount
+					m.Roads.Segments[i].Direction = sd.Direction
+					m.Roads.Segments[i].Elevation = sd.Elevation
+					m.Roads.Segments[i].MaintenanceCost = sd.MaintenanceCost
+					m.Roads.Segments[i].ConstructionCost = sd.ConstructionCost
+					m.Roads.Segments[i].Damaged = sd.Damaged
+					m.Roads.Segments[i].Curve = CurveData{P1x: sd.CurveP1x, P1z: sd.CurveP1z, P2x: sd.CurveP2x, P2z: sd.CurveP2z}
+					break
+				}
+			}
 		}
 	}
 

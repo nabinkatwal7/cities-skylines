@@ -183,14 +183,14 @@ func (sm *SimulationManager) initEventListeners() {
 }
 
 func (sm *SimulationManager) InitDefaultRoads() {
-	n0 := sm.Roads.AddNode(-50, -50)
-	n1 := sm.Roads.AddNode(-50, 50)
-	n2 := sm.Roads.AddNode(50, 50)
-	n3 := sm.Roads.AddNode(50, -50)
-	n4 := sm.Roads.AddNode(-80, 0)
-	n5 := sm.Roads.AddNode(80, 0)
-	n6 := sm.Roads.AddNode(0, -80)
-	n7 := sm.Roads.AddNode(0, 80)
+	n0 := sm.Roads.AddNode(-50, 0, -50)
+	n1 := sm.Roads.AddNode(-50, 0, 50)
+	n2 := sm.Roads.AddNode(50, 0, 50)
+	n3 := sm.Roads.AddNode(50, 0, -50)
+	n4 := sm.Roads.AddNode(-80, 0, 0)
+	n5 := sm.Roads.AddNode(80, 0, 0)
+	n6 := sm.Roads.AddNode(0, 0, -80)
+	n7 := sm.Roads.AddNode(0, 0, 80)
 	sm.Roads.AddSegment(n0, n1, RoadTwoLane)
 	sm.Roads.AddSegment(n1, n2, RoadTwoLane)
 	sm.Roads.AddSegment(n2, n3, RoadTwoLane)
@@ -273,11 +273,11 @@ func (sm *SimulationManager) collectTax(dt float64) {
 }
 
 func (sm *SimulationManager) PlaceRoadNode(x, z float32) uint32 {
-	return sm.Roads.AddNode(x, z)
+	return sm.Roads.AddNode(x, 0, z)
 }
 
 func (sm *SimulationManager) PlaceRoadSegment(nodeA uint32, x, z float32, roadType RoadType, elevation int32) (uint32, uint32) {
-	nodeB := sm.Roads.AddNode(x, z)
+	nodeB := sm.Roads.AddNode(x, 0, z)
 	segID := sm.Roads.AddSegment(nodeA, nodeB, roadType)
 	if elevation > 0 {
 		for i := range sm.Roads.Segments {

@@ -78,24 +78,53 @@ func roadHierarchy(rt RoadType) RoadHierarchy {
 	}
 }
 
+type TrafficLightState uint8
+
+const (
+	TrafficLightNone TrafficLightState = iota
+	TrafficLightRed
+	TrafficLightYellow
+	TrafficLightGreen
+)
+
+type RoadFlags uint32
+
+const (
+	RoadFlagNone        RoadFlags = 0
+	RoadFlagOutsideConn RoadFlags = 1 << 0
+	RoadFlagBridge      RoadFlags = 1 << 1
+	RoadFlagTunnel      RoadFlags = 1 << 2
+)
+
 type RoadNode struct {
 	ID                uint32
-	X, Z              float32
+	X, Y, Z           float32
 	Connected         []uint32
-	HasTrafficLight   bool
+	TrafficLight      TrafficLightState
 	TrafficLightPhase int32
-	JunctionType      int // 0=normal, 1=traffic_light, 2=roundabout
-	IsOutsideConn     bool
+	JunctionType      uint8 // 0=normal, 1=traffic_light, 2=roundabout
+	Flags             RoadFlags
+}
+
+type CurveData struct {
+	P1x, P1z float32
+	P2x, P2z float32
 }
 
 type RoadSegment struct {
-	ID        uint32
-	NodeA     uint32
-	NodeB     uint32
-	RoadType  RoadType
-	Length    float32
-	Elevation int32 // 0=ground, 1=elevated, 2=bridge
-	Damaged   bool
+	ID               uint32
+	NodeA            uint32
+	NodeB            uint32
+	RoadType         RoadType
+	Length           float32
+	SpeedLimit       float32
+	LaneCount        int32
+	Direction        int8 // 0=two-way, 1=forward (A→B), -1=reverse (B→A)
+	Elevation        int32
+	MaintenanceCost  float32
+	ConstructionCost float32
+	Damaged          bool
+	Curve            CurveData
 }
 
 type RoadManager struct {
@@ -114,8 +143,8 @@ func NewRoadManager() *RoadManager {
 
 func (rm *RoadManager) InitOutsideConnections(cs *ConnectionSystem) {
 	for _, c := range cs.GetByType(ConnHighway) {
-		idx := rm.AddNode(c.WorldX, c.WorldZ)
-		rm.Nodes[idx].IsOutsideConn = true
+		idx := rm.AddNode(c.WorldX, 0, c.WorldZ)
+		rm.Nodes[idx].Flags |= RoadFlagOutsideConn
 	}
 }
 
@@ -126,13 +155,14 @@ func (rm *RoadManager) LoadAssets() {
 	}
 }
 
-func (rm *RoadManager) AddNode(x, z float32) uint32 {
+func (rm *RoadManager) AddNode(x, y, z float32) uint32 {
 	id := rm.NextID
 	rm.NextID++
 	idx := uint32(len(rm.Nodes))
 	rm.Nodes = append(rm.Nodes, RoadNode{
 		ID:        id,
 		X:         x,
+		Y:         y,
 		Z:         z,
 		Connected: make([]uint32, 0),
 	})
@@ -146,29 +176,91 @@ func (rm *RoadManager) AddSegment(a, b uint32, rt RoadType) uint32 {
 	dz := nb.Z - na.Z
 	length := float32(math.Sqrt(float64(dx*dx + dz*dz)))
 
+	tx0, tz0 := rm.TangentAtNodeInternal(a, b)
+	tx1, tz1 := rm.TangentAtNodeInternal(b, a)
+
 	id := rm.NextID
 	rm.NextID++
 	rm.Segments = append(rm.Segments, RoadSegment{
-		ID:       id,
-		NodeA:    a,
-		NodeB:    b,
-		RoadType: rt,
-		Length:   length,
+		ID:               id,
+		NodeA:            a,
+		NodeB:            b,
+		RoadType:         rt,
+		Length:           length,
+		SpeedLimit:       roadSpeed(rt),
+		LaneCount:        int32(roadLanes(rt)),
+		Direction:        0,
+		MaintenanceCost:  roadMaintenanceCost(rt),
+		ConstructionCost: roadConstructionCost(rt),
+		Curve: CurveData{
+			P1x: tx0, P1z: tz0,
+			P2x: tx1, P2z: tz1,
+		},
 	})
 
 	na.Connected = append(na.Connected, id)
 	nb.Connected = append(nb.Connected, id)
 
-	if len(na.Connected) >= 2 && !na.HasTrafficLight {
-		na.HasTrafficLight = true
+	if len(na.Connected) >= 2 && na.TrafficLight == TrafficLightNone {
+		na.TrafficLight = TrafficLightRed
 		na.JunctionType = 1
 	}
-	if len(nb.Connected) >= 2 && !nb.HasTrafficLight {
-		nb.HasTrafficLight = true
+	if len(nb.Connected) >= 2 && nb.TrafficLight == TrafficLightNone {
+		nb.TrafficLight = TrafficLightRed
 		nb.JunctionType = 1
 	}
 
 	return id
+}
+
+func roadMaintenanceCost(rt RoadType) float32 {
+	switch rt {
+	case RoadGravel:
+		return 0.5
+	case RoadTwoLane:
+		return 1.0
+	case RoadOneWay:
+		return 1.2
+	case RoadFourLane:
+		return 2.0
+	case RoadHighway:
+		return 3.5
+	case RoadRoundabout:
+		return 1.5
+	default:
+		return 1.0
+	}
+}
+
+func roadConstructionCost(rt RoadType) float32 {
+	switch rt {
+	case RoadGravel:
+		return 50
+	case RoadTwoLane:
+		return 100
+	case RoadOneWay:
+		return 80
+	case RoadFourLane:
+		return 200
+	case RoadHighway:
+		return 500
+	case RoadRoundabout:
+		return 150
+	default:
+		return 100
+	}
+}
+
+func (rm *RoadManager) TangentAtNodeInternal(nodeIdx uint32, towards uint32) (float32, float32) {
+	n := &rm.Nodes[nodeIdx]
+	other := &rm.Nodes[towards]
+	dx := other.X - n.X
+	dz := other.Z - n.Z
+	l := float32(math.Sqrt(float64(dx*dx + dz*dz)))
+	if l < 0.01 {
+		return 0, 0
+	}
+	return dx / l * l * 0.3, dz / l * l * 0.3
 }
 
 func (rm *RoadManager) TangentAtNode(nodeIdx uint32, incomingSegIdx int) (float32, float32) {
@@ -326,7 +418,10 @@ func (rm *RoadManager) buildSurfaceMesh(h *Heightmap, seg RoadSegment) rl.Model 
 		return rl.Model{}
 	}
 
-	lanes := roadLanes(seg.RoadType)
+	lanes := seg.LaneCount
+	if lanes < 1 {
+		lanes = int32(int(seg.LaneCount))
+	}
 	total := float32(lanes) * laneW
 	half := total * 0.5
 
@@ -408,8 +503,15 @@ func (rm *RoadManager) Update(h *Heightmap) {
 		rm.lightTimer = 0
 		for i := range rm.Nodes {
 			n := &rm.Nodes[i]
-			if n.HasTrafficLight {
-				n.TrafficLightPhase = (n.TrafficLightPhase + 1) % 4
+			if n.TrafficLight != TrafficLightNone {
+				switch n.TrafficLight {
+				case TrafficLightRed:
+					n.TrafficLight = TrafficLightGreen
+				case TrafficLightGreen:
+					n.TrafficLight = TrafficLightYellow
+				default:
+					n.TrafficLight = TrafficLightRed
+				}
 			}
 		}
 	}
@@ -474,7 +576,7 @@ func (rm *RoadManager) drawFallback(h *Heightmap) {
 			continue
 		}
 
-		lanes := roadLanes(seg.RoadType)
+		lanes := int(seg.LaneCount)
 		total := float32(lanes) * laneW
 		half := total * 0.5
 		col := rl.NewColor(80, 80, 80, 255)
@@ -531,7 +633,7 @@ func (rm *RoadManager) drawMarkings(h *Heightmap) {
 			continue
 		}
 
-		lanes := roadLanes(seg.RoadType)
+		lanes := int(seg.LaneCount)
 		total := float32(lanes) * laneW
 		half := total * 0.5
 
@@ -584,7 +686,7 @@ func (rm *RoadManager) drawMarkings(h *Heightmap) {
 func (rm *RoadManager) drawJunctionMarkings(h *Heightmap) {
 	for i := range rm.Nodes {
 		n := &rm.Nodes[i]
-		if !n.HasTrafficLight || len(n.Connected) < 2 {
+		if n.TrafficLight == TrafficLightNone || len(n.Connected) < 2 {
 			continue
 		}
 		hy := h.WorldHeight(n.X, n.Z) + 0.2
@@ -618,7 +720,7 @@ func (rm *RoadManager) drawJunctionMarkings(h *Heightmap) {
 			perX := -dz / l
 			perZ := dx / l
 
-			lanes := roadLanes(seg.RoadType)
+			lanes := int(seg.LaneCount)
 			total := float32(lanes) * laneW
 			half := total * 0.5
 
@@ -635,14 +737,14 @@ func (rm *RoadManager) drawJunctionMarkings(h *Heightmap) {
 			}
 		}
 
-		if n.HasTrafficLight {
+		if n.TrafficLight != TrafficLightNone {
 			tlCol := rl.NewColor(255, 200, 50, 255)
-			switch n.TrafficLightPhase {
-			case 0:
+			switch n.TrafficLight {
+			case TrafficLightRed:
 				tlCol = rl.NewColor(255, 0, 0, 255)
-			case 1:
+			case TrafficLightYellow:
 				tlCol = rl.NewColor(255, 200, 0, 255)
-			case 2:
+			case TrafficLightGreen:
 				tlCol = rl.NewColor(0, 255, 0, 255)
 			}
 			rl.DrawSphere(rl.NewVector3(n.X, hy+2.5, n.Z), 0.4, tlCol)
@@ -653,7 +755,7 @@ func (rm *RoadManager) drawJunctionMarkings(h *Heightmap) {
 
 func (rm *RoadManager) drawOutsideConnections(h *Heightmap) {
 	for _, n := range rm.Nodes {
-		if n.IsOutsideConn {
+		if n.Flags&RoadFlagOutsideConn != 0 {
 			hy := h.WorldHeight(n.X, n.Z)
 			rl.DrawCube(rl.NewVector3(n.X, hy+1, n.Z), 8, 2, 8, rl.NewColor(150, 100, 50, 200))
 		}
@@ -661,8 +763,8 @@ func (rm *RoadManager) drawOutsideConnections(h *Heightmap) {
 }
 
 func (rm *RoadManager) AddShortSegment(x1, z1, x2, z2 float32, rt RoadType) {
-	na := rm.AddNode(x1, z1)
-	nb := rm.AddNode(x2, z2)
+	na := rm.AddNode(x1, 0, z1)
+	nb := rm.AddNode(x2, 0, z2)
 	rm.AddSegment(na, nb, rt)
 }
 
@@ -715,19 +817,19 @@ func (rm *RoadManager) RemoveSegment(idx int) {
 	nb.Connected = filter(nb.Connected, seg.ID)
 
 	if len(na.Connected) < 2 {
-		na.HasTrafficLight = false
+		na.TrafficLight = TrafficLightNone
 		na.JunctionType = 0
 	}
 	if len(nb.Connected) < 2 {
-		nb.HasTrafficLight = false
+		nb.TrafficLight = TrafficLightNone
 		nb.JunctionType = 0
 	}
 
 	rm.Segments = append(rm.Segments[:idx], rm.Segments[idx+1:]...)
 	rm.Models = append(rm.Models[:idx], rm.Models[idx+1:]...)
 
-	removeA := len(na.Connected) == 0 && !na.IsOutsideConn
-	removeB := len(nb.Connected) == 0 && !nb.IsOutsideConn
+	removeA := len(na.Connected) == 0 && na.Flags&RoadFlagOutsideConn == 0
+	removeB := len(nb.Connected) == 0 && nb.Flags&RoadFlagOutsideConn == 0
 	if removeA && removeB {
 		if seg.NodeA > seg.NodeB {
 			rm.removeNodeByIndex(seg.NodeA)
@@ -747,7 +849,12 @@ func (rm *RoadManager) UpgradeSegment(idx int, newType RoadType) {
 	if idx < 0 || idx >= len(rm.Segments) {
 		return
 	}
-	rm.Segments[idx].RoadType = newType
+	s := &rm.Segments[idx]
+	s.RoadType = newType
+	s.SpeedLimit = roadSpeed(newType)
+	s.LaneCount = int32(roadLanes(newType))
+	s.MaintenanceCost = roadMaintenanceCost(newType)
+	s.ConstructionCost = roadConstructionCost(newType)
 }
 
 func (rm *RoadManager) removeNodeByIndex(idx uint32) {
@@ -802,7 +909,7 @@ func (rm *RoadManager) FindPath(startNode, endNode uint32, vehicleType int) []ui
 			if other == uint32(best) {
 				other = seg.NodeB
 			}
-			cost := seg.Length / roadSpeed(seg.RoadType)
+			cost := seg.Length / seg.SpeedLimit
 			nd := nodes[best].dist + cost
 			if nd < nodes[other].dist {
 				nodes[other].dist = nd

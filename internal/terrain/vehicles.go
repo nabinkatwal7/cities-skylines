@@ -89,7 +89,7 @@ func (vm *VehicleManager) SpawnCar(rm *RoadManager) {
 	seg := rm.Segments[segIdx]
 	na := &rm.Nodes[seg.NodeA]
 
-	lanes := roadLanes(seg.RoadType)
+	lanes := int(seg.LaneCount)
 	lane := int(vm.NextID) % lanes
 
 	slot := vm.Alloc()
@@ -100,7 +100,7 @@ func (vm *VehicleManager) SpawnCar(rm *RoadManager) {
 	v.Entity = NewEntity(vm.NextID, na.X, 0, na.Z, OwnerVehicle)
 	v.Lifecycle = LifecycleActive
 	v.Type = VehicleCar
-	v.TargetSpeed = roadSpeed(seg.RoadType) * 0.8
+	v.TargetSpeed = seg.SpeedLimit * 0.8
 	v.RoadSeg = segIdx
 	v.Lane = lane
 	v.Color = rl.NewColor(uint8(100+vm.NextID%100), uint8(50+vm.NextID%80), uint8(80+vm.NextID%100), 255)
@@ -126,7 +126,7 @@ func (vm *VehicleManager) evictOldest() {
 }
 
 func (vm *VehicleManager) chooseLane(v *Vehicle, rm *RoadManager, seg RoadSegment) int {
-	lanes := roadLanes(seg.RoadType)
+	lanes := int(seg.LaneCount)
 	if lanes <= 1 {
 		return 0
 	}
@@ -179,11 +179,11 @@ func (vm *VehicleManager) Update(rm *RoadManager, h *Heightmap) {
 
 		na := &rm.Nodes[seg.NodeA]
 
-		if na.HasTrafficLight && na.JunctionType == 1 {
+		if na.TrafficLight != TrafficLightNone && na.JunctionType == 1 {
 			dx := na.X - v.Position.X
 			dz := na.Z - v.Position.Z
 			distToNode := float32(math.Sqrt(float64(dx*dx + dz*dz)))
-			if distToNode < 15 && na.TrafficLightPhase >= 2 {
+			if distToNode < 15 && na.TrafficLight >= TrafficLightYellow {
 				v.Speed *= 0.9
 				if v.Speed < 2 {
 					v.Speed = 2
@@ -216,7 +216,7 @@ func (vm *VehicleManager) Update(rm *RoadManager, h *Heightmap) {
 			v.SegProgress = 0
 		}
 
-		lanes := roadLanes(seg.RoadType)
+		lanes := int(seg.LaneCount)
 		halfLane := float32(lanes)*laneW*0.5 - float32(v.Lane)*laneW - laneW*0.5
 
 		t := v.SegProgress / totalLen
