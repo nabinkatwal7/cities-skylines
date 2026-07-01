@@ -565,7 +565,20 @@ func landValue(b *Building, h *Heightmap) int32 {
 	if hy < 12 {
 		val += 15
 	}
+	if landValueTrees != nil {
+		trees := landValueTrees.TreeCountAt(b.Position.X, b.Position.Z, 20)
+		val += trees * 2
+		if trees > 5 {
+			val += 10
+		}
+	}
 	return val
+}
+
+var landValueTrees *TreeSystem
+
+func SetLandValueTrees(ts *TreeSystem) {
+	landValueTrees = ts
 }
 
 func (bm *BuildingManager) FlushStats() {

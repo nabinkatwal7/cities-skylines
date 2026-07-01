@@ -1833,3 +1833,43 @@ Dead
 Dead trees may decay naturally or burn.
 
 ---
+
+## 2.17 Tree Removal ✅
+
+Removing trees:
+
+- Costs money
+- Reduces forestry
+- Decreases land value
+- Reduces noise absorption
+
+Large-scale deforestation affects the environment.
+
+---
+
+## 2.18 Natural Resources ✅
+
+Resource maps exist independently from terrain.
+
+Resources include:
+
+- Ore
+- Oil
+- Fertile Land
+- Forest
+
+Each cell stores density.
+
+```text
+0
+
+↓
+
+255
+```
+
+Higher density yields higher production.
+
+Resources are visible only in resource overlays.
+
+---

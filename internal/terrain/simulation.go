@@ -96,6 +96,7 @@ func NewSimulationManager(seed int64) *SimulationManager {
 	sm.Buildability = NewBuildabilityChecker(sm.Heightmap, sm.Water, sm.Trees, sm.Buildings, sm.Roads, sm.Zones, sm.Resources)
 	SetBuildabilityChecker(sm.Buildability)
 	SetZoneBuildabilityCheck(sm.Buildability)
+	SetLandValueTrees(sm.Trees)
 	return sm
 }
 
@@ -293,6 +294,18 @@ func (sm *SimulationManager) RemoveSegment(idx int) {
 	sm.Roads.RemoveSegment(idx)
 	sm.Roads.Rebuild(sm.Heightmap)
 	sm.EventBus.Emit(string(EventRoadRemoved), idx)
+}
+
+func (sm *SimulationManager) RemoveTrees(worldX, worldZ, radius float32) int {
+	cost := float32(10)
+	if sm.Money < cost {
+		return 0
+	}
+	removed := sm.Trees.RemoveNear(worldX, worldZ, radius)
+	if removed > 0 {
+		sm.Money -= cost * float32(removed)
+	}
+	return removed
 }
 
 func (sm *SimulationManager) UpgradeSegment(idx int, newType RoadType) {

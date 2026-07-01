@@ -46,6 +46,7 @@ type TreeSystem struct {
 	seed        int64
 	Model       rl.Model
 	colorMap    map[TreeSpecies]rl.Color
+	RemovedCount int
 }
 
 func NewTreeSystem(seed int64) *TreeSystem {
@@ -192,8 +193,9 @@ func (ts *TreeSystem) Update(dt float64) {
 	}
 }
 
-func (ts *TreeSystem) RemoveNear(x, z, radius float32) {
+func (ts *TreeSystem) RemoveNear(x, z, radius float32) int {
 	radiusSq := radius * radius
+	removed := 0
 	for i := 0; i < TreePoolSize; i++ {
 		t := &ts.Pool[i]
 		if t.Lifecycle != LifecycleActive {
@@ -204,8 +206,11 @@ func (ts *TreeSystem) RemoveNear(x, z, radius float32) {
 		if dx*dx+dz*dz <= radiusSq {
 			t.RemovalTimer = 0
 			t.Lifecycle = LifecycleMarkedForRemoval
+			removed++
 		}
 	}
+	ts.RemovedCount += removed
+	return removed
 }
 
 func (ts *TreeSystem) Draw(h *Heightmap, camX, camZ float32) {
@@ -325,6 +330,40 @@ func (ts *TreeSystem) getState(t Tree) TreeState {
 
 func (ts *TreeSystem) Count() int {
 	return int(ts.activeCount)
+}
+
+func (ts *TreeSystem) PlantAt(worldX, worldZ float32, species TreeSpecies) bool {
+	slot := ts.Alloc()
+	if slot < 0 {
+		return false
+	}
+	t := &ts.Pool[slot]
+	t.X = worldX
+	t.Z = worldZ
+	t.Species = species
+	t.Age = 1
+	t.Health = 1.0
+	t.Scale = 0.3
+	t.Yaw = rand.Float32() * 6.2832
+	t.Lifecycle = LifecycleActive
+	return true
+}
+
+func (ts *TreeSystem) TreeCountAt(x, z, radius float32) int {
+	radiusSq := radius * radius
+	count := 0
+	for i := 0; i < TreePoolSize; i++ {
+		t := &ts.Pool[i]
+		if t.Lifecycle != LifecycleActive {
+			continue
+		}
+		dx := t.X - x
+		dz := t.Z - z
+		if dx*dx+dz*dz <= radiusSq {
+			count++
+		}
+	}
+	return count
 }
 
 func (ts *TreeSystem) HasTreeAt(worldX, worldZ float32) bool {

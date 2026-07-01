@@ -255,6 +255,7 @@ func main() {
 					if idx >= 0 {
 						sim.RemoveSegment(idx)
 					}
+					sim.RemoveTrees(worldX, worldZ, 10)
 				case terrain.ToolUpgrade:
 					idx := sim.Roads.NearestSegment(worldX, worldZ)
 					if idx >= 0 {
