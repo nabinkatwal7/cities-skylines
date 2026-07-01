@@ -14,6 +14,8 @@ type Building struct {
 	Height       float32
 	Level        int32
 	UpgradeTimer int32
+	Workers      int32
+	Residents    int32
 }
 
 type BuildingManager struct {
@@ -61,18 +63,21 @@ func (bm *BuildingManager) Update(zm *ZoneManager, h *Heightmap, roads *RoadMana
 			if bm.shouldDevelop(cell) {
 				cell.Density += 0.005
 			}
-			if cell.Density >= 0.5 {
+			if 			cell.Density >= 0.5 {
 				w := 5 + float32(bm.nextSeed%3)*1.5
 				d := 5 + float32((bm.nextSeed+1)%3)*1.5
 				hgt := buildingHeight(cell.Type, bm.nextSeed)
+				res, workers := calcPopulation(cell.Type, bm.nextSeed)
 				bm.Buildings = append(bm.Buildings, Building{
 					X: cx, Z: cz,
-					Type:   cell.Type,
-					Seed:   bm.nextSeed,
-					Width:  w,
-					Depth:  d,
-					Height: hgt,
-					Level:  1,
+					Type:      cell.Type,
+					Seed:      bm.nextSeed,
+					Width:     w,
+					Depth:     d,
+					Height:    hgt,
+					Level:     1,
+					Residents: res,
+					Workers:   workers,
 				})
 				bm.nextSeed++
 			}
@@ -90,29 +95,51 @@ func (bm *BuildingManager) Update(zm *ZoneManager, h *Heightmap, roads *RoadMana
 			if lv > b.Level*10 {
 				b.Level++
 				b.Height = buildingHeight(b.Type, b.Seed+b.Level*10)
+				res, workers := calcPopulation(b.Type, b.Seed+b.Level*10)
+				b.Residents = res
+				b.Workers = workers
 			}
 		}
 	}
 }
 
+func calcPopulation(zt ZoneType, seed int32) (res int32, workers int32) {
+	switch zt {
+	case ZoneResidentialLow:
+		return 2 + seed%4, 0
+	case ZoneResidentialHigh:
+		return 6 + seed%8, 0
+	case ZoneCommercialLow:
+		return 0, 2 + seed%3
+	case ZoneCommercialHigh:
+		return 0, 6 + seed%6
+	case ZoneIndustrial:
+		return 0, 4 + seed%5
+	case ZoneOffice:
+		return 0, 5 + seed%5
+	}
+	return 0, 0
+}
+
 func (bm *BuildingManager) calcDemand(zm *ZoneManager) {
-	res := 0
-	com := 0
-	ind := 0
+	resPop := int32(0)
+	comJobs := int32(0)
+	indJobs := int32(0)
 	for _, b := range bm.Buildings {
 		switch b.Type {
 		case ZoneResidentialLow, ZoneResidentialHigh:
-			res++
+			resPop += b.Residents
 		case ZoneCommercialLow, ZoneCommercialHigh:
-			com++
+			comJobs += b.Workers
 		case ZoneIndustrial:
-			ind++
+			indJobs += b.Workers
 		case ZoneOffice:
 		}
 	}
-	bm.resDemand = com*2 + ind - res
-	bm.comDemand = res/2 - com
-	bm.indDemand = res/3 - ind
+	availableJobs := comJobs + indJobs
+	bm.resDemand = int(availableJobs-resPop) / 2
+	bm.comDemand = int(resPop/2-comJobs) / 2
+	bm.indDemand = int(resPop/3-indJobs) / 3
 }
 
 func (bm *BuildingManager) shouldDevelop(cell *ZoneCell) bool {
@@ -174,6 +201,14 @@ func (bm *BuildingManager) Demand() (res, com, ind int) {
 	return bm.resDemand, bm.comDemand, bm.indDemand
 }
 
+func (bm *BuildingManager) Population() int32 {
+	total := int32(0)
+	for _, b := range bm.Buildings {
+		total += b.Residents
+	}
+	return total
+}
+
 func (bm *BuildingManager) NearestInfo(wx, wz float32, radius float32) string {
 	best := float32(radius * radius)
 	idx := -1
@@ -195,7 +230,13 @@ func (bm *BuildingManager) NearestInfo(wx, wz float32, radius float32) string {
 	for b.Level > 1 {
 		lvl += "I"
 	}
-	return fmt.Sprintf("%s Lvl %s | %g x %g", name, lvl, b.Width, b.Depth)
+	extra := ""
+	if b.Residents > 0 {
+		extra = fmt.Sprintf(" | Pop: %d", b.Residents)
+	} else if b.Workers > 0 {
+		extra = fmt.Sprintf(" | Jobs: %d", b.Workers)
+	}
+	return fmt.Sprintf("%s Lvl %s%s", name, lvl, extra)
 }
 
 func (bm *BuildingManager) Draw(h *Heightmap, zm *ZoneManager) {

@@ -235,6 +235,8 @@ func main() {
 		rl.EndMode3D()
 		rl.DrawFPS(10, 10)
 		rl.DrawText(fmt.Sprintf("$%.0f", eco.money), 10, 10, 18, rl.NewColor(100, 220, 100, 220))
+		pop := t.Buildings.Population()
+		rl.DrawText(fmt.Sprintf("Pop: %d", pop), 100, 10, 18, rl.White)
 		helpY := int32(35)
 		if bld.parkMode {
 			rl.DrawText(fmt.Sprintf("PARK MODE: place parks (L-click) | F=toggle off | TAB=roads | $500 each"), 10, helpY, 15, rl.Green)
