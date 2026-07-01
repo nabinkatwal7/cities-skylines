@@ -2676,3 +2676,66 @@ Deleting a route does not delete stations.
 Removing a station automatically updates affected routes.
 
 ---
+
+## 4.3 Transport Line
+
+A transport line represents an ordered sequence of stops.
+
+Each line stores:
+
+```cpp
+LineID
+
+TransportType
+
+Color
+
+Name
+
+Stop List
+
+Vehicle Count
+
+Passenger Count
+
+Budget
+
+Statistics
+```
+
+The stop order forms a closed or open route depending on transport type.
+
+---
+
+## 4.4 Stops & Stations
+
+Every stop stores:
+
+```cpp
+StationID
+
+Position
+
+Connected Networks
+
+Waiting Passengers
+
+District
+
+Accessibility
+
+Capacity
+```
+
+Stations act as transfer hubs between transport networks.
+
+Examples:
+
+- Bus Stop
+- Metro Station
+- Train Station
+- Ferry Pier
+- Airport Terminal
+- Taxi Stand
+
+---

@@ -173,6 +173,108 @@ func (tm *TransportManager) AddStopToLine(lineID, stopID uint32) {
 	}
 }
 
+func (tm *TransportManager) RemoveLine(id uint32) {
+	for li, line := range tm.Lines {
+		if line.ID != id {
+			continue
+		}
+		tm.Lines = append(tm.Lines[:li], tm.Lines[li+1:]...)
+
+		netIdx := int(line.TransType)
+		if netIdx < len(tm.Networks) {
+			tm.Networks[netIdx].RouteCount--
+		}
+
+		tm.forEachVehicle(func(v *TransportVehicle, slot int32) {
+			if v.LineID == line.ID {
+				v.ID = math.MaxUint32
+				tm.Networks[netIdx].VehicleCount--
+				tm.Networks[netIdx].Capacity -= v.Capacity
+				tm.freeVehicle(slot)
+			}
+		})
+		for vi := 0; vi < len(tm.Vehicles); vi++ {
+			if tm.Vehicles[vi].LineID == line.ID {
+				tm.Networks[netIdx].VehicleCount--
+				tm.Networks[netIdx].Capacity -= tm.Vehicles[vi].Capacity
+				tm.Vehicles = append(tm.Vehicles[:vi], tm.Vehicles[vi+1:]...)
+				vi--
+			}
+		}
+		return
+	}
+}
+
+func (tm *TransportManager) RemoveStop(id uint32) {
+	stopIdx := -1
+	for si, s := range tm.Stops {
+		if s.ID == id {
+			stopIdx = si
+			break
+		}
+	}
+	if stopIdx < 0 {
+		return
+	}
+	removed := tm.Stops[stopIdx]
+	tm.Stops = append(tm.Stops[:stopIdx], tm.Stops[stopIdx+1:]...)
+
+	if int(removed.TransType) < len(tm.Networks) {
+		tm.Networks[removed.TransType].StopCount--
+		if removed.IsStation {
+			tm.Networks[removed.TransType].StationCount--
+		}
+	}
+
+	for li := range tm.Lines {
+		line := &tm.Lines[li]
+		pos := -1
+		for si, sid := range line.Stops {
+			if sid == id {
+				pos = si
+				break
+			}
+		}
+		if pos < 0 {
+			continue
+		}
+		line.Stops = append(line.Stops[:pos], line.Stops[pos+1:]...)
+		line.Active = len(line.Stops) >= 2
+
+		tm.forEachVehicle(func(v *TransportVehicle, _ int32) {
+			if v.LineID == line.ID {
+				if v.StopIdx > pos {
+					v.StopIdx--
+				} else if v.StopIdx == pos {
+					if len(line.Stops) > 0 {
+						if v.StopIdx >= len(line.Stops) {
+							v.StopIdx = len(line.Stops) - 1
+						}
+					} else {
+						v.StopIdx = 0
+					}
+				}
+			}
+		})
+		for vi := range tm.Vehicles {
+			v := &tm.Vehicles[vi]
+			if v.LineID == line.ID {
+				if v.StopIdx > pos {
+					v.StopIdx--
+				} else if v.StopIdx == pos {
+					if len(line.Stops) > 0 {
+						if v.StopIdx >= len(line.Stops) {
+							v.StopIdx = len(line.Stops) - 1
+						}
+					} else {
+						v.StopIdx = 0
+					}
+				}
+			}
+		}
+	}
+}
+
 func (tm *TransportManager) SpawnVehicle(lineIdx int) {
 	if lineIdx < 0 || lineIdx >= len(tm.Lines) {
 		return
@@ -336,12 +438,12 @@ func (tm *TransportManager) moveVehicle(v *TransportVehicle, rm *RoadManager, h 
 		return
 	}
 
-	currentStop := tm.stopByID(line.Stops[v.StopIdx])
+	currentStop := 	tm.StopByID(line.Stops[v.StopIdx])
 	nextIdx := (v.StopIdx + 1) % len(line.Stops)
 	if !v.Forward {
 		nextIdx = (v.StopIdx - 1 + len(line.Stops)) % len(line.Stops)
 	}
-	nextStop := tm.stopByID(line.Stops[nextIdx])
+	nextStop := 	tm.StopByID(line.Stops[nextIdx])
 	if nextStop == nil {
 		return
 	}
@@ -427,7 +529,7 @@ func (tm *TransportManager) moveVehicle(v *TransportVehicle, rm *RoadManager, h 
 	}
 }
 
-func (tm *TransportManager) stopByID(id uint32) *TransportStop {
+func (tm *TransportManager) StopByID(id uint32) *TransportStop {
 	for i := range tm.Stops {
 		if tm.Stops[i].ID == id {
 			return &tm.Stops[i]
@@ -571,4 +673,42 @@ func (tm *TransportManager) TotalIncome() float32 {
 		total += tm.Networks[i].TotalIncome
 	}
 	return total
+}
+
+func (tm *TransportManager) NearestStop(x, z float32, maxDist float32) *TransportStop {
+	best := float32(maxDist)
+	var found *TransportStop
+	for i := range tm.Stops {
+		s := &tm.Stops[i]
+		dx := s.X - x
+		dz := s.Z - z
+		d := dx*dx + dz*dz
+		if d < best {
+			best = d
+			found = s
+		}
+	}
+	return found
+}
+
+func (tm *TransportManager) NearestLine(x, z float32, maxDist float32) *TransportLine {
+	best := float32(maxDist)
+	var found *TransportLine
+	for li := range tm.Lines {
+		line := &tm.Lines[li]
+		for _, sid := range line.Stops {
+			s := 	tm.StopByID(sid)
+			if s == nil {
+				continue
+			}
+			dx := s.X - x
+			dz := s.Z - z
+			d := dx*dx + dz*dz
+			if d < best {
+				best = d
+				found = line
+			}
+		}
+	}
+	return found
 }

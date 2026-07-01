@@ -304,7 +304,7 @@ func (ui *GameUI) drawHelpText() {
 	case ToolTransport:
 		rl.DrawText(fmt.Sprintf("L-click to place %s stop | R=cycle type | Esc=deselect | Current: %s", toolbarItems[5].Options[toolbarItems[5].OptIndex], toolbarItems[5].Options[toolbarItems[5].OptIndex]), 10, helpY, 14, rl.White)
 	case ToolRemove:
-		rl.DrawText("L-click on road to remove | Esc=deselect", 10, helpY, 14, rl.White)
+		rl.DrawText("L-click on stop to remove, near line to remove route, or road segment | Esc=deselect", 10, helpY, 14, rl.White)
 	case ToolUpgrade:
 		rl.DrawText(fmt.Sprintf("L-click on road to upgrade to %s | R=change target type | Esc=deselect", toolbarItems[1].Options[toolbarItems[1].OptIndex]), 10, helpY, 14, rl.White)
 	}

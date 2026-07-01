@@ -319,6 +319,18 @@ func main() {
 					}
 				}
 				case terrain.ToolRemove:
+					if sim.Transport != nil {
+						stop := sim.Transport.NearestStop(worldX, worldZ, 8)
+						if stop != nil {
+							sim.Transport.RemoveStop(stop.ID)
+							break
+						}
+						line := sim.Transport.NearestLine(worldX, worldZ, 12)
+						if line != nil {
+							sim.Transport.RemoveLine(line.ID)
+							break
+						}
+					}
 					idx := sim.Roads.NearestSegment(worldX, worldZ)
 					if idx >= 0 {
 						sim.RemoveSegment(idx)
@@ -379,6 +391,28 @@ func main() {
 				}
 				rl.DrawSphere(rl.NewVector3(previewX, h+0.5, previewZ), 0.6, stopCol)
 			case terrain.ToolRemove:
+				if sim.Transport != nil {
+					stop := sim.Transport.NearestStop(worldX, worldZ, 8)
+					if stop != nil {
+						sh := sim.Heightmap.WorldHeight(stop.X, stop.Z) + 0.5
+						rl.DrawCube(rl.NewVector3(stop.X, sh, stop.Z), 2, 2, 2, rl.NewColor(200, 50, 50, 80))
+						rl.DrawCubeWires(rl.NewVector3(stop.X, sh, stop.Z), 2, 2, 2, rl.Red)
+						break
+					}
+					line := sim.Transport.NearestLine(worldX, worldZ, 12)
+					if line != nil {
+						col := terrain.TransportStopColor(line.TransType)
+						for _, sid := range line.Stops {
+							s := sim.Transport.StopByID(sid)
+							if s == nil {
+								continue
+							}
+							sh := sim.Heightmap.WorldHeight(s.X, s.Z) + 0.5
+							rl.DrawCubeWires(rl.NewVector3(s.X, sh, s.Z), 1.5, 1.5, 1.5, col)
+						}
+						break
+					}
+				}
 				idx := sim.Roads.NearestSegment(worldX, worldZ)
 				if idx >= 0 {
 					seg := sim.Roads.Segments[idx]
