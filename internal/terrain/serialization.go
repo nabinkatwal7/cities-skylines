@@ -133,12 +133,18 @@ type TransportStopData struct {
 }
 
 type TransportLineData struct {
-	TransType TransportType
-	StopIDs   []uint32
-	Active    bool
-	ColorR    uint8
-	ColorG    uint8
-	ColorB    uint8
+	TransType      TransportType
+	StopIDs        []uint32
+	Active         bool
+	ColorR         uint8
+	ColorG         uint8
+	ColorB         uint8
+	VehicleCount   int32
+	PassengerCount int32
+	Budget         float32
+	TotalPassengers int64
+	TotalIncome    float32
+	IsCircular     bool
 }
 
 type TransportNetworkData struct {
@@ -205,7 +211,7 @@ type SaveStats struct {
 	TotalCount int32
 }
 
-const currentSaveVersion int32 = 6
+const currentSaveVersion int32 = 7
 
 func calcChecksum(data []byte) uint32 {
 	return crc32.ChecksumIEEE(data)
@@ -290,6 +296,14 @@ func migrateSaveData(data *SaveData) bool {
 				}
 			}
 			data.Version = 6
+		case 6:
+			for i := range data.TransportLines {
+				ld := &data.TransportLines[i]
+				if ld.VehicleCount == 0 && ld.TotalPassengers == 0 {
+					ld.IsCircular = ld.TransType != TransBus && ld.TransType != TransTram && ld.TransType != TransTaxi
+				}
+			}
+			data.Version = 7
 		}
 	}
 	return true
@@ -495,12 +509,18 @@ func SaveGame(filename string, m *SimulationManager, money float32, timeOfDay in
 		for _, l := range m.Transport.Lines {
 			col := l.Color
 			data.TransportLines = append(data.TransportLines, TransportLineData{
-				TransType: l.TransType,
-				StopIDs:   l.Stops,
-				Active:    l.Active,
-				ColorR:    col.R,
-				ColorG:    col.G,
-				ColorB:    col.B,
+				TransType:       l.TransType,
+				StopIDs:         l.Stops,
+				Active:          l.Active,
+				ColorR:          col.R,
+				ColorG:          col.G,
+				ColorB:          col.B,
+				VehicleCount:    l.VehicleCount,
+				PassengerCount:  l.PassengerCount,
+				Budget:          l.Budget,
+				TotalPassengers: l.TotalPassengers,
+				TotalIncome:     l.TotalIncome,
+				IsCircular:      l.IsCircular,
 			})
 		}
 		for _, n := range m.Transport.Networks {
@@ -776,6 +796,15 @@ func LoadGame(filename string, m *SimulationManager) (money float32, timeOfDay i
 		for _, ld := range data.TransportLines {
 			col := rl.NewColor(ld.ColorR, ld.ColorG, ld.ColorB, 255)
 			m.Transport.AddLine("Line", ld.TransType, ld.StopIDs, col)
+			if len(m.Transport.Lines) > 0 {
+				line := &m.Transport.Lines[len(m.Transport.Lines)-1]
+				line.VehicleCount = ld.VehicleCount
+				line.PassengerCount = ld.PassengerCount
+				line.Budget = ld.Budget
+				line.TotalPassengers = ld.TotalPassengers
+				line.TotalIncome = ld.TotalIncome
+				line.IsCircular = ld.IsCircular
+			}
 		}
 		for i, nd := range data.TransportNetworks {
 			if i < len(m.Transport.Networks) {

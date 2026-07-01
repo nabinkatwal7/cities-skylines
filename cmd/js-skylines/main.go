@@ -62,6 +62,8 @@ func main() {
 	transportActive := false
 	transportStartStopID := uint32(0)
 	transportLineID := uint32(0)
+	saveTimer := int32(0)
+	saveFilename := "autosave.sav"
 
 	for !rl.WindowShouldClose() {
 		if !uploaded {
@@ -88,6 +90,12 @@ func main() {
 		}
 
 		sim.Update(float64(rl.GetFrameTime()))
+
+		saveTimer++
+		if saveTimer > 3600 {
+			saveTimer = 0
+			terrain.SaveGame(saveFilename, sim, sim.Money, int32(sim.Time.TotalTime))
+		}
 
 		// Camera
 		wheel := rl.GetMouseWheelMove()

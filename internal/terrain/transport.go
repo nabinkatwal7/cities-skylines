@@ -32,12 +32,18 @@ type TransportStop struct {
 }
 
 type TransportLine struct {
-	ID        uint32
-	Name      string
-	TransType TransportType
-	Stops     []uint32
-	Active    bool
-	Color     rl.Color
+	ID             uint32
+	Name           string
+	TransType      TransportType
+	Stops          []uint32
+	Active         bool
+	Color          rl.Color
+	VehicleCount   int32
+	PassengerCount int32
+	Budget         float32
+	TotalPassengers int64
+	TotalIncome    float32
+	IsCircular     bool
 }
 
 type TransportVehicle struct {
@@ -156,6 +162,7 @@ func (tm *TransportManager) AddLine(name string, tt TransportType, stopIDs []uin
 		Stops:     stopIDs,
 		Active:    true,
 		Color:     col,
+		IsCircular: tt != TransBus && tt != TransTram && tt != TransTaxi,
 	})
 	if int(tt) < len(tm.Networks) {
 		tm.Networks[tt].RouteCount++
@@ -321,6 +328,7 @@ func (tm *TransportManager) SpawnVehicle(lineIdx int) {
 			Moving:    true,
 		})
 		tm.NextID++
+		line.VehicleCount++
 		netIdx := int(line.TransType)
 		if netIdx < len(tm.Networks) {
 			tm.Networks[netIdx].VehicleCount++
@@ -341,6 +349,7 @@ func (tm *TransportManager) SpawnVehicle(lineIdx int) {
 	v.Moving = true
 	v.StopIdx = 0
 
+	line.VehicleCount++
 	netIdx := int(line.TransType)
 	if netIdx < len(tm.Networks) {
 		tm.Networks[netIdx].VehicleCount++
@@ -354,15 +363,18 @@ func (tm *TransportManager) Update(rm *RoadManager, h *Heightmap) {
 		if !line.Active {
 			continue
 		}
-		count := 0
+		line.VehicleCount = 0
+		line.PassengerCount = 0
 		for _, v := range tm.Vehicles {
 			if v.LineID == line.ID {
-				count++
+				line.VehicleCount++
+				line.PassengerCount += v.Passengers
 			}
 		}
 		tm.forEachVehicle(func(v *TransportVehicle, _ int32) {
 			if v.LineID == line.ID {
-				count++
+				line.VehicleCount++
+				line.PassengerCount += v.Passengers
 			}
 		})
 		desired := 1
@@ -382,7 +394,7 @@ func (tm *TransportManager) Update(rm *RoadManager, h *Heightmap) {
 		case TransCableCar:
 			desired = 1
 		}
-		if count < desired {
+		if line.VehicleCount < int32(desired) {
 			tm.SpawnVehicle(li)
 		}
 	}
@@ -438,12 +450,12 @@ func (tm *TransportManager) moveVehicle(v *TransportVehicle, rm *RoadManager, h 
 		return
 	}
 
-	currentStop := 	tm.StopByID(line.Stops[v.StopIdx])
+	currentStop := tm.StopByID(line.Stops[v.StopIdx])
 	nextIdx := (v.StopIdx + 1) % len(line.Stops)
 	if !v.Forward {
 		nextIdx = (v.StopIdx - 1 + len(line.Stops)) % len(line.Stops)
 	}
-	nextStop := 	tm.StopByID(line.Stops[nextIdx])
+	nextStop := tm.StopByID(line.Stops[nextIdx])
 	if nextStop == nil {
 		return
 	}
@@ -461,14 +473,20 @@ func (tm *TransportManager) moveVehicle(v *TransportVehicle, rm *RoadManager, h 
 		v.Moving = false
 		v.Timer = 0
 		v.StopIdx = nextIdx
-		if v.StopIdx == 0 || v.StopIdx == len(line.Stops)-1 {
-			v.Forward = !v.Forward
+		if !line.IsCircular {
+			if v.StopIdx == 0 || v.StopIdx == len(line.Stops)-1 {
+				v.Forward = !v.Forward
+			}
 		}
 		boarded := v.Capacity / 10
 		if v.Passengers+boarded > v.Capacity {
 			boarded = v.Capacity - v.Passengers
 		}
 		v.Passengers += boarded
+		line.PassengerCount += boarded
+		line.TotalPassengers += int64(boarded)
+		income := float32(boarded) * 0.5
+		line.TotalIncome += income
 		if currentStop != nil {
 			currentStop.Passengers -= boarded
 			if currentStop.Passengers < 0 {
@@ -478,7 +496,7 @@ func (tm *TransportManager) moveVehicle(v *TransportVehicle, rm *RoadManager, h 
 		netIdx := int(v.TransType)
 		if netIdx < len(tm.Networks) {
 			tm.Networks[netIdx].PassengersPerDay += boarded
-			tm.Networks[netIdx].TotalIncome += float32(boarded) * 0.5
+			tm.Networks[netIdx].TotalIncome += income
 		}
 	}
 

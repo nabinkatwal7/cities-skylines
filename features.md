@@ -1,35 +1,3 @@
-## 4.5 Supported Transport Types
-
-The engine supports:
-
-- Walking
-- Bicycle
-- Private Car
-- Taxi
-- Bus
-- Tram
-- Metro
-- Train
-- Ferry
-- Monorail
-- Cable Car
-- Blimp
-- Airplane
-- Ship
-
-Each mode defines:
-
-- Speed
-- Capacity
-- Operating Cost
-- Ticket Revenue
-- Pollution
-- Noise
-- Vehicle Size
-- Infrastructure Requirements
-
----
-
 ## 4.6 Bus System
 
 Buses operate on road networks.
