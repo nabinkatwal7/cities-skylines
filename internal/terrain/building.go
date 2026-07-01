@@ -10,12 +10,17 @@ type Building struct {
 	Seed         int32
 	Width, Depth float32
 	Height       float32
+	Level        int32
+	UpgradeTimer int32
 }
 
 type BuildingManager struct {
 	Buildings []Building
 	nextSeed  int32
 	models    map[ZoneType]rl.Model
+	resDemand int
+	comDemand int
+	indDemand int
 }
 
 func NewBuildingManager() *BuildingManager {
@@ -34,6 +39,7 @@ func (bm *BuildingManager) LoadAssets() {
 }
 
 func (bm *BuildingManager) Update(zm *ZoneManager, h *Heightmap, roads *RoadManager) {
+	bm.calcDemand(zm)
 	cellSize := WorldSize / float32(zm.width)
 	for z := 0; z < zm.height; z++ {
 		for x := 0; x < zm.width; x++ {
@@ -41,15 +47,18 @@ func (bm *BuildingManager) Update(zm *ZoneManager, h *Heightmap, roads *RoadMana
 			if cell.Type == ZoneNone {
 				continue
 			}
+			cx := float32(x)*cellSize - WorldSize/2 + cellSize*0.5
+			cz := float32(z)*cellSize - WorldSize/2 + cellSize*0.5
+			canDevelop := roads.HasNearbyRoad(cx, cz, cellSize*2)
+			if !canDevelop {
+				continue
+			}
 			if cell.Density >= 0.5 {
 				continue
 			}
-			cx := float32(x)*cellSize - WorldSize/2 + cellSize*0.5
-			cz := float32(z)*cellSize - WorldSize/2 + cellSize*0.5
-			if !roads.HasNearbyRoad(cx, cz, cellSize*2) {
-				continue
+			if bm.shouldDevelop(cell) {
+				cell.Density += 0.005
 			}
-			cell.Density += 0.001
 			if cell.Density >= 0.5 {
 				w := 5 + float32(bm.nextSeed%3)*1.5
 				d := 5 + float32((bm.nextSeed+1)%3)*1.5
@@ -61,31 +70,102 @@ func (bm *BuildingManager) Update(zm *ZoneManager, h *Heightmap, roads *RoadMana
 					Width:  w,
 					Depth:  d,
 					Height: hgt,
+					Level:  1,
 				})
 				bm.nextSeed++
 			}
 		}
 	}
+	for i := range bm.Buildings {
+		b := &bm.Buildings[i]
+		if b.Level >= 5 {
+			continue
+		}
+		b.UpgradeTimer++
+		needed := int32(600-b.Level*100) + b.Seed%60
+		if b.UpgradeTimer > needed {
+			lv := landValue(b, h)
+			if lv > b.Level*10 {
+				b.Level++
+				b.Height = buildingHeight(b.Type, b.Seed+b.Level*10)
+			}
+		}
+	}
+}
+
+func (bm *BuildingManager) calcDemand(zm *ZoneManager) {
+	res := 0
+	com := 0
+	ind := 0
+	for _, b := range bm.Buildings {
+		switch b.Type {
+		case ZoneResidentialLow, ZoneResidentialHigh:
+			res++
+		case ZoneCommercialLow, ZoneCommercialHigh:
+			com++
+		case ZoneIndustrial:
+			ind++
+		case ZoneOffice:
+		}
+	}
+	bm.resDemand = com*2 + ind - res
+	bm.comDemand = res/2 - com
+	bm.indDemand = res/3 - ind
+}
+
+func (bm *BuildingManager) shouldDevelop(cell *ZoneCell) bool {
+	switch cell.Type {
+	case ZoneResidentialLow, ZoneResidentialHigh:
+		return bm.resDemand > 0
+	case ZoneCommercialLow, ZoneCommercialHigh:
+		return bm.comDemand > 0
+	case ZoneIndustrial:
+		return bm.indDemand > 0
+	case ZoneOffice:
+		return true
+	}
+	return false
 }
 
 func buildingHeight(zt ZoneType, seed int32) float32 {
-	h := float32(seed % 3)
+	base := float32(3)
 	switch zt {
-	case ZoneResidentialLow:
-		return 3 + h*0.8
 	case ZoneResidentialHigh:
-		return 6 + h*2
+		base = 6
 	case ZoneCommercialLow:
-		return 4 + h
+		base = 4
 	case ZoneCommercialHigh:
-		return 8 + h*2.5
+		base = 8
 	case ZoneIndustrial:
-		return 5 + h*1.5
+		base = 5
 	case ZoneOffice:
-		return 6 + h*2
-	default:
-		return 3
+		base = 6
 	}
+	return base + float32(seed%3)*0.8
+}
+
+func landValue(b *Building, h *Heightmap) int32 {
+	val := int32(30)
+	if roadsNearby(b.X, b.Z, 30, h) {
+		val += 20
+	}
+	switch b.Type {
+	case ZoneResidentialLow, ZoneResidentialHigh:
+		val += 10
+	case ZoneIndustrial:
+		val -= 10
+	case ZoneOffice:
+		val += 15
+	}
+	hy := h.WorldHeight(b.X, b.Z)
+	if hy < 12 {
+		val += 15
+	}
+	return val
+}
+
+func roadsNearby(x, z float32, radius float32, h *Heightmap) bool {
+	return true
 }
 
 func (bm *BuildingManager) Draw(h *Heightmap, zm *ZoneManager) {
@@ -94,10 +174,12 @@ func (bm *BuildingManager) Draw(h *Heightmap, zm *ZoneManager) {
 		col := ZoneColor(b.Type)
 		col.A = 255
 
+		lvlScale := 1.0 + float32(b.Level-1)*0.15
+
 		if m, ok := bm.models[b.Type]; ok && m.MeshCount > 0 {
-			s := b.Width * 0.18
+			s := b.Width * 0.18 * lvlScale
 			if b.Type == ZoneResidentialLow {
-				s = b.Width * 0.12
+				s = b.Width * 0.12 * lvlScale
 			}
 			pos := rl.NewVector3(b.X, hy+0.5, b.Z)
 			axis := rl.NewVector3(0, 1, 0)
@@ -105,8 +187,8 @@ func (bm *BuildingManager) Draw(h *Heightmap, zm *ZoneManager) {
 			continue
 		}
 
-		baseH := b.Height * 0.7
-		roofH := b.Height * 0.3
+		baseH := b.Height * 0.7 * lvlScale
+		roofH := b.Height * 0.3 * lvlScale
 
 		rl.DrawCube(rl.NewVector3(b.X, hy+baseH*0.5, b.Z), b.Width, baseH, b.Depth, col)
 
