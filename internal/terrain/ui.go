@@ -54,7 +54,7 @@ func NewGameUI() *GameUI {
 
 var toolbarItems = []ToolbarItem{
 	{ToolPointer, "Pointer", rl.KeyOne, rl.NewColor(200, 200, 200, 255), nil, 0},
-	{ToolRoad, "Roads", rl.KeyTwo, rl.NewColor(180, 160, 120, 255), []string{"2-Lane", "1-Way", "4-Lane", "Gravel"}, 0},
+	{ToolRoad, "Roads", rl.KeyTwo, rl.NewColor(180, 160, 120, 255), []string{"2-Lane", "1-Way", "4-Lane", "Gravel", "Highway", "6-Lane", "Avenue", "Bus Rd", "Tram Rd", "Bike Rd", "Tree Rd", "Asym Rd", "Pedestrian", "Quay"}, 0},
 	{ToolZone, "Zones", rl.KeyThree, rl.NewColor(100, 200, 100, 255), []string{"Res Low", "Res High", "Com Low", "Com High", "Industrial", "Office"}, 0},
 	{ToolPark, "Parks", rl.KeyFour, rl.NewColor(80, 200, 80, 255), nil, 0},
 	{ToolRemove, "Remove", rl.KeyFive, rl.NewColor(200, 80, 80, 255), nil, 0},

@@ -16,7 +16,113 @@ const (
 	RoadGravel
 	RoadHighway
 	RoadRoundabout
+	RoadSixLane
+	RoadAvenue
+	RoadBus
+	RoadTram
+	RoadBicycle
+	RoadTreeLined
+	RoadAsymmetric
+	RoadPedestrian
+	RoadQuay
 )
+
+func RoadTypeName(rt RoadType) string {
+	switch rt {
+	case RoadTwoLane:
+		return "2-Lane"
+	case RoadOneWay:
+		return "1-Way"
+	case RoadFourLane:
+		return "4-Lane"
+	case RoadSixLane:
+		return "6-Lane"
+	case RoadAvenue:
+		return "Avenue"
+	case RoadGravel:
+		return "Gravel"
+	case RoadHighway:
+		return "Highway"
+	case RoadRoundabout:
+		return "Roundabout"
+	case RoadBus:
+		return "Bus Rd"
+	case RoadTram:
+		return "Tram Rd"
+	case RoadBicycle:
+		return "Bike Rd"
+	case RoadTreeLined:
+		return "Tree Rd"
+	case RoadAsymmetric:
+		return "Asym Rd"
+	case RoadPedestrian:
+		return "Pedestrian"
+	case RoadQuay:
+		return "Quay"
+	default:
+		return "Road"
+	}
+}
+
+func roadWidth(rt RoadType) float32 {
+	lanes := roadLanes(rt)
+	if lanes < 1 {
+		return 4.0
+	}
+	return float32(lanes)*3.0 + 2.0
+}
+
+func roadHasSidewalk(rt RoadType) bool {
+	switch rt {
+	case RoadHighway, RoadBicycle, RoadPedestrian:
+		return false
+	default:
+		return true
+	}
+}
+
+func roadHasLighting(rt RoadType) bool {
+	switch rt {
+	case RoadGravel, RoadBicycle, RoadPedestrian:
+		return false
+	default:
+		return true
+	}
+}
+
+func roadAllowedVehicles(rt RoadType) string {
+	switch rt {
+	case RoadBus:
+		return "bus"
+	case RoadTram:
+		return "tram"
+	case RoadBicycle:
+		return "bike"
+	case RoadPedestrian:
+		return "pedestrian"
+	default:
+		return "all"
+	}
+}
+
+func roadNoise(rt RoadType) float32 {
+	switch rt {
+	case RoadPedestrian, RoadBicycle:
+		return 0.1
+	case RoadGravel, RoadQuay, RoadTreeLined:
+		return 0.3
+	case RoadTwoLane, RoadOneWay, RoadBus, RoadTram, RoadAsymmetric:
+		return 0.5
+	case RoadFourLane:
+		return 0.7
+	case RoadSixLane, RoadAvenue:
+		return 0.8
+	case RoadHighway:
+		return 1.0
+	default:
+		return 0.5
+	}
+}
 
 type RoadHierarchy uint8
 
@@ -31,14 +137,20 @@ const laneW = float32(3.0)
 
 func roadLanes(rt RoadType) int {
 	switch rt {
-	case RoadOneWay:
+	case RoadOneWay, RoadBus:
 		return 1
-	case RoadTwoLane, RoadGravel, RoadRoundabout:
+	case RoadBicycle:
+		return 1
+	case RoadPedestrian:
+		return 1
+	case RoadTwoLane, RoadGravel, RoadRoundabout, RoadTreeLined, RoadAsymmetric:
 		return 2
-	case RoadFourLane:
+	case RoadFourLane, RoadTram:
 		return 4
-	case RoadHighway:
+	case RoadSixLane, RoadAvenue, RoadHighway:
 		return 6
+	case RoadQuay:
+		return 2
 	default:
 		return 2
 	}
@@ -46,18 +158,26 @@ func roadLanes(rt RoadType) int {
 
 func roadSpeed(rt RoadType) float32 {
 	switch rt {
-	case RoadGravel:
+	case RoadGravel, RoadRoundabout:
 		return 30
-	case RoadTwoLane:
+	case RoadPedestrian, RoadQuay:
+		return 20
+	case RoadBicycle:
+		return 25
+	case RoadTwoLane, RoadTreeLined, RoadAsymmetric:
 		return 50
 	case RoadOneWay:
 		return 60
+	case RoadBus:
+		return 50
+	case RoadTram:
+		return 40
 	case RoadFourLane:
 		return 70
+	case RoadSixLane, RoadAvenue:
+		return 80
 	case RoadHighway:
 		return 100
-	case RoadRoundabout:
-		return 30
 	default:
 		return 50
 	}
@@ -65,11 +185,11 @@ func roadSpeed(rt RoadType) float32 {
 
 func roadHierarchy(rt RoadType) RoadHierarchy {
 	switch rt {
-	case RoadGravel, RoadRoundabout:
+	case RoadGravel, RoadRoundabout, RoadPedestrian, RoadQuay, RoadBicycle:
 		return HierarchyLocal
-	case RoadTwoLane, RoadOneWay:
+	case RoadTwoLane, RoadOneWay, RoadTreeLined, RoadAsymmetric, RoadBus, RoadTram:
 		return HierarchyCollector
-	case RoadFourLane:
+	case RoadFourLane, RoadSixLane, RoadAvenue:
 		return HierarchyArterial
 	case RoadHighway:
 		return HierarchyHighway
@@ -217,15 +337,19 @@ func roadMaintenanceCost(rt RoadType) float32 {
 	switch rt {
 	case RoadGravel:
 		return 0.5
-	case RoadTwoLane:
+	case RoadBicycle, RoadPedestrian:
+		return 0.3
+	case RoadTwoLane, RoadTreeLined, RoadAsymmetric:
 		return 1.0
 	case RoadOneWay:
 		return 1.2
 	case RoadFourLane:
 		return 2.0
+	case RoadSixLane, RoadAvenue:
+		return 2.5
 	case RoadHighway:
 		return 3.5
-	case RoadRoundabout:
+	case RoadRoundabout, RoadBus, RoadTram, RoadQuay:
 		return 1.5
 	default:
 		return 1.0
@@ -236,16 +360,28 @@ func roadConstructionCost(rt RoadType) float32 {
 	switch rt {
 	case RoadGravel:
 		return 50
-	case RoadTwoLane:
+	case RoadBicycle:
+		return 40
+	case RoadPedestrian:
+		return 60
+	case RoadTwoLane, RoadTreeLined, RoadAsymmetric:
 		return 100
 	case RoadOneWay:
 		return 80
 	case RoadFourLane:
 		return 200
+	case RoadSixLane:
+		return 300
+	case RoadAvenue:
+		return 350
 	case RoadHighway:
 		return 500
 	case RoadRoundabout:
 		return 150
+	case RoadBus, RoadTram:
+		return 150
+	case RoadQuay:
+		return 120
 	default:
 		return 100
 	}

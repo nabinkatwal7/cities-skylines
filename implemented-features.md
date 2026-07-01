@@ -2046,3 +2046,53 @@ Curve Data
 ```
 
 ---
+
+## 3.2 Supported Road Types
+
+The engine supports multiple predefined road templates.
+
+Examples include:
+
+- Two-Lane Road
+- One-Way Road
+- Four-Lane Road
+- Six-Lane Road
+- Avenue
+- Highway
+- Gravel Road
+- Bus Road
+- Tram Road
+- Bicycle Road
+- Tree-Lined Road
+- Asymmetric Road
+- Pedestrian Street
+- Quay Road
+- Tunnel
+- Elevated Road
+- Bridge
+
+Each road asset defines:
+
+```text
+Lane Layout
+
+Speed
+
+Width
+
+Allowed Vehicles
+
+Decoration
+
+Lighting
+
+Sidewalk Width
+
+Noise
+
+Maintenance
+
+Construction Cost
+```
+
+---
