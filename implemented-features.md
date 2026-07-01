@@ -1521,3 +1521,145 @@ Only nearby terrain uses maximum resolution.
 Far terrain is heavily simplified.
 
 ---
+
+## 2.6 Terrain Generation ✅
+
+New maps are generated procedurally.
+
+Generation stages:
+
+```text
+Random Seed
+
+↓
+
+Base Noise
+
+↓
+
+Mountain Pass
+
+↓
+
+River Generation
+
+↓
+
+Erosion
+
+↓
+
+Resource Placement
+
+↓
+
+Tree Distribution
+
+↓
+
+Outside Connections
+
+↓
+
+Spawn Tile
+```
+
+Generation is deterministic.
+
+The same seed always produces the same terrain.
+
+---
+
+## 2.7 Noise Layers ✅
+
+Terrain uses multiple blended noise maps.
+
+Example:
+
+```text
+Continents
+
++
+
+Mountains
+
++
+
+Hills
+
++
+
+Fine Detail
+
+=
+
+Final Heightmap
+```
+
+Each layer contributes different frequencies.
+
+---
+
+## 2.8 River Generation ✅
+
+Rivers follow terrain gradients.
+
+Generation:
+
+```text
+High Elevation
+
+↓
+
+Flow Direction
+
+↓
+
+Channel Carving
+
+↓
+
+River Width
+
+↓
+
+Water Simulation
+```
+
+River paths affect:
+
+- Water flow
+- Fertility
+- Pollution
+- Shipping
+- Terrain erosion
+
+---
+
+## 2.9 Water Bodies ✅
+
+Water is simulated independently of terrain.
+
+Supported water bodies:
+
+- Rivers
+- Lakes
+- Ocean
+- Reservoirs
+- Canals
+
+Each water body stores:
+
+```cpp
+Level
+
+Velocity
+
+Direction
+
+Pollution
+
+Current
+```
+
+---

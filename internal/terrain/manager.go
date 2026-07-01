@@ -2,6 +2,7 @@ package terrain
 
 import (
 	"fmt"
+	"math"
 	"unsafe"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
@@ -15,7 +16,7 @@ type ProgressInfo struct {
 type Manager struct {
 	Sim        *SimulationManager
 	Chunks     []*Chunk
-	Models     []rl.Model
+	Models     [NumLODs][]rl.Model
 	terrainTex rl.Texture2D
 	uploadIdx  int
 }
@@ -27,7 +28,7 @@ func NewManager(sim *SimulationManager) *Manager {
 func (m *Manager) InitChunks() {
 	m.Chunks = BuildChunks(m.Sim.Heightmap)
 	for _, c := range m.Chunks {
-		BuildChunkMesh(c)
+		BuildAllLODMeshes(c)
 	}
 }
 
@@ -59,7 +60,9 @@ func (m *Manager) PrepareUpload() {
 		rl.UnloadImage(grassImg)
 	}
 
-	m.Models = make([]rl.Model, len(m.Chunks))
+	for lod := 0; lod < NumLODs; lod++ {
+		m.Models[lod] = make([]rl.Model, len(m.Chunks))
+	}
 	m.uploadIdx = 0
 }
 
@@ -69,19 +72,19 @@ func (m *Manager) UploadNextBatch(count int) bool {
 		end = len(m.Chunks)
 	}
 	for i := m.uploadIdx; i < end; i++ {
-		model := chunkToModel(m.Chunks[i])
-		mats := model.GetMaterials()
-		if len(mats) > 0 {
-			rl.SetMaterialTexture(&mats[0], rl.MapAlbedo, m.terrainTex)
+		c := m.Chunks[i]
+		for lod := 0; lod < NumLODs; lod++ {
+			model := chunkToModelLOD(c, lod)
+			mats := model.GetMaterials()
+			if len(mats) > 0 {
+				rl.SetMaterialTexture(&mats[0], rl.MapAlbedo, m.terrainTex)
+			}
+			m.Models[lod][i] = model
 		}
-		m.Models[i] = model
 	}
 	m.uploadIdx = end
 
-	if m.uploadIdx >= len(m.Chunks) {
-		return true
-	}
-	return false
+	return m.uploadIdx >= len(m.Chunks)
 }
 
 func (m *Manager) UploadProgress() ProgressInfo {
@@ -96,26 +99,34 @@ func (m *Manager) RebuildChunk(chunkIdx int) {
 	if !c.Dirty {
 		return
 	}
-	rl.UnloadModel(m.Models[chunkIdx])
-	BuildChunkMesh(c)
-	model := chunkToModel(c)
-	mats := model.GetMaterials()
-	if len(mats) > 0 {
-		rl.SetMaterialTexture(&mats[0], rl.MapAlbedo, m.terrainTex)
+	for lod := 0; lod < NumLODs; lod++ {
+		rl.UnloadModel(m.Models[lod][chunkIdx])
 	}
-	m.Models[chunkIdx] = model
+	BuildAllLODMeshes(c)
+	for lod := 0; lod < NumLODs; lod++ {
+		model := chunkToModelLOD(c, lod)
+		mats := model.GetMaterials()
+		if len(mats) > 0 {
+			rl.SetMaterialTexture(&mats[0], rl.MapAlbedo, m.terrainTex)
+		}
+		m.Models[lod][chunkIdx] = model
+	}
 }
 
 func (m *Manager) Draw(camX, camZ float32) {
 	sim := m.Sim
 	maxChunkDist := float32(3000)
-	for i, model := range m.Models {
-		cx, cz := chunkCenter(m.Chunks[i])
+	for i, c := range m.Chunks {
+		cx, cz := chunkCenter(c)
 		dx := cx - camX
 		dz := cz - camZ
-		if dx*dx+dz*dz > maxChunkDist*maxChunkDist {
+		distSq := dx*dx + dz*dz
+		if distSq > maxChunkDist*maxChunkDist {
 			continue
 		}
+		dist := float32(math.Sqrt(float64(distSq)))
+		lod := SelectLOD(dist)
+		model := m.Models[lod][i]
 		rl.DrawModel(model, rl.NewVector3(0, 0, 0), 1, rl.White)
 	}
 	if sim.Trees != nil {
@@ -148,8 +159,11 @@ func (m *Manager) Draw(camX, camZ float32) {
 }
 
 func (m *Manager) Unload() {
-	for _, model := range m.Models {
-		rl.UnloadModel(model)
+	for lod := 0; lod < NumLODs; lod++ {
+		for _, model := range m.Models[lod] {
+			rl.UnloadModel(model)
+		}
+		m.Models[lod] = nil
 	}
 	if m.Sim.Trees.Model.MeshCount > 0 {
 		rl.UnloadModel(m.Sim.Trees.Model)
@@ -170,7 +184,6 @@ func (m *Manager) Unload() {
 		m.Sim.Roads.Unload()
 	}
 	rl.UnloadTexture(m.terrainTex)
-	m.Models = nil
 }
 
 func chunkCenter(c *Chunk) (float32, float32) {
@@ -180,8 +193,8 @@ func chunkCenter(c *Chunk) (float32, float32) {
 	return cx, cz
 }
 
-func chunkToModel(c *Chunk) rl.Model {
-	md := c.MeshData
+func chunkToModelLOD(c *Chunk, lod int) rl.Model {
+	md := c.LODMeshes[lod]
 	mesh := rl.Mesh{
 		VertexCount:   md.VertexCount,
 		TriangleCount: md.IndexCount / 3,
