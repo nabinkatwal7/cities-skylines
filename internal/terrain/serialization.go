@@ -49,6 +49,7 @@ type RoadNodeData struct {
 	TrafficLight    TrafficLightState
 	JunctionType    uint8
 	Flags           RoadFlags
+	TrafficLightPhase int32
 	HasTrafficLight bool
 	IsOutsideConn   bool
 }
@@ -173,7 +174,7 @@ type SaveStats struct {
 	TotalCount int32
 }
 
-const currentSaveVersion int32 = 5
+const currentSaveVersion int32 = 6
 
 func calcChecksum(data []byte) uint32 {
 	return crc32.ChecksumIEEE(data)
@@ -248,6 +249,16 @@ func migrateSaveData(data *SaveData) bool {
 				}
 			}
 			data.Version = 4
+		case 4:
+			data.Version = 5
+		case 5:
+			for i := range data.RoadNodes {
+				if data.RoadNodes[i].TrafficLight != TrafficLightNone && data.RoadNodes[i].TrafficLightPhase == 0 {
+					maxLanes := int32(2)
+					data.RoadNodes[i].TrafficLightPhase = maxLanes * 20
+				}
+			}
+			data.Version = 6
 		}
 	}
 	return true
@@ -340,9 +351,10 @@ func SaveGame(filename string, m *SimulationManager, money float32, timeOfDay in
 		for _, n := range m.Roads.Nodes {
 			data.RoadNodes = append(data.RoadNodes, RoadNodeData{
 				X: n.X, Y: n.Y, Z: n.Z,
-				TrafficLight: n.TrafficLight,
-				JunctionType: n.JunctionType,
-				Flags:        n.Flags,
+				TrafficLight:    n.TrafficLight,
+				JunctionType:    n.JunctionType,
+				Flags:           n.Flags,
+				TrafficLightPhase: n.TrafficLightPhase,
 			})
 		}
 		for _, s := range m.Roads.Segments {
@@ -561,6 +573,7 @@ func LoadGame(filename string, m *SimulationManager) (money float32, timeOfDay i
 		for _, nd := range data.RoadNodes {
 			idx := m.Roads.AddNode(nd.X, nd.Y, nd.Z)
 			m.Roads.Nodes[idx].TrafficLight = nd.TrafficLight
+			m.Roads.Nodes[idx].TrafficLightPhase = nd.TrafficLightPhase
 			m.Roads.Nodes[idx].JunctionType = nd.JunctionType
 			m.Roads.Nodes[idx].Flags = nd.Flags
 		}

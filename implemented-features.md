@@ -2572,3 +2572,39 @@ Saved road data includes:
 Procedural meshes are regenerated after loading.
 
 ---
+
+## 3.24 Performance Optimization
+
+Road simulation uses:
+
+- Spatial partitioning
+- Incremental updates
+- Cached junctions
+- Lane graph caching
+- Object pooling
+- Dirty segment rebuilding
+- Hierarchical pathfinding
+
+Only modified roads rebuild geometry.
+
+Traffic graph updates occur only when connectivity changes.
+
+---
+
+## 3.25 Design Goals
+
+The road network is designed to support:
+
+- Unlimited intersections
+- Dynamic road upgrades
+- Multi-lane traffic
+- Realistic vehicle routing
+- Procedural geometry
+- Large-scale transportation networks
+- Efficient pathfinding
+- Modular road assets
+- Public transportation integration
+- Utility network integration
+- High-performance simulation
+
+The road system serves as the central navigation graph for citizens, vehicles, emergency services, public transportation, zoning, utilities, and city growth.

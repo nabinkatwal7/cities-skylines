@@ -413,8 +413,17 @@ func generateLanes(rt RoadType, direction int8, speedLimit float32, laneCount in
 }
 
 func (rm *RoadManager) JunctionLaneRoutes(nodeIdx uint32) []LaneConnection {
+	if rm.junctionCacheDirty {
+		rm.junctionCache = make(map[uint32][]LaneConnection)
+		rm.junctionCacheDirty = false
+	}
+	if cached, ok := rm.junctionCache[nodeIdx]; ok {
+		return cached
+	}
+
 	n := &rm.Nodes[nodeIdx]
 	if len(n.Connected) < 2 {
+		rm.junctionCache[nodeIdx] = nil
 		return nil
 	}
 
@@ -441,6 +450,7 @@ func (rm *RoadManager) JunctionLaneRoutes(nodeIdx uint32) []LaneConnection {
 		approaches = append(approaches, approach{segIdx: int(sid), angle: angle, dirX: dx / l, dirZ: dz / l})
 	}
 	if len(approaches) < 1 {
+		rm.junctionCache[nodeIdx] = nil
 		return nil
 	}
 
@@ -515,6 +525,7 @@ func (rm *RoadManager) JunctionLaneRoutes(nodeIdx uint32) []LaneConnection {
 			})
 		}
 	}
+	rm.junctionCache[nodeIdx] = connections
 	return connections
 }
 
@@ -543,10 +554,34 @@ type RoadManager struct {
 	NextID     uint32
 	roadTex    rl.Texture2D
 	nightMode  bool
+
+	junctionCache      map[uint32][]LaneConnection
+	junctionCacheDirty bool
+	dirtyModels        []int
+	nearestGrid        [][]int
+	nearestGridSize    int
+	floodTimer         int32
 }
 
 func NewRoadManager() *RoadManager {
-	return &RoadManager{}
+	return &RoadManager{
+		junctionCache:   make(map[uint32][]LaneConnection),
+		nearestGridSize: 64,
+	}
+}
+
+func (rm *RoadManager) invalidateCaches() {
+	rm.junctionCacheDirty = true
+	rm.nearestGrid = nil
+}
+
+func (rm *RoadManager) markDirty(segIdx int) {
+	for _, d := range rm.dirtyModels {
+		if d == segIdx {
+			return
+		}
+	}
+	rm.dirtyModels = append(rm.dirtyModels, segIdx)
 }
 
 func (rm *RoadManager) InitOutsideConnections(cs *ConnectionSystem) {
@@ -613,6 +648,7 @@ func (rm *RoadManager) AddSegment(a, b uint32, rt RoadType) uint32 {
 
 	rm.updateJunctionType(a)
 	rm.updateJunctionType(b)
+	rm.invalidateCaches()
 
 	return id
 }
@@ -891,13 +927,24 @@ func (rm *RoadManager) NearestNode(x, z float32) (uint32, bool) {
 }
 
 func (rm *RoadManager) HasNearbyRoad(x, z, maxDist float32) bool {
-	for _, seg := range rm.Segments {
-		xs, zs, _ := rm.SampleSegment(seg, 8)
-		for i := 0; i < len(xs); i++ {
-			dx := x - xs[i]
-			dz := z - zs[i]
-			if dx*dx+dz*dz < maxDist*maxDist {
-				return true
+	half := float32(WorldSize / 2)
+	size := float32(WorldSize) / float32(rm.nearestGridSize)
+	if rm.nearestGrid == nil {
+		rm.buildNearestGrid()
+	}
+	gx := int((x + half) / size)
+	gz := int((z + half) / size)
+	if gx >= 0 && gx < rm.nearestGridSize && gz >= 0 && gz < rm.nearestGridSize {
+		cellIdx := gz*rm.nearestGridSize + gx
+		for _, segIdx := range rm.nearestGrid[cellIdx] {
+			seg := rm.Segments[segIdx]
+			xs, zs, _ := rm.SampleSegment(seg, 8)
+			for i := 0; i < len(xs); i++ {
+				dx := x - xs[i]
+				dz := z - zs[i]
+				if dx*dx+dz*dz < maxDist*maxDist {
+					return true
+				}
 			}
 		}
 	}
@@ -905,20 +952,31 @@ func (rm *RoadManager) HasNearbyRoad(x, z, maxDist float32) bool {
 }
 
 func (rm *RoadManager) Rebuild(h *Heightmap) {
-	for _, model := range rm.Models {
-		if model.MeshCount > 0 {
-			rl.UnloadModel(model)
+	if len(rm.dirtyModels) == 0 {
+		return
+	}
+	for _, idx := range rm.dirtyModels {
+		if idx >= 0 && idx < len(rm.Models) {
+			if rm.Models[idx].MeshCount > 0 {
+				rl.UnloadModel(rm.Models[idx])
+			}
+			rm.Models[idx] = rm.buildSurfaceMesh(h, rm.Segments[idx])
 		}
 	}
-	rm.Models = nil
-	rm.UploadGPU(h)
+	rm.dirtyModels = nil
+}
+
+func (rm *RoadManager) markAllDirty() {
+	rm.dirtyModels = make([]int, len(rm.Segments))
+	for i := range rm.Segments {
+		rm.dirtyModels[i] = i
+	}
 }
 
 func (rm *RoadManager) UploadGPU(h *Heightmap) {
 	rm.Models = make([]rl.Model, len(rm.Segments))
-	for i, seg := range rm.Segments {
-		rm.Models[i] = rm.buildSurfaceMesh(h, seg)
-	}
+	rm.markAllDirty()
+	rm.Rebuild(h)
 }
 
 func (rm *RoadManager) buildSurfaceMesh(h *Heightmap, seg RoadSegment) rl.Model {
@@ -1056,6 +1114,10 @@ func (rm *RoadManager) Update(h *Heightmap) {
 		}
 	}
 
+	rm.floodTimer++
+	if rm.floodTimer%10 != 0 {
+		return
+	}
 	for i := range rm.Segments {
 		seg := &rm.Segments[i]
 		na := &rm.Nodes[seg.NodeA]
@@ -1828,9 +1890,91 @@ func (rm *RoadManager) AddShortSegment(x1, z1, x2, z2 float32, rt RoadType) {
 	rm.AddSegment(na, nb, rt)
 }
 
+func (rm *RoadManager) buildNearestGrid() {
+	half := float32(WorldSize / 2)
+	size := float32(WorldSize) / float32(rm.nearestGridSize)
+	gridLen := rm.nearestGridSize * rm.nearestGridSize
+	rm.nearestGrid = make([][]int, gridLen)
+	for i, seg := range rm.Segments {
+		na := &rm.Nodes[seg.NodeA]
+		nb := &rm.Nodes[seg.NodeB]
+		gx1 := int((na.X + half) / size)
+		gz1 := int((na.Z + half) / size)
+		gx2 := int((nb.X + half) / size)
+		gz2 := int((nb.Z + half) / size)
+		if gx1 < 0 {
+			gx1 = 0
+		}
+		if gx1 >= rm.nearestGridSize {
+			gx1 = rm.nearestGridSize - 1
+		}
+		if gz1 < 0 {
+			gz1 = 0
+		}
+		if gz1 >= rm.nearestGridSize {
+			gz1 = rm.nearestGridSize - 1
+		}
+		if gx2 < 0 {
+			gx2 = 0
+		}
+		if gx2 >= rm.nearestGridSize {
+			gx2 = rm.nearestGridSize - 1
+		}
+		if gz2 < 0 {
+			gz2 = 0
+		}
+		if gz2 >= rm.nearestGridSize {
+			gz2 = rm.nearestGridSize - 1
+		}
+		minX, maxX := gx1, gx2
+		if gx2 < gx1 {
+			minX, maxX = gx2, gx1
+		}
+		minZ, maxZ := gz1, gz2
+		if gz2 < gz1 {
+			minZ, maxZ = gz2, gz1
+		}
+		for gz := minZ; gz <= maxZ; gz++ {
+			for gx := minX; gx <= maxX; gx++ {
+				idx := gz*rm.nearestGridSize + gx
+				rm.nearestGrid[idx] = append(rm.nearestGrid[idx], i)
+			}
+		}
+	}
+}
+
 func (rm *RoadManager) NearestSegment(x, z float32) int {
+	half := float32(WorldSize / 2)
+	size := float32(WorldSize) / float32(rm.nearestGridSize)
 	bestIdx := -1
 	bestDist := float32(math.MaxFloat32)
+
+	if rm.nearestGrid == nil {
+		rm.buildNearestGrid()
+	}
+
+	gx := int((x + half) / size)
+	gz := int((z + half) / size)
+	if gx >= 0 && gx < rm.nearestGridSize && gz >= 0 && gz < rm.nearestGridSize {
+		cellIdx := gz*rm.nearestGridSize + gx
+		for _, segIdx := range rm.nearestGrid[cellIdx] {
+			seg := rm.Segments[segIdx]
+			xs, zs, _ := rm.SampleSegment(seg, 8)
+			for j := 0; j < len(xs); j++ {
+				dx := x - xs[j]
+				dz := z - zs[j]
+				d := dx*dx + dz*dz
+				if d < bestDist {
+					bestDist = d
+					bestIdx = segIdx
+				}
+			}
+		}
+		if bestIdx >= 0 {
+			goto done
+		}
+	}
+
 	for i, seg := range rm.Segments {
 		xs, zs, _ := rm.SampleSegment(seg, 8)
 		for j := 0; j < len(xs); j++ {
@@ -1843,6 +1987,7 @@ func (rm *RoadManager) NearestSegment(x, z float32) int {
 			}
 		}
 	}
+done:
 	if bestDist > 100 {
 		return -1
 	}
@@ -1878,6 +2023,7 @@ func (rm *RoadManager) RemoveSegment(idx int) {
 
 	rm.updateJunctionType(seg.NodeA)
 	rm.updateJunctionType(seg.NodeB)
+	rm.invalidateCaches()
 
 	rm.Segments = append(rm.Segments[:idx], rm.Segments[idx+1:]...)
 	rm.Models = append(rm.Models[:idx], rm.Models[idx+1:]...)
