@@ -436,6 +436,13 @@ func (rm *RoadManager) RemoveSegment(idx int) {
 	}
 }
 
+func (rm *RoadManager) UpgradeSegment(idx int, newType RoadType) {
+	if idx < 0 || idx >= len(rm.Segments) {
+		return
+	}
+	rm.Segments[idx].RoadType = newType
+}
+
 func (rm *RoadManager) removeNodeByIndex(idx uint32) {
 	rm.Nodes = append(rm.Nodes[:idx], rm.Nodes[idx+1:]...)
 	for i := range rm.Segments {

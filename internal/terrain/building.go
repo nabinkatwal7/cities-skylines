@@ -7,19 +7,21 @@ import (
 )
 
 type Building struct {
-	X, Z         float32
-	Type         ZoneType
-	Seed         int32
-	Width, Depth float32
-	Height       float32
-	Level        int32
-	UpgradeTimer int32
-	Workers      int32
-	Residents    int32
-	Abandoned    bool
-	AbandonTimer int32
-	HasRoad      bool
-	CellX, CellZ int
+	X, Z           float32
+	Type           ZoneType
+	Seed           int32
+	Width, Depth   float32
+	Height         float32
+	Level          int32
+	UpgradeTimer   int32
+	Workers        int32
+	Residents      int32
+	Abandoned      bool
+	AbandonTimer   int32
+	HasRoad        bool
+	CellX, CellZ   int
+	ConstructTimer int32
+	Constructed    bool
 }
 
 type BuildingManager struct {
@@ -77,6 +79,7 @@ func (bm *BuildingManager) Update(zm *ZoneManager, h *Heightmap, roads *RoadMana
 					HasRoad:   true,
 					CellX:     x,
 					CellZ:     z,
+					Constructed: false,
 				})
 				bm.nextSeed++
 			}
@@ -106,6 +109,14 @@ func (bm *BuildingManager) Update(zm *ZoneManager, h *Heightmap, roads *RoadMana
 			b.AbandonTimer = 0
 			b.Residents = 0
 			b.Workers = 0
+			continue
+		}
+
+		if !b.Constructed {
+			b.ConstructTimer++
+			if b.ConstructTimer > 300 {
+				b.Constructed = true
+			}
 			continue
 		}
 
@@ -303,6 +314,26 @@ func (bm *BuildingManager) Draw(h *Heightmap, zm *ZoneManager, isNight bool) {
 		if b.Abandoned {
 			grey := rl.NewColor(80, 80, 80, 255)
 			rl.DrawCube(rl.NewVector3(b.X, hy+b.Height*0.5*lvlScale, b.Z), b.Width, b.Height*lvlScale, b.Depth, grey)
+			continue
+		}
+
+		if !b.Constructed {
+			progress := float32(b.ConstructTimer) / 300.0
+			if progress > 1 {
+				progress = 1
+			}
+			currH := b.Height * progress * lvlScale
+			constructCol := rl.NewColor(
+				uint8(float32(col.R)*0.6),
+				uint8(float32(col.G)*0.6),
+				uint8(float32(col.B)*0.6),
+				255,
+			)
+			if progress < 0.3 {
+				rl.DrawCube(rl.NewVector3(b.X, hy+currH*0.3, b.Z), b.Width*0.5, currH*0.6, b.Depth*0.5, constructCol)
+			} else {
+				rl.DrawCube(rl.NewVector3(b.X, hy+currH*0.5, b.Z), b.Width, currH, b.Depth, constructCol)
+			}
 			continue
 		}
 

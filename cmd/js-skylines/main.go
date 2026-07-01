@@ -9,19 +9,9 @@ import (
 	"github.com/katwate/js-skylines/internal/terrain"
 )
 
-type buildState struct {
-	active      bool
-	startNode   uint32
-	roadType    terrain.RoadType
-	zoneType    terrain.ZoneType
-	zoneMode    bool
-	parkMode    bool
-	removeMode  bool
-}
-
 type economy struct {
-	money      float32
-	taxTimer   int32
+	money    float32
+	taxTimer int32
 }
 
 var timeOfDay = 1 // 0=dawn, 1=day, 2=dusk, 3=night
@@ -60,6 +50,7 @@ func main() {
 	t.PrepareUpload()
 
 	buildingAssetsLoaded := false
+	ui := terrain.NewGameUI()
 
 	cam := rl.Camera3D{
 		Position:   rl.NewVector3(100, 80, 100),
@@ -74,8 +65,9 @@ func main() {
 	target := rl.NewVector3(0, 0, 0)
 
 	uploaded := false
-	bld := buildState{roadType: terrain.RoadTwoLane, zoneType: terrain.ZoneResidentialLow}
 	eco := economy{money: 100000}
+	roadActive := false
+	roadStartNode := uint32(0)
 
 	for !rl.WindowShouldClose() {
 		if !uploaded {
@@ -103,6 +95,7 @@ func main() {
 
 		t.Update(float64(rl.GetFrameTime()))
 
+		// Camera
 		wheel := rl.GetMouseWheelMove()
 		dist -= wheel * 5
 		if dist < 5 {
@@ -163,176 +156,171 @@ func main() {
 		cam.Position.Y = target.Y + dist*float32(math.Sin(float64(pitch)))
 		cam.Position.Z = target.Z + dist*float32(math.Cos(float64(pitch)))*float32(math.Cos(float64(yaw)))
 
+		// Time cycle
+		if rl.IsKeyPressed(rl.KeyT) {
+			timeOfDay = (timeOfDay + 1) % 4
+		}
+		t.Night = timeOfDay == 3
+
+		// Economy
 		eco.taxTimer++
 		if eco.taxTimer > 60 {
 			eco.taxTimer = 0
 			eco.money += float32(len(t.Buildings.Buildings)) * 0.5
 		}
 
-		if rl.IsKeyPressed(rl.KeyTab) {
-			bld.zoneMode = !bld.zoneMode
-			bld.parkMode = false
-			bld.removeMode = false
-			bld.active = false
-		}
-		if rl.IsKeyPressed(rl.KeyF) {
-			bld.parkMode = !bld.parkMode
-			bld.zoneMode = false
-			bld.removeMode = false
-			bld.active = false
-		}
-		if rl.IsKeyPressed(rl.KeyU) {
-			bld.removeMode = !bld.removeMode
-			bld.zoneMode = false
-			bld.parkMode = false
-			bld.active = false
-		}
-		if rl.IsKeyPressed(rl.KeyT) {
-			timeOfDay = (timeOfDay + 1) % 4
-		}
-		t.Night = timeOfDay == 3
-
+		// Mouse ray
 		worldX := float32(0)
 		worldZ := float32(0)
 		mouseOnTerrain := false
 		ray := rl.GetScreenToWorldRay(rl.GetMousePosition(), cam)
-		tPlane := float32(0)
 		if ray.Direction.Y != 0 {
-			tPlane = -ray.Position.Y / ray.Direction.Y
+			tPlane := -ray.Position.Y / ray.Direction.Y
 			worldX = ray.Position.X + ray.Direction.X*tPlane
 			worldZ = ray.Position.Z + ray.Direction.Z*tPlane
 			mouseOnTerrain = true
 		}
 
-		if bld.parkMode {
-			if rl.IsMouseButtonPressed(rl.MouseButtonLeft) && mouseOnTerrain && eco.money >= 500 {
-				t.Services.AddPark(worldX, worldZ)
-				eco.money -= 500
-			}
-		} else if bld.removeMode {
-			if rl.IsMouseButtonPressed(rl.MouseButtonLeft) && mouseOnTerrain {
-				idx := t.Roads.NearestSegment(worldX, worldZ)
-				if idx >= 0 {
-					t.Roads.RemoveSegment(idx)
-					t.Roads.Rebuild(t.Heightmap)
-				}
-			}
-		} else if bld.zoneMode {
-			if rl.IsKeyPressed(rl.KeyR) {
-				bld.zoneType = (bld.zoneType + 1) % 7
-				if bld.zoneType == terrain.ZoneNone {
-					bld.zoneType = 1
-				}
-			}
-			if rl.IsMouseButtonPressed(rl.MouseButtonLeft) && mouseOnTerrain && eco.money >= 20 {
-				t.Zones.SetZone(worldX, worldZ, bld.zoneType, t.Roads)
-				if t.Zones.CellTypeAt(worldX, worldZ) == bld.zoneType {
-					eco.money -= 20
-				}
-			}
-		} else {
-			if rl.IsKeyPressed(rl.KeyR) {
-				bld.roadType = (bld.roadType + 1) % 4
-			}
-			if rl.IsKeyPressed(rl.KeyEscape) {
-				bld.active = false
-			}
-			if rl.IsMouseButtonPressed(rl.MouseButtonLeft) && mouseOnTerrain && !rl.IsKeyDown(rl.KeyLeftShift) {
-				cx := clamp(worldX, -240, 240)
-				cz := clamp(worldZ, -240, 240)
-				if !bld.active {
-					if eco.money >= 100 {
-						bld.active = true
-						bld.startNode = t.Roads.AddNode(cx, cz)
-						eco.money -= 100
+		// Update UI state
+		ui.Money = eco.money
+		ui.Population = t.Buildings.Population()
+		rDem, cDem, iDem := t.Buildings.Demand()
+		ui.ResDemand = rDem
+		ui.ComDemand = cDem
+		ui.IndDemand = iDem
+		timeNames := []string{"Dawn", "Day", "Dusk", "Night"}
+		ui.TimeStr = timeNames[timeOfDay]
+		ui.MouseWorldX = worldX
+		ui.MouseWorldZ = worldZ
+		ui.MouseOnGround = mouseOnTerrain
+		bInfo := t.Buildings.NearestInfo(worldX, worldZ, 8)
+		ui.BuildingInfo = bInfo
+
+		// Handle keyboard tool selection
+		ui.HandleInput()
+
+		// Handle mouse clicks for tools and toolbar
+		if rl.IsMouseButtonPressed(rl.MouseButtonLeft) {
+			// Check toolbar click first
+			mPos := rl.GetMousePosition()
+			my := int32(mPos.Y)
+			if my >= 660 {
+				ui.HandleClick()
+				roadActive = false
+			} else if mouseOnTerrain {
+				switch ui.Selected {
+				case terrain.ToolRoad:
+					cx := clamp(worldX, -240, 240)
+					cz := clamp(worldZ, -240, 240)
+					if t.Heightmap.IsUnderwater(cx, cz) {
+						break
 					}
-				} else {
 					if eco.money >= 100 {
-						endNode := t.Roads.AddNode(cx, cz)
-						t.Roads.AddSegment(bld.startNode, endNode, bld.roadType)
+						if !roadActive {
+							roadActive = true
+							roadStartNode = t.Roads.AddNode(cx, cz)
+							eco.money -= 100
+						} else {
+							sn := &t.Roads.Nodes[roadStartNode]
+							if t.Heightmap.IsUnderwater(sn.X, sn.Z) {
+								roadActive = false
+								break
+							}
+							endNode := t.Roads.AddNode(cx, cz)
+							t.Roads.AddSegment(roadStartNode, endNode, ui.RoadType)
+							t.Roads.Rebuild(t.Heightmap)
+							roadStartNode = endNode
+							eco.money -= 100
+						}
+					}
+				case terrain.ToolZone:
+					if eco.money >= 20 && !t.Heightmap.IsUnderwater(worldX, worldZ) {
+						t.Zones.SetZone(worldX, worldZ, ui.ZoneType, t.Roads)
+						if t.Zones.CellTypeAt(worldX, worldZ) == ui.ZoneType {
+							eco.money -= 20
+						}
+					}
+				case terrain.ToolPark:
+					if eco.money >= 500 && !t.Heightmap.IsUnderwater(worldX, worldZ) {
+						t.Services.AddPark(worldX, worldZ)
+						eco.money -= 500
+					}
+				case terrain.ToolRemove:
+					idx := t.Roads.NearestSegment(worldX, worldZ)
+					if idx >= 0 {
+						t.Roads.RemoveSegment(idx)
 						t.Roads.Rebuild(t.Heightmap)
-						bld.startNode = endNode
-						eco.money -= 100
+					}
+				case terrain.ToolUpgrade:
+					idx := t.Roads.NearestSegment(worldX, worldZ)
+					if idx >= 0 {
+						t.Roads.UpgradeSegment(idx, ui.RoadType)
+						t.Roads.Rebuild(t.Heightmap)
 					}
 				}
 			}
 		}
 
+		if rl.IsKeyPressed(rl.KeyEscape) {
+			roadActive = false
+		}
+
+		// --- Draw ---
 		rl.BeginDrawing()
 		rl.ClearBackground(skyColor())
 		rl.BeginMode3D(cam)
 		t.Draw(cam.Position.X, cam.Position.Z)
-		if !bld.zoneMode && bld.active && mouseOnTerrain {
-			h := t.Heightmap.WorldHeight(worldX, worldZ)
-			rl.DrawSphere(rl.NewVector3(worldX, h+0.5, worldZ), 0.8, rl.Green)
-			startNode := &t.Roads.Nodes[bld.startNode]
-			sh := t.Heightmap.WorldHeight(startNode.X, startNode.Z)
-			rl.DrawLine3D(rl.NewVector3(startNode.X, sh+0.2, startNode.Z), rl.NewVector3(worldX, h+0.2, worldZ), rl.Green)
-		}
-		if bld.parkMode && mouseOnTerrain {
-			h := t.Heightmap.WorldHeight(worldX, worldZ)
-			rl.DrawCube(rl.NewVector3(worldX, h+0.3, worldZ), 3, 0.2, 3, rl.NewColor(80, 200, 80, 120))
-		}
-		if bld.zoneMode && mouseOnTerrain {
-			h := t.Heightmap.WorldHeight(worldX, worldZ)
-			rl.DrawCube(rl.NewVector3(worldX, h+0.5, worldZ), 8, 0.3, 8, terrain.ZoneColor(bld.zoneType))
-		}
+
+		// Draw previews
 		if mouseOnTerrain {
 			h := t.Heightmap.WorldHeight(worldX, worldZ)
+
+			switch ui.Selected {
+			case terrain.ToolRoad:
+				rl.DrawSphere(rl.NewVector3(worldX, h+0.5, worldZ), 0.8, rl.Green)
+				if roadActive {
+					sn := &t.Roads.Nodes[roadStartNode]
+					sh := t.Heightmap.WorldHeight(sn.X, sn.Z)
+					rl.DrawLine3D(rl.NewVector3(sn.X, sh+0.2, sn.Z), rl.NewVector3(worldX, h+0.2, worldZ), rl.Green)
+				}
+			case terrain.ToolZone:
+				rl.DrawCube(rl.NewVector3(worldX, h+0.5, worldZ), 8, 0.3, 8, terrain.ZoneColor(ui.ZoneType))
+			case terrain.ToolPark:
+				rl.DrawCube(rl.NewVector3(worldX, h+0.3, worldZ), 3, 0.2, 3, rl.NewColor(80, 200, 80, 120))
+			case terrain.ToolRemove:
+				idx := t.Roads.NearestSegment(worldX, worldZ)
+				if idx >= 0 {
+					seg := t.Roads.Segments[idx]
+					na := &t.Roads.Nodes[seg.NodeA]
+					nb := &t.Roads.Nodes[seg.NodeB]
+					ha := t.Heightmap.WorldHeight(na.X, na.Z) + 0.5
+					hb := t.Heightmap.WorldHeight(nb.X, nb.Z) + 0.5
+					rl.DrawLine3D(rl.NewVector3(na.X, ha, na.Z), rl.NewVector3(nb.X, hb, nb.Z), rl.Red)
+				}
+			case terrain.ToolUpgrade:
+				idx := t.Roads.NearestSegment(worldX, worldZ)
+				if idx >= 0 {
+					seg := t.Roads.Segments[idx]
+					na := &t.Roads.Nodes[seg.NodeA]
+					nb := &t.Roads.Nodes[seg.NodeB]
+					ha := t.Heightmap.WorldHeight(na.X, na.Z) + 0.5
+					hb := t.Heightmap.WorldHeight(nb.X, nb.Z) + 0.5
+					rl.DrawLine3D(rl.NewVector3(na.X, ha, na.Z), rl.NewVector3(nb.X, hb, nb.Z), rl.Yellow)
+				}
+			}
+
 			rl.DrawSphere(rl.NewVector3(worldX, h+0.3, worldZ), 0.4, rl.Red)
 		}
 		rl.DrawGrid(100, 4.0)
 		rl.EndMode3D()
-		rl.DrawFPS(10, 10)
-		rl.DrawText(fmt.Sprintf("$%.0f", eco.money), 10, 10, 18, rl.NewColor(100, 220, 100, 220))
-		pop := t.Buildings.Population()
-		rl.DrawText(fmt.Sprintf("Pop: %d", pop), 100, 10, 18, rl.White)
-		helpY := int32(35)
-		if bld.removeMode {
-			rl.DrawText(fmt.Sprintf("REMOVE MODE: click road to delete | U=toggle off | TAB=zones | F=parks"), 10, helpY, 15, rl.Red)
-		} else if bld.parkMode {
-			rl.DrawText(fmt.Sprintf("ZONE MODE: paint zones (L-click drag) | R=change type | TAB=back to roads"), 10, helpY, 15, rl.Blue)
-			rl.DrawText(fmt.Sprintf("Zone: %s", zoneTypeName(bld.zoneType)), 10, helpY+20, 15, rl.Gray)
-		} else if bld.active {
-			rl.DrawText(fmt.Sprintf("ROAD BUILDING: place road (L-click) | R=change type | Esc=cancel | TAB=zones"), 10, helpY, 15, rl.Green)
-			rl.DrawText(fmt.Sprintf("Road type: %s", roadTypeName(bld.roadType)), 10, helpY+20, 15, rl.Gray)
-		} else {
-			rl.DrawText(fmt.Sprintf("L-click=build road | TAB=zone mode | F=parks | U=remove | T=time | WASD=pan | Scroll=zoom | R-drag=orbit"), 10, helpY, 15, rl.White)
-		}
-		if mouseOnTerrain {
-			rl.DrawText(fmt.Sprintf("(%.1f, %.1f)", worldX, worldZ), screenWidth-200, 50, 15, rl.Gray)
-			drawBuildingInfo(t, worldX, worldZ)
-		}
-		drawDemandBars(t)
+
+		ui.Draw()
+		rl.DrawFPS(10, 30)
+
 		rl.EndDrawing()
 	}
 
 	t.Unload()
-}
-
-func drawBuildingInfo(t *terrain.Manager, wx, wz float32) {
-	info := t.Buildings.NearestInfo(wx, wz, 8)
-	if info != "" {
-		rl.DrawRectangle(screenWidth/2-150, 10, 300, 50, rl.NewColor(0, 0, 0, 180))
-		rl.DrawText(info, screenWidth/2-140, 18, 16, rl.White)
-	}
-}
-
-func drawDemandBars(t *terrain.Manager) {
-	r, c, i := t.Buildings.Demand()
-	bx := int32(screenWidth - 300)
-	by := int32(10)
-	bw := int32(80)
-
-	bar := func(label string, val int, y int32, col rl.Color) {
-		rl.DrawText(label, bx, by+y, 14, rl.Gray)
-		w := clampInt32(int32(val)*10, 0, bw)
-		rl.DrawRectangle(bx+40, by+y, w, 12, col)
-		rl.DrawRectangleLines(bx+40, by+y, bw, 12, rl.DarkGray)
-	}
-	bar("R", r, 0, rl.NewColor(100, 200, 100, 220))
-	bar("C", c, 20, rl.NewColor(100, 150, 255, 220))
-	bar("I", i, 40, rl.NewColor(255, 200, 80, 220))
 }
 
 func clamp(v, min, max float32) float32 {
@@ -343,48 +331,4 @@ func clamp(v, min, max float32) float32 {
 		return max
 	}
 	return v
-}
-
-func roadTypeName(rt terrain.RoadType) string {
-	switch rt {
-	case terrain.RoadTwoLane:
-		return "Two-Lane Road"
-	case terrain.RoadOneWay:
-		return "One-Way Road"
-	case terrain.RoadFourLane:
-		return "Four-Lane Road"
-	case terrain.RoadGravel:
-		return "Gravel Road"
-	default:
-		return "Unknown"
-	}
-}
-
-func clampInt32(v, min, max int32) int32 {
-	if v < min {
-		return min
-	}
-	if v > max {
-		return max
-	}
-	return v
-}
-
-func zoneTypeName(zt terrain.ZoneType) string {
-	switch zt {
-	case terrain.ZoneResidentialLow:
-		return "Residential Low"
-	case terrain.ZoneResidentialHigh:
-		return "Residential High"
-	case terrain.ZoneCommercialLow:
-		return "Commercial Low"
-	case terrain.ZoneCommercialHigh:
-		return "Commercial High"
-	case terrain.ZoneIndustrial:
-		return "Industrial"
-	case terrain.ZoneOffice:
-		return "Office"
-	default:
-		return "None"
-	}
 }

@@ -73,6 +73,10 @@ func (h *Heightmap) WorldHeight(worldX, worldZ float32) float32 {
 	return h.GetInterpolated(worldX, worldZ) * MaxHeight
 }
 
+func (h *Heightmap) IsUnderwater(worldX, worldZ float32) bool {
+	return h.GetInterpolated(worldX, worldZ) < SeaLevel
+}
+
 func lerp(a, b, t float32) float32 {
 	return a + (b-a)*t
 }
