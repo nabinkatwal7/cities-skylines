@@ -17,12 +17,14 @@ const (
 )
 
 type Tree struct {
-	X, Z    float32
-	Species TreeSpecies
-	Age     float32
-	Health  float32
-	Scale   float32
-	Yaw     float32
+	X, Z     float32
+	Species  TreeSpecies
+	Age      float32
+	Health   float32
+	Scale    float32
+	Yaw      float32
+	Lifecycle LifecycleState
+	RemovalTimer int32
 }
 
 type TreeState int
@@ -35,35 +37,72 @@ const (
 	TreeDead     TreeState = 4
 )
 
+const TreePoolSize = 20000
+
 type TreeSystem struct {
-	Trees    []Tree
-	MaxTrees int
-	seed     int64
-	Model    rl.Model
-	colorMap map[TreeSpecies]rl.Color
+	Pool        [TreePoolSize]Tree
+	FreeList    []int32
+	activeCount int32
+	seed        int64
+	Model       rl.Model
+	colorMap    map[TreeSpecies]rl.Color
 }
 
 func NewTreeSystem(seed int64) *TreeSystem {
-	return &TreeSystem{
+	ts := &TreeSystem{
 		seed:     seed,
-		MaxTrees: 20000,
 		colorMap: map[TreeSpecies]rl.Color{
 			TreeOak:   rl.NewColor(34, 139, 34, 255),
 			TreePine:  rl.NewColor(0, 100, 0, 255),
 			TreeBirch: rl.NewColor(144, 200, 80, 255),
 			TreePalm:  rl.NewColor(85, 160, 50, 255),
 		},
+		FreeList: make([]int32, TreePoolSize),
+	}
+	for i := 0; i < TreePoolSize; i++ {
+		ts.Pool[i].Lifecycle = LifecycleUnallocated
+		ts.FreeList[i] = int32(TreePoolSize - 1 - i)
+	}
+	return ts
+}
+
+func (ts *TreeSystem) Alloc() int32 {
+	if len(ts.FreeList) == 0 {
+		return -1
+	}
+	idx := ts.FreeList[len(ts.FreeList)-1]
+	ts.FreeList = ts.FreeList[:len(ts.FreeList)-1]
+	ts.Pool[idx].Lifecycle = LifecycleAllocated
+	ts.activeCount++
+	return idx
+}
+
+func (ts *TreeSystem) Free(slot int32) {
+	if slot < 0 || int(slot) >= TreePoolSize {
+		return
+	}
+	ts.Pool[slot] = Tree{}
+	ts.Pool[slot].Lifecycle = LifecycleReturnedToPool
+	ts.FreeList = append(ts.FreeList, slot)
+	ts.activeCount--
+}
+
+func (ts *TreeSystem) ForEach(fn func(*Tree, int32)) {
+	for i := 0; i < TreePoolSize; i++ {
+		if ts.Pool[i].Lifecycle == LifecycleActive {
+			fn(&ts.Pool[i], int32(i))
+		}
 	}
 }
 
 func (ts *TreeSystem) Generate(h *Heightmap, water *WaterSystem) {
 	rng := rand.New(rand.NewSource(ts.seed + 1))
-	ts.Trees = make([]Tree, 0, ts.MaxTrees)
+	created := 0
 
 	spacing := 4.0
 	for z := spacing / 2; z < float64(HeightmapSize-1); z += spacing {
 		for x := spacing / 2; x < float64(HeightmapSize-1); x += spacing {
-			if len(ts.Trees) >= ts.MaxTrees {
+			if created >= TreePoolSize {
 				return
 			}
 
@@ -110,41 +149,63 @@ func (ts *TreeSystem) Generate(h *Heightmap, water *WaterSystem) {
 				species = TreePine
 			}
 
-			ts.Trees = append(ts.Trees, Tree{
-				X:       float32(worldX),
-				Z:       float32(worldZ),
-				Species: species,
-				Age:     rng.Float32() * 100,
-				Health:  0.8 + rng.Float32()*0.2,
-				Scale:   0.5 + rng.Float32()*1.0,
-				Yaw:     rng.Float32() * 6.2832,
-			})
+			slot := ts.Alloc()
+			if slot < 0 {
+				return
+			}
+			t := &ts.Pool[slot]
+			t.X = float32(worldX)
+			t.Z = float32(worldZ)
+			t.Species = species
+			t.Age = rng.Float32() * 100
+			t.Health = 0.8 + rng.Float32()*0.2
+			t.Scale = 0.5 + rng.Float32()*1.0
+			t.Yaw = rng.Float32() * 6.2832
+			t.Lifecycle = LifecycleActive
+			created++
 		}
 	}
 }
 
 func (ts *TreeSystem) Update(dt float64) {
-	for i := range ts.Trees {
-		t := &ts.Trees[i]
-		t.Age += float32(dt) * 0.01
-		if t.Age > 100 && t.Health > 0 {
-			t.Health -= float32(dt) * 0.001
+	for i := 0; i < TreePoolSize; i++ {
+		t := &ts.Pool[i]
+		switch t.Lifecycle {
+		case LifecycleActive:
+			t.Age += float32(dt) * 0.01
+			if t.Age > 100 && t.Health > 0 {
+				t.Health -= float32(dt) * 0.001
+			}
+			t.Health = float32(math.Max(0, math.Min(1, float64(t.Health))))
+			if t.Health <= 0 {
+				t.RemovalTimer = 0
+				t.Lifecycle = LifecycleMarkedForRemoval
+			}
+		case LifecycleMarkedForRemoval:
+			t.RemovalTimer++
+			if t.RemovalTimer > 60 {
+				t.Lifecycle = LifecycleDestroyed
+			}
+		case LifecycleDestroyed:
+			ts.Free(int32(i))
 		}
-		t.Health = float32(math.Max(0, math.Min(1, float64(t.Health))))
 	}
 }
 
 func (ts *TreeSystem) RemoveNear(x, z, radius float32) {
-	remaining := ts.Trees[:0]
-	for _, t := range ts.Trees {
+	radiusSq := radius * radius
+	for i := 0; i < TreePoolSize; i++ {
+		t := &ts.Pool[i]
+		if t.Lifecycle != LifecycleActive {
+			continue
+		}
 		dx := t.X - x
 		dz := t.Z - z
-		dist := float32(math.Sqrt(float64(dx*dx + dz*dz)))
-		if dist > radius {
-			remaining = append(remaining, t)
+		if dx*dx+dz*dz <= radiusSq {
+			t.RemovalTimer = 0
+			t.Lifecycle = LifecycleMarkedForRemoval
 		}
 	}
-	ts.Trees = remaining
 }
 
 func (ts *TreeSystem) Draw(h *Heightmap, camX, camZ float32) {
@@ -153,15 +214,15 @@ func (ts *TreeSystem) Draw(h *Heightmap, camX, camZ float32) {
 		ts.drawFallback(h, camX, camZ, maxDist)
 		return
 	}
-	for _, t := range ts.Trees {
-		state := ts.getState(t)
+	ts.ForEach(func(t *Tree, _ int32) {
+		state := ts.getState(*t)
 		if state == TreeDead {
-			continue
+			return
 		}
 		dx := t.X - camX
 		dz := t.Z - camZ
 		if dx*dx+dz*dz > maxDist*maxDist {
-			continue
+			return
 		}
 		height := h.WorldHeight(t.X, t.Z)
 		col := ts.colorMap[t.Species]
@@ -169,19 +230,19 @@ func (ts *TreeSystem) Draw(h *Heightmap, camX, camZ float32) {
 		pos := rl.NewVector3(t.X, height+scale*0.5, t.Z)
 		axis := rl.NewVector3(0, 1, 0)
 		rl.DrawModelEx(ts.Model, pos, axis, t.Yaw*57.3, rl.NewVector3(scale, scale, scale), col)
-	}
+	})
 }
 
 func (ts *TreeSystem) drawFallback(h *Heightmap, camX, camZ, maxDist float32) {
-	for _, t := range ts.Trees {
-		state := ts.getState(t)
+	ts.ForEach(func(t *Tree, _ int32) {
+		state := ts.getState(*t)
 		if state == TreeDead {
-			continue
+			return
 		}
 		dx := t.X - camX
 		dz := t.Z - camZ
 		if dx*dx+dz*dz > maxDist*maxDist {
-			continue
+			return
 		}
 		height := h.WorldHeight(t.X, t.Z)
 		scale := t.Scale
@@ -190,7 +251,7 @@ func (ts *TreeSystem) drawFallback(h *Heightmap, camX, camZ, maxDist float32) {
 		crownSize := scale * 0.8
 		crownY := height + scale + crownSize*0.3
 		rl.DrawCube(rl.NewVector3(t.X, crownY, t.Z), crownSize, crownSize*0.6, crownSize, col)
-	}
+	})
 }
 
 func (ts *TreeSystem) getState(t Tree) TreeState {
@@ -210,5 +271,5 @@ func (ts *TreeSystem) getState(t Tree) TreeState {
 }
 
 func (ts *TreeSystem) Count() int {
-	return len(ts.Trees)
+	return int(ts.activeCount)
 }

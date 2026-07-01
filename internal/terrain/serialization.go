@@ -126,9 +126,9 @@ func SaveGame(filename string, m *SimulationManager, money float32, timeOfDay in
 	data.TerrainHeight = m.Heightmap.Data
 
 	if m.Trees != nil {
-		for _, t := range m.Trees.Trees {
+		m.Trees.ForEach(func(t *Tree, _ int32) {
 			data.Trees = append(data.Trees, TreeData{X: t.X, Z: t.Z, Species: int(t.Species), Scale: t.Scale})
-		}
+		})
 	}
 
 	if m.Resources != nil {
@@ -281,13 +281,19 @@ func LoadGame(filename string, m *SimulationManager) (money float32, timeOfDay i
 	m.Heightmap.Data = data.TerrainHeight
 
 	if m.Trees != nil {
-		m.Trees.Trees = nil
 		for _, td := range data.Trees {
-			m.Trees.Trees = append(m.Trees.Trees, Tree{
-				X: td.X, Z: td.Z,
-				Species: TreeSpecies(td.Species),
-				Scale:   td.Scale,
-			})
+			slot := m.Trees.Alloc()
+			if slot < 0 {
+				continue
+			}
+			t := &m.Trees.Pool[slot]
+			t.X = td.X
+			t.Z = td.Z
+			t.Species = TreeSpecies(td.Species)
+			t.Scale = td.Scale
+			t.Age = 80
+			t.Health = 1.0
+			t.Lifecycle = LifecycleActive
 		}
 	}
 

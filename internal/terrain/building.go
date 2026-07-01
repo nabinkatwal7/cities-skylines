@@ -110,7 +110,7 @@ func (bm *BuildingManager) Alloc() int32 {
 	idx := bm.FreeList[len(bm.FreeList)-1]
 	bm.FreeList = bm.FreeList[:len(bm.FreeList)-1]
 	b := &bm.Pool[idx]
-	b.Lifecycle = LifecycleActive
+	b.Lifecycle = LifecycleInitializing
 	bm.Count++
 	return idx
 }
@@ -372,86 +372,113 @@ func (bm *BuildingManager) developZones(zm *ZoneManager, roads *RoadManager) {
 
 func (bm *BuildingManager) updateBuildings(zm *ZoneManager, h *Heightmap, roads *RoadManager, dm *DistrictManager) {
 	bm.Stats = BuildingStats{}
+	cellSize := WorldSize / float32(zm.width)
 
-	bm.ForEach(func(b *Building, slot int32) {
-		if b.HasFlag(FlagAbandoned) {
-			b.AbandonTimer++
-			if b.AbandonTimer > 1800 {
-				bm.PushCmd(BuildingCommand{
-					Type:      CmdBuildDestroy,
-					Slot:      slot,
-					ZoneCellX: b.CellX,
-					ZoneCellZ: b.CellZ,
-				})
-			}
-			return
-		}
+	for i := 0; i < BuildingPoolSize; i++ {
+		b := &bm.Pool[i]
+		slot := int32(i)
 
-		cellSize := WorldSize / float32(zm.width)
-		hasRoad := roads.HasNearbyRoad(b.Position.X, b.Position.Z, cellSize*2)
-		if hasRoad {
-			b.SetFlag(FlagHasRoad)
-		} else {
-			b.ClearFlag(FlagHasRoad)
-		}
-		if !hasRoad {
-			b.SetFlag(FlagAbandoned)
-			b.AbandonTimer = 0
-			b.Residents = 0
-			b.Workers = 0
-			return
-		}
+		switch b.Lifecycle {
+		case LifecycleInitializing:
+			hasRoad := roads.HasNearbyRoad(b.Position.X, b.Position.Z, cellSize*2)
+			if hasRoad {
+				b.SetFlag(FlagHasRoad)
+				b.ConstructTimer = 0
+				b.Lifecycle = LifecycleActive
+			} else {
+				bm.Free(slot)
+			}
 
-		if !b.HasFlag(FlagConstructed) {
-			b.ConstructTimer++
-			if b.ConstructTimer > 300 {
-				b.SetFlag(FlagConstructed)
+		case LifecycleActive:
+			if b.HasFlag(FlagAbandoned) {
+				b.AbandonTimer++
+				if b.AbandonTimer > 1800 {
+					b.Lifecycle = LifecycleMarkedForRemoval
+					b.RemovalTimer = 0
+				}
+				continue
 			}
-			return
-		}
 
-		if b.Household != nil {
-			bm.Stats.TotalWealth += b.Household.Wealth
-			bm.Stats.TotalHappiness += b.Household.Happiness
-			bm.Stats.TotalPowerUsed += b.Consumption.Power
-			bm.Stats.TotalWaterUsed += b.Consumption.Water
-			bm.Stats.TotalGarbage += b.Consumption.Garbage
-			if b.Household.Happiness < 80 {
-				b.Household.Happiness++
+			hasRoad := roads.HasNearbyRoad(b.Position.X, b.Position.Z, cellSize*2)
+			if hasRoad {
+				b.SetFlag(FlagHasRoad)
+			} else {
+				b.ClearFlag(FlagHasRoad)
 			}
-			if b.Household.Wealth < 70 {
-				b.Household.Wealth++
+			if !hasRoad {
+				b.SetFlag(FlagAbandoned)
+				b.AbandonTimer = 0
+				b.Residents = 0
+				b.Workers = 0
+				continue
 			}
-		}
-		if b.Business != nil {
-			bm.Stats.TotalPowerUsed += b.Consumption.Power
-			bm.Stats.TotalWaterUsed += b.Consumption.Water
-			if b.Business.GoodsStored < 50 {
-				b.Business.GoodsStored++
-			}
-			if b.Business.Profitability < 60 {
-				b.Business.Profitability++
-			}
-		}
-		if dm != nil {
-			dm.ApplyPolicies(b)
-		}
 
-		if b.Level >= 5 {
-			return
-		}
-		b.UpgradeTimer++
-		needed := int32(600-b.Level*100) + b.Seed%60
-		if b.UpgradeTimer > needed {
-			lv := landValue(b, h)
-			if lv > b.Level*10 {
-				bm.PushCmd(BuildingCommand{
-					Type: CmdBuildUpgrade,
-					Slot: slot,
-				})
+			if !b.HasFlag(FlagConstructed) {
+				b.ConstructTimer++
+				if b.ConstructTimer > 300 {
+					b.SetFlag(FlagConstructed)
+				}
+				continue
 			}
+
+			if b.Household != nil {
+				bm.Stats.TotalWealth += b.Household.Wealth
+				bm.Stats.TotalHappiness += b.Household.Happiness
+				bm.Stats.TotalPowerUsed += b.Consumption.Power
+				bm.Stats.TotalWaterUsed += b.Consumption.Water
+				bm.Stats.TotalGarbage += b.Consumption.Garbage
+				if b.Household.Happiness < 80 {
+					b.Household.Happiness++
+				}
+				if b.Household.Wealth < 70 {
+					b.Household.Wealth++
+				}
+			}
+			if b.Business != nil {
+				bm.Stats.TotalPowerUsed += b.Consumption.Power
+				bm.Stats.TotalWaterUsed += b.Consumption.Water
+				if b.Business.GoodsStored < 50 {
+					b.Business.GoodsStored++
+				}
+				if b.Business.Profitability < 60 {
+					b.Business.Profitability++
+				}
+			}
+			if dm != nil {
+				dm.ApplyPolicies(b)
+			}
+
+			if b.Level >= 5 {
+				continue
+			}
+			b.UpgradeTimer++
+			needed := int32(600-b.Level*100) + b.Seed%60
+			if b.UpgradeTimer > needed {
+				lv := landValue(b, h)
+				if lv > b.Level*10 {
+					bm.PushCmd(BuildingCommand{
+						Type: CmdBuildUpgrade,
+						Slot: slot,
+					})
+				}
+			}
+
+		case LifecycleSuspended:
+			continue
+
+		case LifecycleMarkedForRemoval:
+			b.RemovalTimer++
+			if b.RemovalTimer > 60 {
+				b.Lifecycle = LifecycleDestroyed
+			}
+
+		case LifecycleDestroyed:
+			if zm != nil && b.CellX >= 0 && b.CellX < zm.width && b.CellZ >= 0 && b.CellZ < zm.height {
+				zm.Cells[b.CellZ][b.CellX].Density = 0
+			}
+			bm.Free(slot)
 		}
-	})
+	}
 }
 
 func calcPopulation(zt ZoneType, seed int32) (res int32, workers int32) {

@@ -485,3 +485,192 @@ The engine architecture is designed to support:
 - Consistent gameplay regardless of rendering performance.
 
 This architecture forms the foundation upon which every subsequent gameplay system—including zoning, traffic, public transport, economy, citizen AI, utilities, and disasters—is built.
+
+## 1.6 Entity Lifecycle ✅
+
+Every object in the simulation follows a deterministic lifecycle managed by its owning subsystem. No entity is created or destroyed directly by gameplay systems. Instead, all requests are routed through the Simulation Manager to ensure thread safety, deterministic execution, and save-game consistency.
+
+The lifecycle applies to all entity types:
+
+- Buildings
+- Citizens (Cims)
+- Vehicles
+- Trees
+- Props
+- Road Nodes
+- Road Segments
+- Utility Networks
+- Districts
+- Service Requests
+- Public Transport Lines
+- Disaster Objects
+
+Every entity transitions through the following states:
+
+```text
+Unallocated
+      │
+      ▼
+Allocated
+      │
+      ▼
+Initializing
+      │
+      ▼
+Active
+      │
+      ├──────────────┐
+      ▼              │
+Suspended            │
+      │              │
+      ▼              │
+Reactivated          │
+      │              │
+      ▼              │
+Marked For Removal ◄─┘
+      │
+      ▼
+Destroyed
+      │
+      ▼
+Returned To Pool
+```
+
+---
+
+### Allocation
+
+When the game requires a new entity, the owning manager retrieves an unused slot from its memory pool.
+
+Example:
+
+```cpp
+CitizenID id = CitizenManager::Allocate();
+```
+
+The entity receives:
+
+- Unique Entity ID
+- Creation Timestamp
+- Default Flags
+- Owner Manager
+- Initial Position
+- Simulation Version
+- Dirty State
+
+No expensive heap allocations occur during gameplay.
+
+---
+
+### Initialization
+
+Initialization validates the entity before it becomes active.
+
+For example, a newly zoned building checks:
+
+- Road access
+- Power availability
+- Water availability
+- Valid terrain
+- Lot size
+- Collision
+- District assignment
+
+If validation fails, initialization is cancelled.
+
+---
+
+### Active State
+
+Once active, the entity participates in the simulation.
+
+Example:
+
+Citizen
+
+Daily schedule
+
+Health
+
+Employment
+
+Pathfinding
+
+Vehicle ownership
+
+Household
+
+Building
+
+Occupancy
+
+Tax generation
+
+Land value
+
+Pollution
+
+Power consumption
+
+Water consumption
+
+Vehicle
+
+Current path
+
+Lane position
+
+Speed
+
+Destination
+
+Fuel type
+
+Service state
+
+---
+
+### Suspension
+
+Inactive entities can enter a suspended state.
+
+Examples include:
+
+- Vehicles outside the active simulation radius
+- Decorative props
+- Buildings awaiting construction
+- Tourist groups waiting to spawn
+
+Suspended entities retain data but skip expensive updates.
+
+---
+
+### Destruction
+
+Entities are never immediately deleted.
+
+Instead they enter a pending destruction queue.
+
+```text
+Destroy Request
+
+↓
+
+Cleanup
+
+↓
+
+Notify Managers
+
+↓
+
+Release References
+
+↓
+
+Return Memory Slot
+```
+
+This prevents invalid references during update loops.
+
+---

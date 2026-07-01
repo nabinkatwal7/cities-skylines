@@ -31,14 +31,54 @@ type Vehicle struct {
 	SignalTimer int32
 }
 
+const VehiclePoolSize = 500
+
 type VehicleManager struct {
-	Vehicles []Vehicle
+	Pool     [VehiclePoolSize]Vehicle
+	FreeList []int32
+	Count    int32
 	NextID   uint32
 	Timer    int32
 }
 
 func NewVehicleManager() *VehicleManager {
-	return &VehicleManager{}
+	vm := &VehicleManager{
+		FreeList: make([]int32, VehiclePoolSize),
+	}
+	for i := 0; i < VehiclePoolSize; i++ {
+		vm.Pool[i].Lifecycle = LifecycleUnallocated
+		vm.FreeList[i] = int32(VehiclePoolSize - 1 - i)
+	}
+	return vm
+}
+
+func (vm *VehicleManager) Alloc() int32 {
+	if len(vm.FreeList) == 0 {
+		return -1
+	}
+	idx := vm.FreeList[len(vm.FreeList)-1]
+	vm.FreeList = vm.FreeList[:len(vm.FreeList)-1]
+	vm.Pool[idx].Lifecycle = LifecycleAllocated
+	vm.Count++
+	return idx
+}
+
+func (vm *VehicleManager) Free(slot int32) {
+	if slot < 0 || int(slot) >= VehiclePoolSize {
+		return
+	}
+	vm.Pool[slot] = Vehicle{}
+	vm.Pool[slot].Lifecycle = LifecycleReturnedToPool
+	vm.FreeList = append(vm.FreeList, slot)
+	vm.Count--
+}
+
+func (vm *VehicleManager) ForEach(fn func(*Vehicle, int32)) {
+	for i := 0; i < VehiclePoolSize; i++ {
+		if vm.Pool[i].Lifecycle == LifecycleActive {
+			fn(&vm.Pool[i], int32(i))
+		}
+	}
 }
 
 func (vm *VehicleManager) SpawnCar(rm *RoadManager) {
@@ -52,19 +92,36 @@ func (vm *VehicleManager) SpawnCar(rm *RoadManager) {
 	lanes := roadLanes(seg.RoadType)
 	lane := int(vm.NextID) % lanes
 
-	v := Vehicle{
-		Entity:      NewEntity(vm.NextID, na.X, 0, na.Z, OwnerVehicle),
-		Type:        VehicleCar,
-		TargetSpeed: roadSpeed(seg.RoadType) * 0.8,
-		RoadSeg:     segIdx,
-		Lane:        lane,
-		Color:       rl.NewColor(uint8(100+vm.NextID%100), uint8(50+vm.NextID%80), uint8(80+vm.NextID%100), 255),
+	slot := vm.Alloc()
+	if slot < 0 {
+		return
 	}
-	vm.Vehicles = append(vm.Vehicles, v)
+	v := &vm.Pool[slot]
+	v.Entity = NewEntity(vm.NextID, na.X, 0, na.Z, OwnerVehicle)
+	v.Lifecycle = LifecycleActive
+	v.Type = VehicleCar
+	v.TargetSpeed = roadSpeed(seg.RoadType) * 0.8
+	v.RoadSeg = segIdx
+	v.Lane = lane
+	v.Color = rl.NewColor(uint8(100+vm.NextID%100), uint8(50+vm.NextID%80), uint8(80+vm.NextID%100), 255)
 	vm.NextID++
 
-	if len(vm.Vehicles) > 200 {
-		vm.Vehicles = vm.Vehicles[1:]
+	if vm.Count > VehiclePoolSize-10 {
+		vm.evictOldest()
+	}
+}
+
+func (vm *VehicleManager) evictOldest() {
+	oldestFrame := int32(math.MaxInt32)
+	oldestSlot := int32(-1)
+	for i := 0; i < VehiclePoolSize; i++ {
+		if vm.Pool[i].Lifecycle == LifecycleActive && vm.Pool[i].CreatedAt < oldestFrame {
+			oldestFrame = vm.Pool[i].CreatedAt
+			oldestSlot = int32(i)
+		}
+	}
+	if oldestSlot >= 0 {
+		vm.Free(oldestSlot)
 	}
 }
 
@@ -91,18 +148,22 @@ func (vm *VehicleManager) chooseLane(v *Vehicle, rm *RoadManager, seg RoadSegmen
 
 func (vm *VehicleManager) Update(rm *RoadManager, h *Heightmap) {
 	vm.Timer++
-	if vm.Timer%30 == 0 && len(vm.Vehicles) < 50 {
+	if vm.Timer%30 == 0 && vm.Count < 50 {
 		vm.SpawnCar(rm)
 	}
 
-	for i := range vm.Vehicles {
-		v := &vm.Vehicles[i]
-		if v.HasFlag(FlagParked) {
+	for i := 0; i < VehiclePoolSize; i++ {
+		v := &vm.Pool[i]
+		if v.Lifecycle != LifecycleActive {
+			continue
+		}
+		if v.Lifecycle == LifecycleSuspended {
 			continue
 		}
 
 		if v.RoadSeg < 0 || v.RoadSeg >= len(rm.Segments) {
-			v.SetFlag(FlagParked)
+			v.RemovalTimer = 0
+			v.Lifecycle = LifecycleMarkedForRemoval
 			continue
 		}
 
@@ -183,23 +244,43 @@ func (vm *VehicleManager) Update(rm *RoadManager, h *Heightmap) {
 		v.Position.Z = zs[idx] + (zs[idx+1]-zs[idx])*frac + perZ*halfLane
 
 		if v.SegProgress >= totalLen {
-			v.SetFlag(FlagParked)
+			v.RemovalTimer = 0
+			v.Lifecycle = LifecycleMarkedForRemoval
+		}
+	}
+
+	vm.processRemovals()
+}
+
+func (vm *VehicleManager) processRemovals() {
+	for i := 0; i < VehiclePoolSize; i++ {
+		v := &vm.Pool[i]
+		switch v.Lifecycle {
+		case LifecycleMarkedForRemoval:
+			v.RemovalTimer++
+			if v.RemovalTimer > 10 {
+				v.Lifecycle = LifecycleDestroyed
+			}
+		case LifecycleDestroyed:
+			vm.Free(int32(i))
 		}
 	}
 }
 
 func (vm *VehicleManager) Draw(h *Heightmap) {
-	for _, v := range vm.Vehicles {
-		if v.HasFlag(FlagParked) {
-			continue
-		}
+	vm.ForEach(func(v *Vehicle, _ int32) {
 		hy := h.WorldHeight(v.Position.X, v.Position.Z) + 0.5
 		rl.DrawCube(rl.NewVector3(v.Position.X, hy, v.Position.Z), 1.5, 0.5, 1, v.Color)
 		rl.DrawCube(rl.NewVector3(v.Position.X, hy+0.4, v.Position.Z+0.6), 0.8, 0.3, 0.1, rl.NewColor(200, 50, 50, 255))
 		rl.DrawCube(rl.NewVector3(v.Position.X, hy+0.4, v.Position.Z-0.6), 0.8, 0.3, 0.1, rl.NewColor(200, 50, 50, 255))
-	}
+	})
 }
 
 func (vm *VehicleManager) Unload() {
-	vm.Vehicles = nil
+	for i := 0; i < VehiclePoolSize; i++ {
+		if vm.Pool[i].Lifecycle == LifecycleActive {
+			vm.Pool[i].Lifecycle = LifecycleReturnedToPool
+		}
+	}
+	vm.Count = 0
 }
