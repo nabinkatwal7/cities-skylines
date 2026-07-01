@@ -317,6 +317,23 @@ type Lane struct {
 	Priority   int32
 }
 
+type LaneTurn int8
+
+const (
+	LaneTurnStraight LaneTurn = iota
+	LaneTurnLeft
+	LaneTurnRight
+	LaneTurnUTurn
+)
+
+type LaneConnection struct {
+	FromSegIdx int32
+	FromLane   int32
+	ToSegIdx   int32
+	ToLane     int32
+	Turn       LaneTurn
+}
+
 func generateLanes(rt RoadType, direction int8, speedLimit float32, laneCount int32) []Lane {
 	lanes := make([]Lane, laneCount)
 	half := laneCount / 2
@@ -351,6 +368,112 @@ func generateLanes(rt RoadType, direction int8, speedLimit float32, laneCount in
 		}
 	}
 	return lanes
+}
+
+func (rm *RoadManager) JunctionLaneRoutes(nodeIdx uint32) []LaneConnection {
+	n := &rm.Nodes[nodeIdx]
+	if len(n.Connected) < 2 {
+		return nil
+	}
+
+	type approach struct {
+		segIdx     int
+		angle      float32
+		dirX, dirZ float32
+	}
+	approaches := make([]approach, 0, len(n.Connected))
+	for _, sid := range n.Connected {
+		seg := rm.Segments[sid]
+		other := seg.NodeA
+		if other == nodeIdx {
+			other = seg.NodeB
+		}
+		on := &rm.Nodes[other]
+		dx := on.X - n.X
+		dz := on.Z - n.Z
+		l := float32(math.Sqrt(float64(dx*dx + dz*dz)))
+		if l < 0.01 {
+			continue
+		}
+		angle := float32(math.Atan2(float64(dz), float64(dx)))
+		approaches = append(approaches, approach{segIdx: int(sid), angle: angle, dirX: dx / l, dirZ: dz / l})
+	}
+	if len(approaches) < 1 {
+		return nil
+	}
+
+	for i := 0; i < len(approaches); i++ {
+		for j := i + 1; j < len(approaches); j++ {
+			if approaches[j].angle < approaches[i].angle {
+				approaches[i], approaches[j] = approaches[j], approaches[i]
+			}
+		}
+	}
+
+	connections := make([]LaneConnection, 0)
+	for _, src := range approaches {
+		seg := rm.Segments[src.segIdx]
+		lanes := int(seg.LaneCount)
+		for li := 0; li < lanes; li++ {
+			laneDir := int8(0)
+			if li < len(seg.Lanes) {
+				laneDir = seg.Lanes[li].Direction
+			}
+			approachesTowardNode := (seg.NodeA == nodeIdx && laneDir == 0) || (seg.NodeB == nodeIdx && laneDir == 1)
+			if !approachesTowardNode {
+				continue
+			}
+
+			bestTurn := LaneTurnStraight
+			bestAngle := float32(math.MaxFloat32)
+			var bestDest int
+
+			for _, dst := range approaches {
+				if dst.segIdx == src.segIdx {
+					continue
+				}
+				angleDiff := dst.angle - src.angle
+				for angleDiff > math.Pi {
+					angleDiff -= 2 * math.Pi
+				}
+				for angleDiff < -math.Pi {
+					angleDiff += 2 * math.Pi
+				}
+				absDiff := float32(math.Abs(float64(angleDiff)))
+				if absDiff < bestAngle {
+					bestAngle = absDiff
+					if absDiff < 0.5 {
+						bestTurn = LaneTurnStraight
+					} else if angleDiff > 0 {
+						bestTurn = LaneTurnRight
+					} else {
+						bestTurn = LaneTurnLeft
+					}
+					bestDest = dst.segIdx
+				}
+			}
+
+			if bestAngle > 2.5 {
+				bestTurn = LaneTurnUTurn
+			}
+
+			dstLane := int32(0)
+			dstSeg := rm.Segments[bestDest]
+			dstLanes := int(dstSeg.LaneCount)
+			if dstLanes > 0 {
+				dstLane = int32(li % dstLanes)
+			}
+
+			connections = append(connections, LaneConnection{
+				FromSegIdx: int32(src.segIdx),
+				FromLane:   int32(li),
+				ToSegIdx:   int32(bestDest),
+				ToLane:     dstLane,
+				Turn:       bestTurn,
+			})
+		}
+	}
+	return connections
 }
 
 type RoadSegment struct {
@@ -989,7 +1112,7 @@ func (rm *RoadManager) drawMarkings(h *Heightmap) {
 func (rm *RoadManager) drawJunctionMarkings(h *Heightmap) {
 	for i := range rm.Nodes {
 		n := &rm.Nodes[i]
-		if n.TrafficLight == TrafficLightNone || len(n.Connected) < 2 {
+		if len(n.Connected) < 2 {
 			continue
 		}
 		hy := h.WorldHeight(n.X, n.Z) + 0.2
@@ -999,12 +1122,18 @@ func (rm *RoadManager) drawJunctionMarkings(h *Heightmap) {
 				break
 			}
 		}
-		col := rl.NewColor(200, 100, 100, 200)
-		if n.JunctionType == 2 {
-			col = rl.NewColor(100, 100, 200, 200)
-		}
 
-		rl.DrawCube(rl.NewVector3(n.X, hy, n.Z), 2, 0.1, 2, col)
+		juncCol := rl.NewColor(200, 100, 100, 200)
+		if n.JunctionType == 2 {
+			juncCol = rl.NewColor(100, 100, 200, 200)
+		}
+		rl.DrawCube(rl.NewVector3(n.X, hy, n.Z), 2, 0.1, 2, juncCol)
+
+		routes := rm.JunctionLaneRoutes(uint32(i))
+		routesBySeg := make(map[int][]LaneConnection)
+		for _, rc := range routes {
+			routesBySeg[int(rc.FromSegIdx)] = append(routesBySeg[int(rc.FromSegIdx)], rc)
+		}
 
 		for _, sid := range n.Connected {
 			seg := rm.Segments[sid]
@@ -1029,7 +1158,6 @@ func (rm *RoadManager) drawJunctionMarkings(h *Heightmap) {
 
 			stopX := n.X + dx/l*1.5
 			stopZ := n.Z + dz/l*1.5
-
 			rl.DrawCube(rl.NewVector3(stopX, hy, stopZ), 0.3, 0.05, total*0.8, rl.NewColor(255, 255, 255, 200))
 
 			crossX := n.X + dx/l*3
@@ -1037,6 +1165,56 @@ func (rm *RoadManager) drawJunctionMarkings(h *Heightmap) {
 			for ci := 0; ci < 3; ci++ {
 				off := float32(ci)*0.5 - 0.5
 				rl.DrawCube(rl.NewVector3(crossX+perX*half*off, hy, crossZ+perZ*half*off), 0.2, 0.05, total*0.3, rl.NewColor(255, 255, 255, 180))
+			}
+
+			segRoutes := routesBySeg[int(sid)]
+			for _, rc := range segRoutes {
+				li := int(rc.FromLane)
+				laneOff := (float32(li) - float32(lanes-1)*0.5) * laneW
+				arrowX := n.X + dx/l*2.0 + perX*laneOff
+				arrowZ := n.Z + dz/l*2.0 + perZ*laneOff
+				var arrowCol rl.Color
+				switch rc.Turn {
+				case LaneTurnStraight:
+					arrowCol = rl.NewColor(100, 255, 100, 200)
+				case LaneTurnLeft:
+					arrowCol = rl.NewColor(255, 200, 100, 200)
+				case LaneTurnRight:
+					arrowCol = rl.NewColor(100, 200, 255, 200)
+				case LaneTurnUTurn:
+					arrowCol = rl.NewColor(255, 100, 100, 200)
+				}
+				rl.DrawCube(rl.NewVector3(arrowX, hy+0.05, arrowZ), 0.5, 0.05, 0.3, arrowCol)
+			}
+		}
+
+		if n.JunctionType == 2 {
+			for _, sid := range n.Connected {
+				seg := rm.Segments[sid]
+				other := seg.NodeA
+				if other == uint32(i) {
+					other = seg.NodeB
+				}
+				on := &rm.Nodes[other]
+				dx := on.X - n.X
+				dz := on.Z - n.Z
+				l := float32(math.Sqrt(float64(dx*dx + dz*dz)))
+				if l < 0.01 {
+					continue
+				}
+				perX := -dz / l
+				perZ := dx / l
+				total := float32(seg.LaneCount) * laneW
+				half := total * 0.5
+				yx := n.X + dx/l*4.0 + perX*half
+				yz := n.Z + dz/l*4.0 + perZ*half
+
+				rl.DrawTriangle3D(
+					rl.NewVector3(yx, hy+0.1, yz),
+					rl.NewVector3(yx-dx/l*1.5+perX*half*0.5, hy+0.1, yz-dz/l*1.5+perZ*half*0.5),
+					rl.NewVector3(yx-dx/l*1.5-perX*half*0.5, hy+0.1, yz-dz/l*1.5-perZ*half*0.5),
+					rl.NewColor(255, 200, 0, 200),
+				)
 			}
 		}
 

@@ -1,25 +1,3 @@
-## 3.10 Junction Generation
-
-Whenever roads intersect, the engine generates a procedural junction.
-
-Generation includes:
-
-- Lane connections
-- Turning lanes
-- Crosswalks
-- Stop lines
-- Traffic lights
-- Yield signs
-
-The resulting junction depends on:
-
-- Number of connected roads
-- Road widths
-- Angles
-- Road hierarchy
-
----
-
 ## 3.11 Traffic Rules
 
 Every intersection contains routing rules.
