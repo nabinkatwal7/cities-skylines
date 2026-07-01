@@ -674,3 +674,324 @@ Return Memory Slot
 This prevents invalid references during update loops.
 
 ---
+
+## 1.7 Game Time & Simulation Speed
+
+Game time is independent from real time.
+
+The engine maintains two clocks.
+
+```text
+Real Time
+
+↓
+
+Frame Time
+
+↓
+
+Simulation Time
+
+↓
+
+Calendar
+```
+
+Simulation time drives:
+
+- Citizen schedules
+- Building production
+- Taxes
+- Utility consumption
+- Traffic demand
+- Day/Night cycle
+- Weather
+- Policies
+- Economy
+
+---
+
+### Calendar
+
+The simulation tracks:
+
+```text
+Minute
+
+Hour
+
+Day
+
+Week
+
+Month
+
+Year
+```
+
+Each unit advances deterministically.
+
+Example
+
+```text
+08:00
+
+Morning Rush Begins
+
+↓
+
+12:00
+
+Lunch Activity
+
+↓
+
+17:00
+
+Evening Rush
+
+↓
+
+23:00
+
+Night Economy
+
+↓
+
+02:00
+
+Service Vehicles Peak
+```
+
+---
+
+### Simulation Speeds
+
+Players may select:
+
+```text
+Paused
+
+1×
+
+2×
+
+3×
+```
+
+Changing speed modifies simulation frequency instead of animation playback.
+
+Rendering remains independent.
+
+---
+
+### Paused State
+
+When paused:
+
+Simulation stops.
+
+Rendering continues.
+
+Camera continues.
+
+UI continues.
+
+Menus remain interactive.
+
+Save operations remain available.
+
+---
+
+### Time-Based Events
+
+Every system subscribes to time events.
+
+Examples:
+
+Every Minute
+
+- Vehicle updates
+- Citizen schedule checks
+
+Every Hour
+
+- Taxes
+- Production
+- Happiness
+
+Every Day
+
+- Births
+- Deaths
+- Immigration
+- Tourism
+
+Every Week
+
+- Loan payments
+- Budget summaries
+
+---
+
+## 1.8 Event Bus & Messaging System ✅
+
+Subsystems never communicate directly.
+
+Instead they publish and subscribe to events.
+
+```text
+Fire Starts
+
+↓
+
+Event Bus
+
+↓
+
+Fire Manager
+
+↓
+
+Building Manager
+
+↓
+
+Citizen Manager
+
+↓
+
+Vehicle Manager
+
+↓
+
+UI
+```
+
+This prevents tight coupling.
+
+---
+
+### Event Structure
+
+Every event contains:
+
+```cpp
+EventID
+
+Timestamp
+
+Priority
+
+Source
+
+Target
+
+Payload
+
+Flags
+```
+
+---
+
+### Example
+
+Building catches fire.
+
+```text
+Building
+
+↓
+
+Fire Event
+
+↓
+
+Event Queue
+
+↓
+
+Fire Department
+
+↓
+
+Dispatch Engine
+
+↓
+
+Citizen Notification
+
+↓
+
+UI Alert
+
+↓
+
+Statistics Update
+```
+
+---
+
+### Priority Levels
+
+```text
+Critical
+
+High
+
+Normal
+
+Low
+```
+
+Critical events:
+
+- Building collapse
+- Fire
+- Flood
+- Death
+- Road disconnect
+
+High:
+
+- Vehicle accidents
+- Crime
+- Garbage overflow
+
+Normal:
+
+- Taxes
+- Education
+- Happiness
+
+Low:
+
+- Statistics
+- Heatmaps
+- Achievements
+
+---
+
+### Event Queue
+
+Events are processed in FIFO order within their priority class.
+
+```text
+Critical Queue
+
+↓
+
+High Queue
+
+↓
+
+Normal Queue
+
+↓
+
+Low Queue
+```
+
+This guarantees emergency services always react before cosmetic systems update.
+
+---

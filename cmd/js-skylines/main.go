@@ -9,20 +9,11 @@ import (
 	"github.com/katwate/js-skylines/internal/terrain"
 )
 
-var timeOfDay = 1 // 0=dawn, 1=day, 2=dusk, 3=night
-
-func skyColor() rl.Color {
-	switch timeOfDay {
-	case 0:
-		return rl.NewColor(200, 140, 100, 255)
-	case 1:
-		return rl.NewColor(135, 206, 235, 255)
-	case 2:
-		return rl.NewColor(180, 100, 80, 255)
-	case 3:
+func skyColor(isNight bool) rl.Color {
+	if isNight {
 		return rl.NewColor(20, 20, 40, 255)
 	}
-	return rl.RayWhite
+	return rl.NewColor(135, 206, 235, 255)
 }
 
 const (
@@ -155,11 +146,19 @@ func main() {
 		cam.Position.Y = target.Y + dist*float32(math.Sin(float64(pitch)))
 		cam.Position.Z = target.Z + dist*float32(math.Cos(float64(pitch)))*float32(math.Cos(float64(yaw)))
 
-		// Time cycle
-		if rl.IsKeyPressed(rl.KeyT) {
-			timeOfDay = (timeOfDay + 1) % 4
+		// Simulation speed / pause
+		if rl.IsKeyPressed(rl.KeySpace) {
+			sim.TogglePause()
 		}
-		sim.SetNight(timeOfDay == 3)
+		if rl.IsKeyPressed(rl.KeyOne) {
+			sim.SetSpeed(1)
+		}
+		if rl.IsKeyPressed(rl.KeyTwo) {
+			sim.SetSpeed(2)
+		}
+		if rl.IsKeyPressed(rl.KeyThree) {
+			sim.SetSpeed(3)
+		}
 
 		// Road elevation control
 		if rl.IsKeyPressed(rl.KeyPageUp) {
@@ -198,8 +197,13 @@ func main() {
 		ui.ResDemand = rDem
 		ui.ComDemand = cDem
 		ui.IndDemand = iDem
-		timeNames := []string{"Dawn", "Day", "Dusk", "Night"}
-		ui.TimeStr = timeNames[timeOfDay]
+		ui.TimeStr = sim.Time.TimeString()
+		if sim.Time.IsPaused {
+			ui.TimeStr += " ⏸"
+		} else if sim.Time.Speed > 1 {
+			speedStr := fmt.Sprintf(" ⏩x%.0f", sim.Time.Speed)
+			ui.TimeStr += speedStr
+		}
 		ui.MouseWorldX = worldX
 		ui.MouseWorldZ = worldZ
 		ui.MouseOnGround = mouseOnTerrain
@@ -266,7 +270,7 @@ func main() {
 
 		// --- Draw ---
 		rl.BeginDrawing()
-		rl.ClearBackground(skyColor())
+		rl.ClearBackground(skyColor(sim.Night))
 		rl.BeginMode3D(cam)
 		t.Draw(cam.Position.X, cam.Position.Z)
 

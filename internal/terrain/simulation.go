@@ -15,6 +15,9 @@ const (
 	EventBuildingConstructed SimEvent = "building:constructed"
 	EventDayNightCycle      SimEvent = "time:daynight"
 	EventTaxCollected       SimEvent = "economy:tax"
+	EventTimeMinute          SimEvent = "time:minute"
+	EventTimeHour            SimEvent = "time:hour"
+	EventTimeDay             SimEvent = "time:day"
 )
 
 type SimulationManager struct {
@@ -40,6 +43,7 @@ type SimulationManager struct {
 
 	EventBus  *EventBus
 	scheduler *Scheduler
+	Time      *GameTime
 }
 
 func NewSimulationManager(seed int64) *SimulationManager {
@@ -76,6 +80,7 @@ func NewSimulationManager(seed int64) *SimulationManager {
 		Seed:        seed,
 		EventBus:    NewEventBus(),
 		scheduler:   NewScheduler(),
+		Time:        NewGameTime(),
 	}
 
 	sm.initScheduler()
@@ -147,8 +152,59 @@ func (sm *SimulationManager) InitDefaultRoads() {
 }
 
 func (sm *SimulationManager) Update(dt float64) {
-	sm.scheduler.RunAll(dt)
+	if sm.Time.IsPaused {
+		sm.EventBus.ProcessQueue()
+		return
+	}
+
+	simDt := dt * sm.Time.Speed
+	sm.Time.Tick(simDt)
+	sm.scheduler.RunAll(simDt)
+
+	if sm.Time.MinuteChanged() {
+		sm.EventBus.Emit(string(EventTimeMinute), sm.Time.Minute)
+	}
+	if sm.Time.HourChanged() {
+		sm.EventBus.Emit(string(EventTimeHour), sm.Time.Hour)
+	}
+	if sm.Time.DayChanged() {
+		sm.EventBus.Emit(string(EventTimeDay), sm.Time.DayCount)
+	}
+	sm.syncDayNight()
+	sm.Time.Snapshot()
+
 	sm.EventBus.ProcessQueue()
+}
+
+func (sm *SimulationManager) syncDayNight() {
+	isDay := sm.Time.IsDaytime()
+	if sm.Night == isDay {
+		sm.Night = !isDay
+		sm.EventBus.Emit(string(EventDayNightCycle), sm.Night)
+	}
+}
+
+func (sm *SimulationManager) SetSpeed(speed float64) {
+	if speed < 0 {
+		speed = 0
+	}
+	if speed > 3 {
+		speed = 3
+	}
+	sm.Time.Speed = speed
+	sm.Time.IsPaused = speed == 0
+}
+
+func (sm *SimulationManager) TogglePause() {
+	sm.Time.IsPaused = !sm.Time.IsPaused
+}
+
+func (sm *SimulationManager) IsPaused() bool {
+	return sm.Time.IsPaused
+}
+
+func (sm *SimulationManager) Speed() float64 {
+	return sm.Time.Speed
 }
 
 func (sm *SimulationManager) collectTax(dt float64) {
