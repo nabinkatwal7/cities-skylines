@@ -231,11 +231,77 @@ type CurveData struct {
 	P2x, P2z float32
 }
 
+type LaneCategory uint8
+
+const (
+	LaneDriving LaneCategory = iota
+	LaneParking
+	LaneBus
+	LaneTram
+	LaneBicycle
+	LanePedestrian
+	LaneEmergency
+	LaneTurning
+	LaneHighwayMerge
+)
+
+func laneCategoriesForRoad(rt RoadType) []LaneCategory {
+	switch rt {
+	case RoadOneWay:
+		return []LaneCategory{LaneDriving}
+	case RoadBus:
+		return []LaneCategory{LaneBus}
+	case RoadTram:
+		return []LaneCategory{LaneTram, LaneTram, LaneTram, LaneTram}
+	case RoadBicycle:
+		return []LaneCategory{LaneBicycle}
+	case RoadPedestrian:
+		return []LaneCategory{LanePedestrian}
+	case RoadTreeLined:
+		return []LaneCategory{LaneDriving, LaneParking}
+	case RoadAsymmetric:
+		return []LaneCategory{LaneDriving, LaneParking}
+	case RoadHighway:
+		return []LaneCategory{LaneDriving, LaneDriving, LaneDriving, LaneDriving, LaneDriving, LaneDriving}
+	case RoadQuay:
+		return []LaneCategory{LaneDriving, LaneDriving}
+	case RoadSixLane:
+		return []LaneCategory{LaneDriving, LaneDriving, LaneDriving, LaneDriving, LaneDriving, LaneDriving}
+	case RoadAvenue:
+		return []LaneCategory{LaneDriving, LaneDriving, LaneDriving, LaneDriving, LaneDriving, LaneDriving}
+	default:
+		return []LaneCategory{LaneDriving, LaneDriving}
+	}
+}
+
+func laneAllowsVehicle(cat LaneCategory, vt VehicleType) bool {
+	switch cat {
+	case LaneDriving:
+		return vt == VehicleCar || vt == VehicleBus || vt == VehicleTruck || vt == VehicleEmergency
+	case LaneParking:
+		return vt == VehicleCar
+	case LaneBus:
+		return vt == VehicleBus
+	case LaneTram:
+		return vt == VehicleTram
+	case LaneBicycle:
+		return vt == VehicleBike
+	case LanePedestrian:
+		return vt == VehiclePedestrian
+	case LaneEmergency:
+		return vt == VehicleEmergency
+	case LaneTurning, LaneHighwayMerge:
+		return vt == VehicleCar || vt == VehicleBus || vt == VehicleTruck || vt == VehicleEmergency
+	default:
+		return true
+	}
+}
+
 type Lane struct {
 	Index      int32
 	Direction  int8        // 0=forward (A→B), 1=reverse (B→A)
 	SpeedLimit float32
-	VehicleType VehicleType
+	Category   LaneCategory
 	Width      float32
 	Priority   int32
 }
@@ -243,20 +309,7 @@ type Lane struct {
 func generateLanes(rt RoadType, direction int8, speedLimit float32, laneCount int32) []Lane {
 	lanes := make([]Lane, laneCount)
 	half := laneCount / 2
-	allowed := roadAllowedVehicles(rt)
-	var vt VehicleType
-	switch allowed {
-	case "bus":
-		vt = VehicleBus
-	case "bike":
-		vt = VehicleBike
-	case "pedestrian":
-		vt = VehiclePedestrian
-	case "tram":
-		vt = VehicleTram
-	default:
-		vt = VehicleCar
-	}
+	categories := laneCategoriesForRoad(rt)
 
 	for i := int32(0); i < laneCount; i++ {
 		var dir int8
@@ -272,13 +325,18 @@ func generateLanes(rt RoadType, direction int8, speedLimit float32, laneCount in
 			}
 		}
 
+		cat := LaneDriving
+		if int(i) < len(categories) {
+			cat = categories[i]
+		}
+
 		lanes[i] = Lane{
-			Index:       i,
-			Direction:   dir,
-			SpeedLimit:  speedLimit,
-			VehicleType: vt,
-			Width:       3.0,
-			Priority:    i,
+			Index:      i,
+			Direction:  dir,
+			SpeedLimit: speedLimit,
+			Category:   cat,
+			Width:      3.0,
+			Priority:   i,
 		}
 	}
 	return lanes

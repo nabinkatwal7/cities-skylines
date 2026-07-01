@@ -2134,3 +2134,21 @@ Priority
 Lane geometry is generated procedurally from the road spline.
 
 ---
+
+## 3.4 Lane Types
+
+Supported lane categories include:
+
+- Driving
+- Parking
+- Bus
+- Tram
+- Bicycle
+- Pedestrian
+- Emergency
+- Turning
+- Highway Merge
+
+Vehicle restrictions are enforced at the lane level.
+
+---

@@ -73,7 +73,7 @@ type LaneData struct {
 	Index      int32
 	Direction  int8
 	SpeedLimit float32
-	VehicleType VehicleType
+	Category   LaneCategory
 	Width      float32
 	Priority   int32
 }
@@ -193,22 +193,9 @@ func migrateSaveData(data *SaveData) bool {
 			for i := range data.RoadSegments {
 				sd := &data.RoadSegments[i]
 				if len(sd.Lanes) == 0 {
+					categories := laneCategoriesForRoad(sd.RoadType)
 					sd.Lanes = make([]LaneData, sd.LaneCount)
 					half := sd.LaneCount / 2
-					allowed := roadAllowedVehicles(sd.RoadType)
-					var vt VehicleType
-					switch allowed {
-					case "bus":
-						vt = VehicleBus
-					case "bike":
-						vt = VehicleBike
-					case "pedestrian":
-						vt = VehiclePedestrian
-					case "tram":
-						vt = VehicleTram
-					default:
-						vt = VehicleCar
-					}
 					for li := int32(0); li < sd.LaneCount; li++ {
 						var dir int8
 						if sd.Direction == 1 {
@@ -222,11 +209,15 @@ func migrateSaveData(data *SaveData) bool {
 								dir = 1
 							}
 						}
+						cat := LaneDriving
+						if int(li) < len(categories) {
+							cat = categories[li]
+						}
 						sd.Lanes[li] = LaneData{
 							Index:       li,
 							Direction:   dir,
 							SpeedLimit:  sd.SpeedLimit,
-							VehicleType: vt,
+							Category:    cat,
 							Width:       3.0,
 							Priority:    li,
 						}
@@ -338,7 +329,7 @@ func SaveGame(filename string, m *SimulationManager, money float32, timeOfDay in
 					Index:       l.Index,
 					Direction:   l.Direction,
 					SpeedLimit:  l.SpeedLimit,
-					VehicleType: l.VehicleType,
+					Category:    l.Category,
 					Width:       l.Width,
 					Priority:    l.Priority,
 				}
@@ -538,7 +529,7 @@ func LoadGame(filename string, m *SimulationManager) (money float32, timeOfDay i
 								Index:       ld.Index,
 								Direction:   ld.Direction,
 								SpeedLimit:  ld.SpeedLimit,
-								VehicleType: ld.VehicleType,
+								Category:    ld.Category,
 								Width:       ld.Width,
 								Priority:    ld.Priority,
 							}

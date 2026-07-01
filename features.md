@@ -1,21 +1,3 @@
-## 3.4 Lane Types
-
-Supported lane categories include:
-
-- Driving
-- Parking
-- Bus
-- Tram
-- Bicycle
-- Pedestrian
-- Emergency
-- Turning
-- Highway Merge
-
-Vehicle restrictions are enforced at the lane level.
-
----
-
 ## 3.5 Road Geometry
 
 Road meshes are generated procedurally.
