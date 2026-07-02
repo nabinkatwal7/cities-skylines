@@ -851,6 +851,7 @@ func LoadGame(filename string, m *sim.SimulationManager) (money float32, timeOfD
 	}
 
 	if m.Roads != nil {
+		m.Roads.ClearModels()
 		m.Roads.Nodes = nil
 		m.Roads.Segments = nil
 		m.Roads.NextID = 0

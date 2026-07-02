@@ -731,6 +731,21 @@ func (rm *RoadManager) SyncMeshes(h *terrain.Heightmap) {
 	rm.Rebuild(h)
 }
 
+// ClearModels unloads GPU road meshes (e.g. before save load).
+func (rm *RoadManager) ClearModels() {
+	for _, model := range rm.Models {
+		if model.MeshCount > 0 {
+			rl.UnloadModel(model)
+		}
+	}
+	rm.Models = nil
+	rm.dirtyModels = nil
+}
+
+func (rm *RoadManager) ValidNodeIndex(idx uint32) bool {
+	return int(idx) >= 0 && int(idx) < len(rm.Nodes)
+}
+
 func (rm *RoadManager) PendingMeshRebuilds() int {
 	return len(rm.dirtyModels)
 }
@@ -1275,7 +1290,7 @@ func (rm *RoadManager) Update(h *terrain.Heightmap) {
 		if !isFlooded {
 			ah := h.WorldHeight(na.X, na.Z)
 			bh := h.WorldHeight(nb.X, nb.Z)
-			waterH := float32(terrain.SeaLevel*terrain.MaxHeight + 0.1)
+			waterH := terrain.ActiveSeaLevel() * terrain.MaxHeight
 			isFlooded = ah < waterH || bh < waterH
 		}
 		if isFlooded {

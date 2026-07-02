@@ -131,6 +131,10 @@ func main() {
 		gameUI.SyncView(ui.ViewStateFromSim(sim, worldX, worldZ, mouseOnTerrain))
 
 		// Snap to build grid / zone cells
+		if roadActive && !sim.Roads.ValidNodeIndex(roadStartNode) {
+			roadActive = false
+			roadStartNode = 0
+		}
 		gameUI.SetRoadChain(roadActive, roadStartNode)
 		previewX, previewZ := worldX, worldZ
 		if mouseOnTerrain {
@@ -190,50 +194,39 @@ func main() {
 			} else if mouseOnTerrain {
 				worldClick := placeClick && gameUI.HandleWorldClick(sim, worldX, worldZ)
 				if !worldClick {
+				pv := gameUI.Preview()
 				switch gameUI.Selected {
 				case ui.ToolRoad:
 					px := clamp(previewX, -240, 240)
 					pz := clamp(previewZ, -240, 240)
-					if sim.Heightmap.IsUnderwater(px, pz) {
-						break
-					}
-					roadCost := sim.RoadPlacementCost(gameUI.RoadType, roadElevation)
-					if sim.Money >= roadCost {
-						if !roadActive {
-							roadStartNode = sim.PlaceRoadNode(px, pz)
-							roadActive = true
-						} else {
-							sn := &sim.Roads.Nodes[roadStartNode]
-							if sim.Heightmap.IsUnderwater(sn.X, sn.Z) {
-								roadActive = false
-								break
-							}
-							moneyBefore := sim.Money
-							newNode, segID, ok := sim.PlaceRoadSegment(roadStartNode, px, pz, gameUI.RoadType, roadElevation)
-							if ok {
-								roadStartNode = newNode
-								sim.PushRoadPlace(segID, moneyBefore-sim.Money)
-							}
-							if !ok {
+					if !roadActive {
+						if !pv.TerrainOK || sim.Money < pv.Cost {
+							break
+						}
+						roadStartNode = sim.PlaceRoadNode(px, pz)
+						roadActive = true
+					} else {
+						if !pv.Valid {
+							if len(pv.Messages) > 0 {
+								gameUI.HelpText = pv.Messages[0]
+							} else {
 								gameUI.HelpText = "Cannot place road: check terrain slope, water, or obstacles"
 							}
+							break
+						}
+						moneyBefore := sim.Money
+						newNode, segID, ok := sim.PlaceRoadSegment(roadStartNode, px, pz, gameUI.RoadType, roadElevation)
+						if ok {
+							roadStartNode = newNode
+							sim.PushRoadPlace(segID, moneyBefore-sim.Money)
+							gameUI.HelpText = ""
 						}
 					}
 				case ui.ToolParking:
-				cost := float32(1000)
-				if gameUI.ParkingGarage {
-					cost = 3000
+				if !pv.Valid {
+					break
 				}
-				if gameUI.BusDepotMode || gameUI.TramDepotMode || gameUI.MetroDepotMode || gameUI.FerryDepotMode || gameUI.MonorailDepotMode || gameUI.CableCarDepotMode || gameUI.TaxiDepotMode {
-					cost = 5000
-				}
-				if gameUI.AirportMode {
-					cost = 10000
-				}
-				if gameUI.PortMode {
-					cost = 8000
-				}
-				if sim.Money >= cost && !sim.Heightmap.IsUnderwater(worldX, worldZ) {
+				cost := pv.Cost
 					switch {
 					case gameUI.BusDepotMode:
 						sim.PlaceBusDepot(worldX, worldZ)
@@ -259,37 +252,34 @@ func main() {
 				}
 			case ui.ToolTransport:
 				if gameUI.CargoMode {
-					if sim.Money >= 5000 {
-						cost := float32(5000)
-						if sim.Money >= cost {
-							sim.Money -= cost
-							sim.Transport.Cargo.AddStation(previewX, previewZ)
-						}
+					if !pv.Valid {
+						break
 					}
+					sim.Money -= pv.Cost
+					sim.Transport.Cargo.AddStation(previewX, previewZ)
 					break
 				}
-				if !sim.Heightmap.IsUnderwater(worldX, worldZ) {
-					if !transportActive {
-						stopID := sim.Transport.AddStop(previewX, previewZ, gameUI.TransportType)
-						transportStartStopID = stopID
-						transportActive = true
+				if !pv.Valid {
+					break
+				}
+				sim.Money -= pv.Cost
+				if !transportActive {
+					stopID := sim.Transport.AddStop(previewX, previewZ, gameUI.TransportType)
+					transportStartStopID = stopID
+					transportActive = true
+				} else {
+					stopID := sim.Transport.AddStop(previewX, previewZ, gameUI.TransportType)
+					if transportLineID == 0 {
+						col := transport.TransportStopColor(gameUI.TransportType)
+						transportLineID = sim.Transport.AddLine("Line", gameUI.TransportType, []uint32{transportStartStopID, stopID}, col)
 					} else {
-						stopID := sim.Transport.AddStop(previewX, previewZ, gameUI.TransportType)
-						if transportLineID == 0 {
-							col := transport.TransportStopColor(gameUI.TransportType)
-							transportLineID = sim.Transport.AddLine("Line", gameUI.TransportType, []uint32{transportStartStopID, stopID}, col)
-						} else {
-							sim.Transport.AddStopToLine(transportLineID, stopID)
-						}
-						transportStartStopID = stopID
+						sim.Transport.AddStopToLine(transportLineID, stopID)
 					}
+					transportStartStopID = stopID
 				}
 				case ui.ToolZone:
 					zt := zoning.ZoneType(gameUI.ZoneType + 1)
 					px, pz := previewX, previewZ
-					if sim.Heightmap.IsUnderwater(px, pz) {
-						break
-					}
 					if sim.Zones != nil {
 						cx := sim.Zones.CellX(px)
 						cz := sim.Zones.CellZ(pz)
@@ -298,7 +288,7 @@ func main() {
 							sim.Zones.RemoveZone(px, pz)
 							sim.EventBus.Emit(string(core.EventZoneRemoved), nil)
 							sim.PushZoneChange(cx, cz, before)
-						} else if sim.Zones.CanZone(px, pz) {
+						} else if pv.Valid {
 							sim.Zones.SetZone(px, pz, zt)
 							sim.EventBus.Emit(string(core.EventZonePlaced), zt)
 							sim.PushZoneChange(cx, cz, before)

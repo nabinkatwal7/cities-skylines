@@ -65,13 +65,16 @@ func EvalPlacement(ctx WorldContext) PlacementPreview {
 	case ModePlace:
 		switch ts.Selected {
 		case ToolRoad:
-			p.Cost = road.RoadConstructionCost(ts.RoadType)
+			p.Cost = sm.RoadPlacementCost(ts.RoadType, ctx.RoadElevation)
 			p.FootprintW, p.FootprintH = 4, 4
 			if sm.Heightmap.IsUnderwater(px, pz) {
 				p.TerrainOK = false
 				p.Messages = append(p.Messages, "Underwater")
 			}
-			if ctx.RoadActive && int(ctx.RoadStartNode) < len(sm.Roads.Nodes) {
+			if ctx.RoadActive && !sm.Roads.ValidNodeIndex(ctx.RoadStartNode) {
+				p.Valid = false
+				p.Messages = append(p.Messages, "Road chain invalid")
+			} else if ctx.RoadActive && sm.Roads.ValidNodeIndex(ctx.RoadStartNode) {
 				sn := &sm.Roads.Nodes[ctx.RoadStartNode]
 				if reason := sm.CanPlaceRoad(sn.X, sn.Z, px, pz, ts.RoadType, ctx.RoadElevation, math.MaxUint32); reason != "" {
 					p.Valid = false
@@ -114,6 +117,10 @@ func EvalPlacement(ctx WorldContext) PlacementPreview {
 			if sm.Heightmap.IsUnderwater(px, pz) {
 				p.TerrainOK = false
 				p.Valid = false
+			}
+			if sm.Money < p.Cost {
+				p.Valid = false
+				p.Messages = append(p.Messages, "Insufficient funds")
 			}
 		}
 	case ModePaint:
@@ -205,7 +212,7 @@ func DrawPreview3D(ctx WorldContext, p PlacementPreview) {
 		switch ts.Selected {
 		case ToolRoad:
 			rl.DrawSphere(rl.NewVector3(px, h+0.5, pz), 0.8, col)
-			if ctx.RoadActive && int(ctx.RoadStartNode) < len(sm.Roads.Nodes) {
+			if ctx.RoadActive && sm.Roads.ValidNodeIndex(ctx.RoadStartNode) {
 				sn := &sm.Roads.Nodes[ctx.RoadStartNode]
 				sh := sm.Heightmap.WorldHeight(sn.X, sn.Z)
 				lineCol := wire

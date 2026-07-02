@@ -420,6 +420,13 @@ func (sm *SimulationManager) PlaceRoadNode(x, z float32) uint32 {
 }
 
 func (sm *SimulationManager) PlaceRoadSegment(nodeA uint32, x, z float32, roadType road.RoadType, elevation int32) (uint32, uint32, bool) {
+	if !sm.Roads.ValidNodeIndex(nodeA) {
+		return math.MaxUint32, math.MaxUint32, false
+	}
+	cost := sm.RoadPlacementCost(roadType, elevation)
+	if sm.Money < cost {
+		return math.MaxUint32, math.MaxUint32, false
+	}
 	na := sm.Roads.Nodes[nodeA]
 	snapX, snapZ := x, z
 	if sm.Connections != nil {
@@ -436,6 +443,9 @@ func (sm *SimulationManager) PlaceRoadSegment(nodeA uint32, x, z float32, roadTy
 							snapX = n.X
 							snapZ = n.Z
 							nodeB := uint32(idx)
+							if nodeB == nodeA || sm.Roads.HasSegmentBetween(nodeA, nodeB) {
+								return math.MaxUint32, math.MaxUint32, false
+							}
 							segID := sm.Roads.AddSegment(nodeA, nodeB, roadType)
 							sm.finalizeSegment(segID, nodeA, nodeB, roadType, elevation)
 							return nodeB, segID, true

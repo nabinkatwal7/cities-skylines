@@ -65,7 +65,7 @@ func snapRoad(ctx SnapContext, x, z float32) (float32, float32) {
 			return n.X, n.Z
 		}
 	}
-	if ctx.RoadActive && int(ctx.RoadStartNode) < len(sm.Roads.Nodes) {
+	if ctx.RoadActive && sm.Roads.ValidNodeIndex(ctx.RoadStartNode) {
 		sn := &sm.Roads.Nodes[ctx.RoadStartNode]
 		return snapRoadFromNode(sn.X, sn.Z, sx, sz)
 	}

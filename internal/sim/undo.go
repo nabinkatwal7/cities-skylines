@@ -42,7 +42,7 @@ func (u *UndoStack) Clear() { u.entries = nil }
 func (u *UndoStack) CanUndo() bool { return len(u.entries) > 0 }
 
 func (sm *SimulationManager) PushRoadPlace(segID uint32, cost float32) {
-	if sm == nil || sm.Undo == nil || segID == 0 {
+	if sm == nil || sm.Undo == nil || segmentIndexByID(sm.Roads, segID) < 0 {
 		return
 	}
 	id := segID
@@ -94,7 +94,6 @@ func restoreRoadSegment(sm *SimulationManager, snap roadSegmentSnap) {
 		sm.Roads.Segments[i].Direction = snap.seg.Direction
 		break
 	}
-	sm.Roads.Rebuild(sm.Heightmap)
 	sm.EventBus.Emit(string(core.EventRoadPlaced), segID)
 }
 

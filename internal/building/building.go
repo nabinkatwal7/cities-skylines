@@ -256,7 +256,7 @@ func coverageStub(f zoning.CityFactors) float32 {
 
 func (m *Manager) shouldAbandon(b *Building) bool {
 	if m.services == nil || m.demand == nil {
-		return true
+		return false
 	}
 	wx, wz := b.WorldX, b.WorldZ
 	f := m.demand.Factors
