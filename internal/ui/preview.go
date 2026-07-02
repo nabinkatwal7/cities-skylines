@@ -6,6 +6,7 @@ import (
 
 	"github.com/katwate/js-skylines/internal/road"
 	"github.com/katwate/js-skylines/internal/sim"
+	"github.com/katwate/js-skylines/internal/terrain"
 	"github.com/katwate/js-skylines/internal/transport"
 	"github.com/katwate/js-skylines/internal/zoning"
 
@@ -38,6 +39,13 @@ type WorldContext struct {
 	TransportActive     bool
 	TransportStartStop  uint32
 	Tools               *ToolSystem
+}
+
+func zmCellSize(sm *sim.SimulationManager) float32 {
+	if sm == nil || sm.Zones == nil {
+		return 4
+	}
+	return terrain.WorldSize / float32(sm.Zones.Width())
 }
 
 func EvalPlacement(ctx WorldContext) PlacementPreview {
@@ -76,7 +84,8 @@ func EvalPlacement(ctx WorldContext) PlacementPreview {
 				p.Messages = append(p.Messages, "Insufficient funds")
 			}
 		case ToolZone:
-			p.FootprintW, p.FootprintH = 4, 4
+			p.FootprintW = zmCellSize(sm)
+			p.FootprintH = zmCellSize(sm)
 			if sm.Zones != nil && !sm.Zones.CanZone(px, pz) {
 				p.Valid = false
 				p.RoadOK = false
@@ -108,7 +117,9 @@ func EvalPlacement(ctx WorldContext) PlacementPreview {
 			}
 		}
 	case ModePaint:
-		p.FootprintW, p.FootprintH = 4, 4
+		px, pz := ctx.PreviewX, ctx.PreviewZ
+		p.FootprintW = zmCellSize(sm)
+		p.FootprintH = zmCellSize(sm)
 		if sm.Zones != nil && !sm.Zones.CanZone(px, pz) {
 			p.Valid = false
 			p.RoadOK = false
@@ -204,7 +215,7 @@ func DrawPreview3D(ctx WorldContext, p PlacementPreview) {
 				rl.DrawLine3D(rl.NewVector3(sn.X, sh+0.2, sn.Z), rl.NewVector3(px, h+0.2, pz), lineCol)
 			}
 		case ToolZone:
-			drawFootprint(px, h, pz, p.FootprintW, 0.2, p.FootprintH, col, wire)
+			drawFootprint(px, h, pz, zmCellSize(sm), 0.2, zmCellSize(sm), col, wire)
 		case ToolParking:
 			drawFootprint(wx, sm.Heightmap.WorldHeight(wx, wz), wz, p.FootprintW, 0.5, p.FootprintH, col, wire)
 		case ToolTransport:

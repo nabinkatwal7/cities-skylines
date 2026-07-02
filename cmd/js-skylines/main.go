@@ -129,8 +129,11 @@ func main() {
 		// Update UI state (presentation only)
 		gameUI.SyncView(ui.ViewStateFromSim(sim, worldX, worldZ, mouseOnTerrain))
 
-		// Snap to outside connection for preview
+		// Snap to build grid / zone cells
 		previewX, previewZ := worldX, worldZ
+		if mouseOnTerrain {
+			previewX, previewZ = gameUI.SnapPlacementCoords(sim, worldX, worldZ)
+		}
 		if mouseOnTerrain && gameUI.Selected == ui.ToolRoad {
 			for _, c := range sim.Connections.GetByType(terrain.ConnHighway) {
 				dx := c.WorldX - worldX
@@ -169,16 +172,22 @@ func main() {
 		gameUI.HandleInput()
 
 		// Handle mouse clicks for tools and toolbar
-		if rl.IsMouseButtonPressed(rl.MouseButtonLeft) {
+		placeClick := rl.IsMouseButtonPressed(rl.MouseButtonLeft)
+		zoneDrag := gameUI.Selected == ui.ToolZone && rl.IsMouseButtonDown(rl.MouseButtonLeft)
+		if placeClick || zoneDrag {
 			mPos := rl.GetMousePosition()
+			mx := int32(mPos.X)
 			my := int32(mPos.Y)
-			if my >= gameUI.ChromeTopY() {
-				gameUI.HandleClick()
-				roadActive = false
+			if gameUI.PointerOverUI(mx, my) {
+				if placeClick {
+					gameUI.HandleClick()
+					if gameUI.ClickResetsRoadChain(mx, my) {
+						roadActive = false
+					}
+				}
 			} else if mouseOnTerrain {
-				if gameUI.HandleWorldClick(sim, worldX, worldZ) {
-					// inspect / measure consumed click
-				} else {
+				worldClick := placeClick && gameUI.HandleWorldClick(sim, worldX, worldZ)
+				if !worldClick {
 				switch gameUI.Selected {
 				case ui.ToolRoad:
 					px := clamp(previewX, -240, 240)
@@ -274,19 +283,20 @@ func main() {
 				}
 				case ui.ToolZone:
 					zt := zoning.ZoneType(gameUI.ZoneType + 1)
-					if sim.Heightmap.IsUnderwater(worldX, worldZ) {
+					px, pz := previewX, previewZ
+					if sim.Heightmap.IsUnderwater(px, pz) {
 						break
 					}
 					if sim.Zones != nil {
-						cx := sim.Zones.CellX(previewX)
-						cz := sim.Zones.CellZ(previewZ)
+						cx := sim.Zones.CellX(px)
+						cz := sim.Zones.CellZ(pz)
 						before := sim.Zones.Cells[cz][cx]
 						if rl.IsKeyDown(rl.KeyLeftShift) || rl.IsKeyDown(rl.KeyRightShift) {
-							sim.Zones.RemoveZone(previewX, previewZ)
+							sim.Zones.RemoveZone(px, pz)
 							sim.EventBus.Emit(string(core.EventZoneRemoved), nil)
 							sim.PushZoneChange(cx, cz, before)
-						} else if sim.Zones.CanZone(previewX, previewZ) {
-							sim.Zones.SetZone(previewX, previewZ, zt)
+						} else if sim.Zones.CanZone(px, pz) {
+							sim.Zones.SetZone(px, pz, zt)
 							sim.EventBus.Emit(string(core.EventZonePlaced), zt)
 							sim.PushZoneChange(cx, cz, before)
 						}

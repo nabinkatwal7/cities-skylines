@@ -267,7 +267,7 @@ func (b *BuildMenus) HandleClick(mx, my int32, ts *ToolSystem) bool {
 			return true
 		}
 	}
-	return true
+	return false
 }
 
 func (b *BuildMenus) HandleInput() {

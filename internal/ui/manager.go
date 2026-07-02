@@ -175,11 +175,17 @@ func (m *UIManager) DrawWorldOverlays(sm *sim.SimulationManager) {
 	m.Overlays.DrawWorld(sm, m.InfoViews, m.Selection)
 }
 
+func (m *UIManager) SnapPlacementCoords(sm *sim.SimulationManager, x, z float32) (float32, float32) {
+	return SnapPlacement(sm, m.Selected, m.Mode, x, z)
+}
+
 func (m *UIManager) HandleWorldClick(sim *sim.SimulationManager, x, z float32) bool {
 	switch m.Mode {
 	case ModeInspect:
-		m.Selection.Pick(sim, x, z, m.Inspector)
-		return true
+		if m.Selected == ToolPointer {
+			m.Selection.Pick(sim, x, z, m.Inspector)
+		}
+		return m.Selected == ToolInspect || m.Selected == ToolPointer
 	case ModeMeasure:
 		m.MeasureClick(x, z)
 		return true

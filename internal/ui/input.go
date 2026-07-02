@@ -22,6 +22,9 @@ func (im *InputManager) HandleClick() GameTool {
 	if im.mgr.BuildMenus.HandleClick(mx, my, &im.mgr.ToolSystem) {
 		return im.mgr.Selected
 	}
+	if im.mgr.Toolbar.HandleOptionsClick(&im.mgr.ToolSystem, mx, my) {
+		return im.mgr.Selected
+	}
 	if my >= ToolbarY {
 		return im.mgr.Toolbar.HandleClick(&im.mgr.ToolSystem, im.mgr.BuildMenus)
 	}

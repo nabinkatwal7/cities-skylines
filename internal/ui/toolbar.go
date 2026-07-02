@@ -190,47 +190,26 @@ func (tb *MainToolbar) drawLegacyOptions(ts *ToolSystem) {
 	y := tb.optionsY()
 	drawBarBottom(y, OptionsBarH)
 
-	mPos := rl.GetMousePosition()
-	mx := int32(mPos.X)
-	my := int32(mPos.Y)
-
 	switch ts.Selected {
 	case ToolRoad:
 		item := roadOptions()
-		drawOptionRow(item, y, mx, my, func(oi int) {
-			item.OptIndex = oi
-			ts.RoadType = road.RoadType(oi)
-		})
+		drawOptionRow(item, y, -1, -1, nil)
 	case ToolParking:
 		item := parkingOptions()
-		drawOptionRow(item, y, mx, my, func(oi int) {
-			item.OptIndex = oi
-			ts.setParkingMode(oi)
-		})
+		drawOptionRow(item, y, -1, -1, nil)
 	case ToolTransport:
 		item := transportOptions()
-		drawOptionRow(item, y, mx, my, func(oi int) {
-			item.OptIndex = oi
-			if oi >= int(transport.TransportModeCount) {
-				ts.CargoMode = true
-			} else {
-				ts.CargoMode = false
-				ts.TransportType = transport.TransportType(oi)
-			}
-		})
+		drawOptionRow(item, y, -1, -1, nil)
 	case ToolZone:
 		item := zoneOptions()
-		drawOptionRowColored(item, y, mx, my, func(oi int) rl.Color {
+		drawOptionRowColored(item, y, -1, -1, func(oi int) rl.Color {
 			if oi < 6 {
 				c := zoning.ZoneColor(zoning.ZoneType(oi + 1))
 				c.A = 220
 				return c
 			}
 			return csBtnIdle
-		}, func(oi int) {
-			item.OptIndex = oi
-			ts.ZoneType = oi
-		})
+		}, nil)
 	}
 }
 
@@ -257,10 +236,64 @@ func drawOptionRowColored(item *ToolbarItem, y int32, mx, my int32, colFn func(i
 		by := y + 6
 		sel := oi == item.OptIndex
 		csOptionBtn(bx, by, optW, OptionsBarH-12, opt, colFn(oi), sel)
-		if rl.IsMouseButtonPressed(rl.MouseButtonLeft) && mx >= bx && mx < bx+optW && my >= by && my < by+OptionsBarH-12 {
+		if onSelect != nil && mx >= bx && mx < bx+optW && my >= by && my < by+OptionsBarH-12 {
 			onSelect(oi)
 		}
 	}
+}
+
+func (tb *MainToolbar) HandleOptionsClick(ts *ToolSystem, mx, my int32) bool {
+	if !ts.HasOptionsBar() {
+		return false
+	}
+	y := tb.optionsY()
+	if my < y || my >= ToolbarY {
+		return false
+	}
+	handled := false
+	switch ts.Selected {
+	case ToolRoad:
+		item := roadOptions()
+		drawOptionRow(item, y, mx, my, func(oi int) {
+			item.OptIndex = oi
+			ts.RoadType = road.RoadType(oi)
+			handled = true
+		})
+	case ToolParking:
+		item := parkingOptions()
+		drawOptionRow(item, y, mx, my, func(oi int) {
+			item.OptIndex = oi
+			ts.setParkingMode(oi)
+			handled = true
+		})
+	case ToolTransport:
+		item := transportOptions()
+		drawOptionRow(item, y, mx, my, func(oi int) {
+			item.OptIndex = oi
+			if oi >= int(transport.TransportModeCount) {
+				ts.CargoMode = true
+			} else {
+				ts.CargoMode = false
+				ts.TransportType = transport.TransportType(oi)
+			}
+			handled = true
+		})
+	case ToolZone:
+		item := zoneOptions()
+		drawOptionRowColored(item, y, mx, my, func(oi int) rl.Color {
+			if oi < 6 {
+				c := zoning.ZoneColor(zoning.ZoneType(oi + 1))
+				c.A = 220
+				return c
+			}
+			return csBtnIdle
+		}, func(oi int) {
+			item.OptIndex = oi
+			ts.ZoneType = oi
+			handled = true
+		})
+	}
+	return handled
 }
 
 func roadOptions() *ToolbarItem {
