@@ -3,6 +3,8 @@ package terrain
 import (
 	"math"
 
+	"github.com/katwate/js-skylines/internal/core"
+
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
 
@@ -49,14 +51,14 @@ type WaterSystem struct {
 	FloodActive   bool
 	FloodCells    int
 	FloodTimer    int32
-	EventBus      *EventBus
+	EventBus      *core.EventBus
 }
 
 func NewWaterSystem() *WaterSystem {
 	return &WaterSystem{}
 }
 
-func (ws *WaterSystem) SetEventBus(eb *EventBus) {
+func (ws *WaterSystem) SetEventBus(eb *core.EventBus) {
 	ws.EventBus = eb
 }
 
@@ -321,9 +323,9 @@ func (ws *WaterSystem) propagateFlood(dt float64) {
 func (ws *WaterSystem) emitFloodEvent(started bool) {
 	if ws.EventBus != nil {
 		if started {
-			ws.EventBus.Emit(string(EventFloodStarted), nil)
+			ws.EventBus.Emit(string(core.EventFloodStarted), nil)
 		} else {
-			ws.EventBus.Emit(string(EventFloodReceded), nil)
+			ws.EventBus.Emit(string(core.EventFloodReceded), nil)
 		}
 	}
 }

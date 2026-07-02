@@ -4,6 +4,8 @@ import (
 	"math"
 	"math/rand"
 
+	"github.com/katwate/js-skylines/internal/core"
+
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
 
@@ -23,7 +25,7 @@ type Tree struct {
 	Health   float32
 	Scale    float32
 	Yaw      float32
-	Lifecycle LifecycleState
+	Lifecycle core.LifecycleState
 	RemovalTimer int32
 }
 
@@ -72,7 +74,7 @@ func NewTreeSystem(seed int64) *TreeSystem {
 		FreeList: make([]int32, TreePoolSize),
 	}
 	for i := 0; i < TreePoolSize; i++ {
-		ts.Pool[i].Lifecycle = LifecycleUnallocated
+		ts.Pool[i].Lifecycle = core.LifecycleUnallocated
 		ts.FreeList[i] = int32(TreePoolSize - 1 - i)
 	}
 	return ts
@@ -84,7 +86,7 @@ func (ts *TreeSystem) Alloc() int32 {
 	}
 	idx := ts.FreeList[len(ts.FreeList)-1]
 	ts.FreeList = ts.FreeList[:len(ts.FreeList)-1]
-	ts.Pool[idx].Lifecycle = LifecycleAllocated
+	ts.Pool[idx].Lifecycle = core.LifecycleAllocated
 	ts.activeCount++
 	return idx
 }
@@ -94,14 +96,14 @@ func (ts *TreeSystem) Free(slot int32) {
 		return
 	}
 	ts.Pool[slot] = Tree{}
-	ts.Pool[slot].Lifecycle = LifecycleReturnedToPool
+	ts.Pool[slot].Lifecycle = core.LifecycleReturnedToPool
 	ts.FreeList = append(ts.FreeList, slot)
 	ts.activeCount--
 }
 
 func (ts *TreeSystem) ForEach(fn func(*Tree, int32)) {
 	for i := 0; i < TreePoolSize; i++ {
-		if ts.Pool[i].Lifecycle == LifecycleActive {
+		if ts.Pool[i].Lifecycle == core.LifecycleActive {
 			fn(&ts.Pool[i], int32(i))
 		}
 	}
@@ -173,7 +175,7 @@ func (ts *TreeSystem) Generate(h *Heightmap, water *WaterSystem) {
 			t.Health = 0.8 + rng.Float32()*0.2
 			t.Scale = 0.5 + rng.Float32()*1.0
 			t.Yaw = rng.Float32() * 6.2832
-			t.Lifecycle = LifecycleActive
+			t.Lifecycle = core.LifecycleActive
 			created++
 		}
 	}
@@ -183,7 +185,7 @@ func (ts *TreeSystem) Update(dt float64) {
 	for i := 0; i < TreePoolSize; i++ {
 		t := &ts.Pool[i]
 		switch t.Lifecycle {
-		case LifecycleActive:
+		case core.LifecycleActive:
 			t.Age += float32(dt) * 0.01
 			if t.Age > 100 && t.Health > 0 {
 				t.Health -= float32(dt) * 0.001
@@ -191,14 +193,14 @@ func (ts *TreeSystem) Update(dt float64) {
 			t.Health = float32(math.Max(0, math.Min(1, float64(t.Health))))
 			if t.Health <= 0 {
 				t.RemovalTimer = 0
-				t.Lifecycle = LifecycleMarkedForRemoval
+				t.Lifecycle = core.LifecycleMarkedForRemoval
 			}
-		case LifecycleMarkedForRemoval:
+		case core.LifecycleMarkedForRemoval:
 			t.RemovalTimer++
 			if t.RemovalTimer > 600 {
-				t.Lifecycle = LifecycleDestroyed
+				t.Lifecycle = core.LifecycleDestroyed
 			}
-		case LifecycleDestroyed:
+		case core.LifecycleDestroyed:
 			ts.Free(int32(i))
 		}
 	}
@@ -209,7 +211,7 @@ func (ts *TreeSystem) Update(dt float64) {
 		regrow := 0
 		for i := 0; i < TreePoolSize; i++ {
 			t := &ts.Pool[i]
-			if t.Lifecycle != LifecycleActive {
+			if t.Lifecycle != core.LifecycleActive {
 				continue
 			}
 			rx := int((t.X/WorldSize + 0.5) * float32(HeightmapSize-1))
@@ -231,14 +233,14 @@ func (ts *TreeSystem) RemoveNear(x, z, radius float32) int {
 	removed := 0
 	for i := 0; i < TreePoolSize; i++ {
 		t := &ts.Pool[i]
-		if t.Lifecycle != LifecycleActive {
+		if t.Lifecycle != core.LifecycleActive {
 			continue
 		}
 		dx := t.X - x
 		dz := t.Z - z
 		if dx*dx+dz*dz <= radiusSq {
 			t.RemovalTimer = 0
-			t.Lifecycle = LifecycleMarkedForRemoval
+			t.Lifecycle = core.LifecycleMarkedForRemoval
 			removed++
 			if ts.resources != nil {
 				rx := int((t.X/WorldSize + 0.5) * float32(HeightmapSize-1))
@@ -385,7 +387,7 @@ func (ts *TreeSystem) PlantAt(worldX, worldZ float32, species TreeSpecies) bool 
 	t.Health = 1.0
 	t.Scale = 0.3
 	t.Yaw = rand.Float32() * 6.2832
-	t.Lifecycle = LifecycleActive
+	t.Lifecycle = core.LifecycleActive
 	return true
 }
 
@@ -394,7 +396,7 @@ func (ts *TreeSystem) TreeCountAt(x, z, radius float32) int {
 	count := 0
 	for i := 0; i < TreePoolSize; i++ {
 		t := &ts.Pool[i]
-		if t.Lifecycle != LifecycleActive {
+		if t.Lifecycle != core.LifecycleActive {
 			continue
 		}
 		dx := t.X - x
@@ -409,7 +411,7 @@ func (ts *TreeSystem) TreeCountAt(x, z, radius float32) int {
 func (ts *TreeSystem) HasTreeAt(worldX, worldZ float32) bool {
 	for i := 0; i < TreePoolSize; i++ {
 		t := &ts.Pool[i]
-		if t.Lifecycle != LifecycleActive {
+		if t.Lifecycle != core.LifecycleActive {
 			continue
 		}
 		dx := t.X - worldX

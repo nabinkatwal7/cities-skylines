@@ -6,7 +6,12 @@ import (
 
 	rl "github.com/gen2brain/raylib-go/raylib"
 
+	"github.com/katwate/js-skylines/internal/road"
+	"github.com/katwate/js-skylines/internal/save"
+	simpkg "github.com/katwate/js-skylines/internal/sim"
 	"github.com/katwate/js-skylines/internal/terrain"
+	"github.com/katwate/js-skylines/internal/transport"
+	"github.com/katwate/js-skylines/internal/ui"
 )
 
 func skyColor(isNight bool) rl.Color {
@@ -22,17 +27,19 @@ const (
 )
 
 func main() {
-	sim := terrain.NewSimulationManager(42)
+	sim := simpkg.NewSimulationManager(42)
 	sim.InitDefaultRoads()
 	sim.Parking.GenerateRoadsideSpots(sim.Roads)
 
-	t := terrain.NewManager(sim)
+	t := simpkg.NewManager(sim)
 	t.InitChunks()
 	sim.InitTerraform(t.Chunks, func(idx int) { t.RebuildChunk(idx) })
 
 	rl.SetConfigFlags(rl.FlagMsaa4xHint)
 	rl.InitWindow(screenWidth, screenHeight, "JS Skylines - Go Edition")
 	defer rl.CloseWindow()
+	ui.LoadUIFont()
+	defer ui.UnloadUIFont()
 	rl.SetTargetFPS(60)
 
 	if err := t.LoadAssets(); err != nil {
@@ -40,8 +47,7 @@ func main() {
 	}
 	t.PrepareUpload()
 
-	buildingAssetsLoaded := false
-	ui := terrain.NewGameUI()
+	gameUI := ui.NewGameUI()
 
 	cam := rl.Camera3D{
 		Position:   rl.NewVector3(100, 80, 100),
@@ -71,20 +77,11 @@ func main() {
 			rl.ClearBackground(rl.DarkGray)
 			pct := t.UploadProgress()
 			text := fmt.Sprintf("Loading terrain... %d / %d", pct.Done, pct.Total)
-			if !buildingAssetsLoaded {
-				text = "Loading building models..."
-				rl.DrawText(text, screenWidth/2-120, screenHeight/2-10, 20, rl.White)
-				rl.EndDrawing()
-				t.LoadBuildingAssets()
-				buildingAssetsLoaded = true
-				continue
-			}
 			done := t.UploadNextBatch(16)
-			text = fmt.Sprintf("Loading terrain... %d / %d", pct.Done, pct.Total)
 			if done {
 				uploaded = true
 			}
-			rl.DrawText(text, screenWidth/2-120, screenHeight/2-10, 20, rl.White)
+			ui.DrawUIText(text, screenWidth/2-120, screenHeight/2-10, 20, rl.White)
 			rl.EndDrawing()
 			continue
 		}
@@ -94,7 +91,7 @@ func main() {
 		saveTimer++
 		if saveTimer > 3600 {
 			saveTimer = 0
-			terrain.SaveGame(saveFilename, sim, sim.Money, int32(sim.Time.TotalTime))
+			save.SaveGame(saveFilename, sim, sim.Money, int32(sim.Time.TotalTime))
 		}
 
 		// Camera
@@ -162,19 +159,19 @@ func main() {
 		if rl.IsKeyPressed(rl.KeySpace) {
 			sim.TogglePause()
 		}
-		if rl.IsKeyPressed(rl.KeyOne) {
+		if rl.IsKeyPressed(rl.KeyF1) {
 			sim.SetSpeed(1)
 		}
-		if rl.IsKeyPressed(rl.KeyTwo) {
+		if rl.IsKeyPressed(rl.KeyF2) {
 			sim.SetSpeed(2)
 		}
-		if rl.IsKeyPressed(rl.KeyThree) {
+		if rl.IsKeyPressed(rl.KeyF3) {
 			sim.SetSpeed(3)
 		}
 
 		// Road elevation control
 		if rl.IsKeyPressed(rl.KeyPageUp) {
-			if ui.Selected == terrain.ToolRoad {
+			if gameUI.Selected == ui.ToolRoad {
 				switch roadElevation {
 				case 0:
 					roadElevation = 1
@@ -188,7 +185,7 @@ func main() {
 			}
 		}
 		if rl.IsKeyPressed(rl.KeyPageDown) {
-			if ui.Selected == terrain.ToolRoad {
+			if gameUI.Selected == ui.ToolRoad {
 				switch roadElevation {
 				case 0:
 					roadElevation = -1
@@ -202,48 +199,36 @@ func main() {
 			}
 		}
 
-		// Mouse ray
+		// Mouse ray → terrain surface
 		worldX := float32(0)
 		worldZ := float32(0)
 		mouseOnTerrain := false
 		ray := rl.GetScreenToWorldRay(rl.GetMousePosition(), cam)
-		if ray.Direction.Y != 0 {
-			tPlane := -ray.Position.Y / ray.Direction.Y
-			worldX = ray.Position.X + ray.Direction.X*tPlane
-			worldZ = ray.Position.Z + ray.Direction.Z*tPlane
-			mouseOnTerrain = true
-		}
+		worldX, worldZ, mouseOnTerrain = sim.Heightmap.PickXZ(ray)
 
 		// Update UI state
-		ui.Money = sim.Money
-		ui.Population = sim.Buildings.Population()
-		rDem, cDem, iDem := sim.Buildings.Demand()
-		ui.ResDemand = rDem
-		ui.ComDemand = cDem
-		ui.IndDemand = iDem
-		ui.TimeStr = sim.Time.TimeString()
+		gameUI.Money = sim.Money
+		gameUI.TimeStr = sim.Time.TimeString()
 		if sim.Time.IsPaused {
-			ui.TimeStr += " ⏸"
+			gameUI.TimeStr += " ⏸"
 		} else if sim.Time.Speed > 1 {
 			speedStr := fmt.Sprintf(" ⏩x%.0f", sim.Time.Speed)
-			ui.TimeStr += speedStr
+			gameUI.TimeStr += speedStr
 		}
-		ui.MouseWorldX = worldX
-		ui.MouseWorldZ = worldZ
-		ui.MouseOnGround = mouseOnTerrain
-		bInfo := sim.Buildings.NearestInfo(worldX, worldZ, 8)
-		ui.BuildingInfo = bInfo
+		gameUI.MouseWorldX = worldX
+		gameUI.MouseWorldZ = worldZ
+		gameUI.MouseOnGround = mouseOnTerrain
 
 		// Snap to outside connection for preview
 		previewX, previewZ := worldX, worldZ
-		if mouseOnTerrain && ui.Selected == terrain.ToolRoad {
+		if mouseOnTerrain && gameUI.Selected == ui.ToolRoad {
 			for _, c := range sim.Connections.GetByType(terrain.ConnHighway) {
 				dx := c.WorldX - worldX
 				dz := c.WorldZ - worldZ
 				if dx*dx+dz*dz < 64 {
 					for idx := range sim.Roads.Nodes {
 						n := &sim.Roads.Nodes[idx]
-						if n.Flags&terrain.RoadFlagOutsideConn != 0 {
+						if n.Flags&road.RoadFlagOutsideConn != 0 {
 							nx := n.X - c.WorldX
 							nz := n.Z - c.WorldZ
 							if nx*nx+nz*nz < 0.01 {
@@ -257,18 +242,20 @@ func main() {
 		}
 
 		// Handle keyboard tool selection
-		ui.HandleInput()
+		gameUI.HandleInput()
 
 		// Handle mouse clicks for tools and toolbar
 		if rl.IsMouseButtonPressed(rl.MouseButtonLeft) {
 			mPos := rl.GetMousePosition()
 			my := int32(mPos.Y)
-			if my >= 660 {
-				ui.HandleClick()
+			if my >= ui.ToolbarY {
+				gameUI.HandleClick()
 				roadActive = false
+			} else if my >= ui.ToolbarY-ui.OptionsBarH && gameUI.HasOptionsBar() {
+				// option bar handles its own clicks during Draw()
 			} else if mouseOnTerrain {
-				switch ui.Selected {
-				case terrain.ToolRoad:
+				switch gameUI.Selected {
+				case ui.ToolRoad:
 					px := clamp(previewX, -240, 240)
 					pz := clamp(previewZ, -240, 240)
 					if sim.Heightmap.IsUnderwater(px, pz) {
@@ -284,63 +271,55 @@ func main() {
 								roadActive = false
 								break
 							}
-							newNode, _, ok := sim.PlaceRoadSegment(roadStartNode, px, pz, ui.RoadType, roadElevation)
+							newNode, _, ok := sim.PlaceRoadSegment(roadStartNode, px, pz, gameUI.RoadType, roadElevation)
 							if ok {
 								roadStartNode = newNode
 							}
 							if !ok {
-								ui.HelpText = "Cannot place road: check terrain slope, water, or obstacles"
+								gameUI.HelpText = "Cannot place road: check terrain slope, water, or obstacles"
 							}
 						}
 					}
-				case terrain.ToolZone:
-					if sim.Money >= 20 && !sim.Heightmap.IsUnderwater(worldX, worldZ) {
-						sim.SetZone(worldX, worldZ, ui.ZoneType)
-					}
-			case terrain.ToolPark:
-				if sim.Money >= 500 && !sim.Heightmap.IsUnderwater(worldX, worldZ) {
-					sim.PlacePark(worldX, worldZ)
-				}
-			case terrain.ToolParking:
+				case ui.ToolParking:
 				cost := float32(1000)
-				if ui.ParkingGarage {
+				if gameUI.ParkingGarage {
 					cost = 3000
 				}
-				if ui.BusDepotMode || ui.TramDepotMode || ui.MetroDepotMode || ui.FerryDepotMode || ui.MonorailDepotMode || ui.CableCarDepotMode || ui.TaxiDepotMode {
+				if gameUI.BusDepotMode || gameUI.TramDepotMode || gameUI.MetroDepotMode || gameUI.FerryDepotMode || gameUI.MonorailDepotMode || gameUI.CableCarDepotMode || gameUI.TaxiDepotMode {
 					cost = 5000
 				}
-				if ui.AirportMode {
+				if gameUI.AirportMode {
 					cost = 10000
 				}
-				if ui.PortMode {
+				if gameUI.PortMode {
 					cost = 8000
 				}
 				if sim.Money >= cost && !sim.Heightmap.IsUnderwater(worldX, worldZ) {
 					switch {
-					case ui.BusDepotMode:
+					case gameUI.BusDepotMode:
 						sim.PlaceBusDepot(worldX, worldZ)
-					case ui.TramDepotMode:
+					case gameUI.TramDepotMode:
 						sim.PlaceTramDepot(worldX, worldZ)
-					case ui.MetroDepotMode:
+					case gameUI.MetroDepotMode:
 						sim.PlaceMetroDepot(worldX, worldZ)
-					case ui.FerryDepotMode:
+					case gameUI.FerryDepotMode:
 						sim.PlaceFerryDepot(worldX, worldZ)
-					case ui.MonorailDepotMode:
+					case gameUI.MonorailDepotMode:
 						sim.PlaceMonorailDepot(worldX, worldZ)
-					case ui.CableCarDepotMode:
+					case gameUI.CableCarDepotMode:
 						sim.PlaceCableCarDepot(worldX, worldZ)
-					case ui.TaxiDepotMode:
+					case gameUI.TaxiDepotMode:
 						sim.PlaceTaxiDepot(worldX, worldZ)
-					case ui.AirportMode:
+					case gameUI.AirportMode:
 						sim.PlaceAirportDepot(worldX, worldZ)
-					case ui.PortMode:
+					case gameUI.PortMode:
 						sim.PlacePortDepot(worldX, worldZ)
 					default:
-						sim.PlaceParkingLot(worldX, worldZ, ui.ParkingGarage)
+						sim.PlaceParkingLot(worldX, worldZ, gameUI.ParkingGarage)
 					}
 				}
-			case terrain.ToolTransport:
-				if ui.CargoMode {
+			case ui.ToolTransport:
+				if gameUI.CargoMode {
 					if sim.Money >= 5000 {
 						cost := float32(5000)
 						if sim.Money >= cost {
@@ -352,21 +331,21 @@ func main() {
 				}
 				if !sim.Heightmap.IsUnderwater(worldX, worldZ) {
 					if !transportActive {
-						stopID := sim.Transport.AddStop(previewX, previewZ, ui.TransportType)
+						stopID := sim.Transport.AddStop(previewX, previewZ, gameUI.TransportType)
 						transportStartStopID = stopID
 						transportActive = true
 					} else {
-						stopID := sim.Transport.AddStop(previewX, previewZ, ui.TransportType)
+						stopID := sim.Transport.AddStop(previewX, previewZ, gameUI.TransportType)
 						if transportLineID == 0 {
-							col := terrain.TransportStopColor(ui.TransportType)
-							transportLineID = sim.Transport.AddLine("Line", ui.TransportType, []uint32{transportStartStopID, stopID}, col)
+							col := transport.TransportStopColor(gameUI.TransportType)
+							transportLineID = sim.Transport.AddLine("Line", gameUI.TransportType, []uint32{transportStartStopID, stopID}, col)
 						} else {
 							sim.Transport.AddStopToLine(transportLineID, stopID)
 						}
 						transportStartStopID = stopID
 					}
 				}
-				case terrain.ToolRemove:
+				case ui.ToolRemove:
 					if sim.Transport != nil {
 						stop := sim.Transport.NearestStop(worldX, worldZ, 8)
 						if stop != nil {
@@ -384,11 +363,11 @@ func main() {
 						sim.RemoveSegment(idx)
 					}
 					sim.RemoveTrees(worldX, worldZ, 10)
-				case terrain.ToolUpgrade:
+				case ui.ToolUpgrade:
 					idx := sim.Roads.NearestSegment(worldX, worldZ)
 					if idx >= 0 {
-						if !sim.UpgradeSegment(idx, ui.RoadType) {
-							ui.HelpText = "Cannot upgrade: insufficient funds or already that type"
+						if !sim.UpgradeSegment(idx, gameUI.RoadType) {
+							gameUI.HelpText = "Cannot upgrade: insufficient funds or already that type"
 						}
 					}
 				}
@@ -411,72 +390,69 @@ func main() {
 		if mouseOnTerrain {
 			h := sim.Heightmap.WorldHeight(worldX, worldZ)
 
-			switch ui.Selected {
-			case terrain.ToolRoad:
+			switch gameUI.Selected {
+			case ui.ToolRoad:
 				rl.DrawSphere(rl.NewVector3(previewX, h+0.5, previewZ), 0.8, rl.Green)
 				if roadActive {
 					sn := &sim.Roads.Nodes[roadStartNode]
 					sh := sim.Heightmap.WorldHeight(sn.X, sn.Z)
 					rl.DrawLine3D(rl.NewVector3(sn.X, sh+0.2, sn.Z), rl.NewVector3(previewX, h+0.2, previewZ), rl.Green)
 				}
-			case terrain.ToolZone:
-				rl.DrawCube(rl.NewVector3(worldX, h+0.5, worldZ), 8, 0.3, 8, terrain.ZoneColor(ui.ZoneType))
-			case terrain.ToolPark:
-				rl.DrawCube(rl.NewVector3(worldX, h+0.3, worldZ), 3, 0.2, 3, rl.NewColor(80, 200, 80, 120))
-			case terrain.ToolParking:
-				if ui.AirportMode {
+			case ui.ToolParking:
+				if gameUI.AirportMode {
 					rl.DrawCube(rl.NewVector3(worldX, h+0.3, worldZ), 12, 0.3, 8, rl.NewColor(180, 180, 180, 120))
 					rl.DrawCubeWires(rl.NewVector3(worldX, h+0.3, worldZ), 12, 0.3, 8, rl.NewColor(180, 180, 180, 200))
 					rl.DrawCube(rl.NewVector3(worldX+4, h+1.5, worldZ), 4, 3, 3, rl.NewColor(200, 200, 220, 120))
 					rl.DrawCube(rl.NewVector3(worldX-5, h+0.2, worldZ), 20, 0.1, 2, rl.NewColor(160, 160, 160, 150))
 					rl.DrawCube(rl.NewVector3(worldX-5, h+0.2, worldZ+3), 20, 0.1, 2, rl.NewColor(160, 160, 160, 150))
-				} else if ui.PortMode {
+				} else if gameUI.PortMode {
 					rl.DrawCube(rl.NewVector3(worldX, h+0.3, worldZ), 8, 0.5, 10, rl.NewColor(139, 90, 43, 120))
 					rl.DrawCubeWires(rl.NewVector3(worldX, h+0.3, worldZ), 8, 0.5, 10, rl.NewColor(139, 90, 43, 200))
 					rl.DrawCube(rl.NewVector3(worldX, h+0.5, worldZ+5), 6, 0.3, 4, rl.NewColor(100, 100, 100, 120))
-				} else if ui.FerryDepotMode {
+				} else if gameUI.FerryDepotMode {
 					rl.DrawCube(rl.NewVector3(worldX, h+0.3, worldZ), 5, 0.5, 5, rl.NewColor(50, 150, 200, 120))
 					rl.DrawCubeWires(rl.NewVector3(worldX, h+0.3, worldZ), 5, 0.5, 5, rl.NewColor(50, 150, 200, 200))
-				} else if ui.MonorailDepotMode {
+				} else if gameUI.MonorailDepotMode {
 					rl.DrawCube(rl.NewVector3(worldX, h+2, worldZ), 8, 2, 4, rl.NewColor(100, 200, 200, 120))
 					rl.DrawCubeWires(rl.NewVector3(worldX, h+2, worldZ), 8, 2, 4, rl.NewColor(100, 200, 200, 200))
-				} else if ui.CableCarDepotMode {
+				} else if gameUI.CableCarDepotMode {
 					rl.DrawCube(rl.NewVector3(worldX, h+2, worldZ), 4, 3, 4, rl.NewColor(200, 200, 100, 120))
 					rl.DrawCubeWires(rl.NewVector3(worldX, h+2, worldZ), 4, 3, 4, rl.NewColor(200, 200, 100, 200))
-				} else if ui.TaxiDepotMode {
+				} else if gameUI.TaxiDepotMode {
 					rl.DrawCube(rl.NewVector3(worldX, h+0.5, worldZ), 5, 1, 4, rl.NewColor(200, 200, 50, 120))
 					rl.DrawCubeWires(rl.NewVector3(worldX, h+0.5, worldZ), 5, 1, 4, rl.NewColor(200, 200, 50, 200))
-				} else if ui.MetroDepotMode {
+				} else if gameUI.MetroDepotMode {
 					rl.DrawCube(rl.NewVector3(worldX, h+0.5, worldZ), 6, 1, 4, rl.NewColor(80, 80, 200, 120))
 					rl.DrawCubeWires(rl.NewVector3(worldX, h+0.5, worldZ), 6, 1, 4, rl.NewColor(80, 80, 200, 200))
-				} else if ui.TramDepotMode {
+				} else if gameUI.TramDepotMode {
 					rl.DrawCube(rl.NewVector3(worldX, h+0.5, worldZ), 6, 1, 4, rl.NewColor(180, 50, 180, 120))
 					rl.DrawCubeWires(rl.NewVector3(worldX, h+0.5, worldZ), 6, 1, 4, rl.NewColor(180, 50, 180, 200))
-				} else if ui.BusDepotMode {
+				} else if gameUI.BusDepotMode {
 					rl.DrawCube(rl.NewVector3(worldX, h+0.5, worldZ), 6, 1, 4, rl.NewColor(200, 180, 50, 120))
 					rl.DrawCubeWires(rl.NewVector3(worldX, h+0.5, worldZ), 6, 1, 4, rl.NewColor(200, 180, 50, 200))
 				} else {
 					col := rl.NewColor(80, 80, 200, 100)
-					if !ui.ParkingGarage {
+					if !gameUI.ParkingGarage {
 						col = rl.NewColor(80, 160, 80, 80)
 					}
 					rl.DrawCube(rl.NewVector3(worldX, h+0.3, worldZ), 20, 0.3, 15, col)
 					rl.DrawCubeWires(rl.NewVector3(worldX, h+0.3, worldZ), 20, 0.3, 15, rl.NewColor(60, 60, 100, 150))
 				}
-			case terrain.ToolTransport:
-				if ui.CargoMode {
+			case ui.ToolTransport:
+				if gameUI.CargoMode {
 					rl.DrawCube(rl.NewVector3(worldX, h+1, worldZ), 5, 2, 5, rl.NewColor(200, 150, 50, 120))
 					rl.DrawCubeWires(rl.NewVector3(worldX, h+1, worldZ), 5, 2, 5, rl.NewColor(200, 200, 100, 200))
 					break
 				}
-				stopCol := terrain.TransportStopColor(ui.TransportType)
+				stopCol := transport.TransportStopColor(gameUI.TransportType)
 				if transportActive {
-					sn := &sim.Transport.Stops[transportStartStopID]
-					sh := sim.Heightmap.WorldHeight(sn.X, sn.Z)
-					rl.DrawLine3D(rl.NewVector3(sn.X, sh+0.5, sn.Z), rl.NewVector3(previewX, h+0.5, previewZ), stopCol)
+					if sn := sim.Transport.StopByID(transportStartStopID); sn != nil {
+						sh := sim.Heightmap.WorldHeight(sn.X, sn.Z)
+						rl.DrawLine3D(rl.NewVector3(sn.X, sh+0.5, sn.Z), rl.NewVector3(previewX, h+0.5, previewZ), stopCol)
+					}
 				}
 				rl.DrawSphere(rl.NewVector3(previewX, h+0.5, previewZ), 0.6, stopCol)
-			case terrain.ToolRemove:
+			case ui.ToolRemove:
 				if sim.Transport != nil {
 					stop := sim.Transport.NearestStop(worldX, worldZ, 8)
 					if stop != nil {
@@ -487,7 +463,7 @@ func main() {
 					}
 					line := sim.Transport.NearestLine(worldX, worldZ, 12)
 					if line != nil {
-						col := terrain.TransportStopColor(line.TransType)
+						col := transport.TransportStopColor(line.TransType)
 						for _, sid := range line.Stops {
 							s := sim.Transport.StopByID(sid)
 							if s == nil {
@@ -508,7 +484,7 @@ func main() {
 					hb := sim.Heightmap.WorldHeight(nb.X, nb.Z) + 0.5
 					rl.DrawLine3D(rl.NewVector3(na.X, ha, na.Z), rl.NewVector3(nb.X, hb, nb.Z), rl.Red)
 				}
-			case terrain.ToolUpgrade:
+			case ui.ToolUpgrade:
 				idx := sim.Roads.NearestSegment(worldX, worldZ)
 				if idx >= 0 {
 					seg := sim.Roads.Segments[idx]
@@ -525,7 +501,7 @@ func main() {
 		rl.DrawGrid(100, 4.0)
 		rl.EndMode3D()
 
-		ui.Draw()
+		gameUI.Draw()
 		rl.DrawFPS(10, 30)
 
 		rl.EndDrawing()
