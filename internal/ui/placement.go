@@ -11,7 +11,7 @@ import (
 const (
 	roadGrid      = 4.0
 	roadAngleSnap = math.Pi / 12.0 // 15° like Cities: Skylines
-	nodeSnapDist  = 6.0
+	nodeSnapDist  = 4.0 // matches sim.RoadProximityDist
 )
 
 type SnapContext struct {

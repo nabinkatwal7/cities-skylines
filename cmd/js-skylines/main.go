@@ -39,6 +39,7 @@ func main() {
 	rl.SetConfigFlags(rl.FlagMsaa4xHint)
 	rl.InitWindow(screenWidth, screenHeight, "JS Skylines - Go Edition")
 	defer rl.CloseWindow()
+	ui.SetScreenSize(screenWidth, screenHeight)
 	ui.LoadUIFont()
 	defer ui.UnloadUIFont()
 	rl.SetTargetFPS(60)
@@ -196,10 +197,11 @@ func main() {
 					if sim.Heightmap.IsUnderwater(px, pz) {
 						break
 					}
-					if sim.Money >= 100 {
+					roadCost := sim.RoadPlacementCost(gameUI.RoadType, roadElevation)
+					if sim.Money >= roadCost {
 						if !roadActive {
-							roadActive = true
 							roadStartNode = sim.PlaceRoadNode(px, pz)
+							roadActive = true
 						} else {
 							sn := &sim.Roads.Nodes[roadStartNode]
 							if sim.Heightmap.IsUnderwater(sn.X, sn.Z) {

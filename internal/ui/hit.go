@@ -38,7 +38,7 @@ func (m *UIManager) ClickResetsRoadChain(mx, my int32) bool {
 		return true
 	}
 	if m.BuildMenus.Visible() {
-		y := m.BuildMenus.Y()
+		y := m.BuildMenus.Y(m.ToolSystem.HasOptionsBar())
 		if my >= y && my < y+BuildMenuH {
 			return true
 		}

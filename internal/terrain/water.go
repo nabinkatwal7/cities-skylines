@@ -63,6 +63,7 @@ func (ws *WaterSystem) SetEventBus(eb *core.EventBus) {
 }
 
 func (ws *WaterSystem) Init(h *Heightmap) {
+	riverTop := ActiveSeaLevel()
 	for z := 0; z < WaterGridSize; z++ {
 		for x := 0; x < WaterGridSize; x++ {
 			hx := float64(x) / float64(WaterGridSize-1) * float64(HeightmapSize-1)
@@ -71,6 +72,15 @@ func (ws *WaterSystem) Init(h *Heightmap) {
 			terrainH := h.Get(int(hx), int(hz))
 			cell := &ws.Grid[z][x]
 			cell.Base = terrainH
+
+			if FlatTestMap {
+				if terrainH < riverTop {
+					cell.Height = riverTop - terrainH
+				} else {
+					cell.Height = 0
+				}
+				continue
+			}
 
 			if terrainH < ActiveSeaLevel() {
 				cell.Height = ActiveSeaLevel() - terrainH
@@ -83,10 +93,15 @@ func (ws *WaterSystem) Init(h *Heightmap) {
 	}
 
 	ws.initDefaultBodies(h)
-	ws.carveLake(h)
+	if !FlatTestMap {
+		ws.carveLake(h)
+	}
 }
 
 func (ws *WaterSystem) initDefaultBodies(h *Heightmap) {
+	if FlatTestMap {
+		return
+	}
 	ws.Bodies = append(ws.Bodies, WaterBody{
 		ID:       ws.nextBodyID,
 		Type:     WaterOcean,
@@ -373,7 +388,11 @@ func (ws *WaterSystem) BodyAt(worldX, worldZ float32) *WaterBody {
 }
 
 func (ws *WaterSystem) Draw() {
-	h := float32(SeaLevel*MaxHeight + 0.1)
+	if FlatTestMap {
+		ws.drawFlatRiverWater()
+		return
+	}
+	h := ActiveWaterSurfaceY()
 
 	oceanCol := rl.NewColor(30, 120, 210, 160)
 	lakeCol := rl.NewColor(40, 150, 220, 160)
@@ -408,6 +427,22 @@ func (ws *WaterSystem) Draw() {
 	}
 	if !oceanDrawn {
 		rl.DrawPlane(rl.NewVector3(0, h, 0), rl.NewVector2(WorldSize, WorldSize), oceanCol)
+	}
+}
+
+func (ws *WaterSystem) drawFlatRiverWater() {
+	col := rl.NewColor(50, 160, 230, 180)
+	surfY := ActiveWaterSurfaceY()
+	step := WorldSize / float32(WaterGridSize-1)
+	for z := 0; z < WaterGridSize; z++ {
+		for x := 0; x < WaterGridSize; x++ {
+			if ws.Grid[z][x].Height < 0.001 {
+				continue
+			}
+			wx := float32(x)/float32(WaterGridSize-1)*WorldSize - WorldSize/2
+			wz := float32(z)/float32(WaterGridSize-1)*WorldSize - WorldSize/2
+			rl.DrawCube(rl.NewVector3(wx, surfY, wz), step*1.05, 0.12, step*1.05, col)
+		}
 	}
 }
 

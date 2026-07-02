@@ -408,6 +408,14 @@ func (sm *SimulationManager) PlaceRoadNode(x, z float32) uint32 {
 			}
 		}
 	}
+	for i := range sm.Roads.Nodes {
+		n := &sm.Roads.Nodes[i]
+		dx := n.X - x
+		dz := n.Z - z
+		if dx*dx+dz*dz < RoadProximityDist*RoadProximityDist {
+			return uint32(i)
+		}
+	}
 	return sm.Roads.AddNode(x, 0, z)
 }
 
@@ -455,6 +463,12 @@ func (sm *SimulationManager) PlaceRoadSegment(nodeA uint32, x, z float32, roadTy
 	if nodeB == math.MaxUint32 {
 		nodeB = sm.Roads.AddNode(snapX, 0, snapZ)
 	}
+	if nodeB == nodeA {
+		return math.MaxUint32, math.MaxUint32, false
+	}
+	if sm.Roads.HasSegmentBetween(nodeA, nodeB) {
+		return math.MaxUint32, math.MaxUint32, false
+	}
 	segID := sm.Roads.AddSegment(nodeA, nodeB, roadType)
 	sm.finalizeSegment(segID, nodeA, nodeB, roadType, elevation)
 	return nodeB, segID, true
@@ -483,9 +497,18 @@ func (sm *SimulationManager) finalizeSegment(segID, nodeA, nodeB uint32, roadTyp
 	} else if elevation < 0 {
 		cost += float32(-elevation) * 100
 	}
-	sm.Roads.Rebuild(sm.Heightmap)
 	sm.Money -= cost
 	sm.EventBus.Emit(string(core.EventRoadPlaced), segID)
+}
+
+func (sm *SimulationManager) RoadPlacementCost(rt road.RoadType, elevation int32) float32 {
+	cost := road.RoadConstructionCost(rt)
+	if elevation > 0 {
+		cost += float32(elevation) * 50
+	} else if elevation < 0 {
+		cost += float32(-elevation) * 100
+	}
+	return cost
 }
 
 func (sm *SimulationManager) RemoveSegment(idx int) {
@@ -494,7 +517,6 @@ func (sm *SimulationManager) RemoveSegment(idx int) {
 	}
 	segID := int(sm.Roads.Segments[idx].ID)
 	sm.Roads.RemoveSegment(idx)
-	sm.Roads.Rebuild(sm.Heightmap)
 	sm.EventBus.Emit(string(core.EventRoadRemoved), segID)
 }
 
@@ -540,7 +562,6 @@ func (sm *SimulationManager) UpgradeSegment(idx int, newType road.RoadType) bool
 	} else if diff < 0 {
 		sm.Money -= diff // diff is negative, so this adds money (refund)
 	}
-	sm.Roads.Rebuild(sm.Heightmap)
 	sm.EventBus.Emit(string(core.EventRoadUpgraded), idx)
 	return true
 }

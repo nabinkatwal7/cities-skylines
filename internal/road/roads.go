@@ -692,7 +692,47 @@ func (rm *RoadManager) AddSegment(a, b uint32, rt RoadType) uint32 {
 	rm.updateJunctionType(b)
 	rm.invalidateCaches()
 
+	segIdx := len(rm.Segments) - 1
+	rm.queueMeshRebuild(segIdx)
+
 	return id
+}
+
+func (rm *RoadManager) SegmentIndex(id uint32) int {
+	for i := range rm.Segments {
+		if rm.Segments[i].ID == id {
+			return i
+		}
+	}
+	return -1
+}
+
+func (rm *RoadManager) HasSegmentBetween(a, b uint32) bool {
+	for _, s := range rm.Segments {
+		if (s.NodeA == a && s.NodeB == b) || (s.NodeA == b && s.NodeB == a) {
+			return true
+		}
+	}
+	return false
+}
+
+func (rm *RoadManager) queueMeshRebuild(segIdx int) {
+	for len(rm.Models) <= segIdx {
+		rm.Models = append(rm.Models, rl.Model{})
+	}
+	rm.markDirty(segIdx)
+}
+
+// SyncMeshes rebuilds GPU meshes for any new or dirty segments.
+func (rm *RoadManager) SyncMeshes(h *terrain.Heightmap) {
+	for len(rm.Models) < len(rm.Segments) {
+		rm.queueMeshRebuild(len(rm.Models))
+	}
+	rm.Rebuild(h)
+}
+
+func (rm *RoadManager) PendingMeshRebuilds() int {
+	return len(rm.dirtyModels)
 }
 
 func (rm *RoadManager) updateJunctionType(nodeIdx uint32) {
@@ -1069,9 +1109,13 @@ func (rm *RoadManager) UploadGPU(h *terrain.Heightmap) {
 }
 
 func (rm *RoadManager) buildSurfaceMesh(h *terrain.Heightmap, seg RoadSegment) rl.Model {
-	xs, zs, _ := rm.SampleSegment(seg, int(seg.Length/2))
-	steps := len(xs) - 1
-	if steps < 1 {
+	steps := int(seg.Length / 2)
+	if steps < 4 {
+		steps = 4
+	}
+	xs, zs, _ := rm.SampleSegment(seg, steps)
+	stripSteps := len(xs) - 1
+	if stripSteps < 1 {
 		return rl.Model{}
 	}
 
@@ -1082,20 +1126,20 @@ func (rm *RoadManager) buildSurfaceMesh(h *terrain.Heightmap, seg RoadSegment) r
 	total := float32(lanes) * laneW
 	half := total * 0.5
 
-	vertCount := (steps + 1) * 2
-	triCount := steps * 2
+	vertCount := (stripSteps + 1) * 2
+	triCount := stripSteps * 2
 
 	verts := make([]float32, 0, vertCount*3)
 	normals := make([]float32, 0, vertCount*3)
 	tc := make([]float32, 0, vertCount*2)
 	indices := make([]uint16, 0, triCount*3)
 
-	for si := 0; si <= steps; si++ {
+	for si := 0; si <= stripSteps; si++ {
 		x := xs[si]
 		z := zs[si]
 
 		var perX, perZ float32
-		if si < steps {
+		if si < stripSteps {
 			dx := xs[si+1] - x
 			dz := zs[si+1] - z
 			l := float32(math.Sqrt(float64(dx*dx + dz*dz)))
@@ -1127,7 +1171,7 @@ func (rm *RoadManager) buildSurfaceMesh(h *terrain.Heightmap, seg RoadSegment) r
 		tc = append(tc, 0, u, 1, u)
 	}
 
-	for si := 0; si < steps; si++ {
+	for si := 0; si < stripSteps; si++ {
 		base := uint16(si * 2)
 		indices = append(indices, base, base+2, base+1, base+1, base+2, base+3)
 	}
@@ -1288,8 +1332,16 @@ func (rm *RoadManager) Draw(h *terrain.Heightmap) {
 	if rm.roadTex.ID == 0 {
 		rm.drawFallback(h)
 	} else {
-		if len(rm.Models) == 0 {
-			rm.UploadGPU(h)
+		if len(rm.Models) < len(rm.Segments) {
+			rm.SyncMeshes(h)
+		}
+		for i := range rm.Models {
+			if i < len(rm.Segments) && rm.Models[i].MeshCount == 0 {
+				rm.queueMeshRebuild(i)
+			}
+		}
+		if rm.PendingMeshRebuilds() > 0 {
+			rm.Rebuild(h)
 		}
 		for _, model := range rm.Models {
 			if model.MeshCount > 0 {
@@ -2180,6 +2232,7 @@ func (rm *RoadManager) UpgradeSegment(idx int, newType RoadType) {
 	s.MaintenanceCost = rm.CalcSegmentMaintenance(newType, s.Length, s.Elevation)
 	s.ConstructionCost = RoadConstructionCost(newType)
 	s.Lanes = generateLanes(newType, s.Direction, s.SpeedLimit, s.LaneCount)
+	rm.queueMeshRebuild(idx)
 }
 
 func (rm *RoadManager) removeNodeByIndex(idx uint32) {

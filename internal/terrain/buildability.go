@@ -55,7 +55,7 @@ func (bc *BuildabilityChecker) GetCellBuildability(x, z int) BuildabilityInfo {
 	worldZ := (float32(z)/float32(HeightmapSize-1) - 0.5) * WorldSize
 
 	info.WaterScore = 1.0
-	if h <= SeaLevel {
+	if h < ActiveSeaLevel() {
 		info.IsUnderwater = true
 		info.WaterScore = 0
 	} else if bc.water != nil && bc.water.IsFlooded(worldX, worldZ) {

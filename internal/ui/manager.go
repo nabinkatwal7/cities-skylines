@@ -233,6 +233,7 @@ func (m *UIManager) HandleInput() GameTool {
 		return m.Selected
 	}
 	m.BuildMenus.HandleInput()
+	m.Toolbar.HandleWheel(&m.ToolSystem, m.BuildMenus, rl.GetMouseWheelMove())
 	m.Toolbar.HandleKeyboard(&m.ToolSystem, m.BuildMenus)
 	return m.ToolSystem.HandleKeyboard()
 }
@@ -257,6 +258,9 @@ func (m *UIManager) HandleClick() GameTool {
 	}
 	mPos := rl.GetMousePosition()
 	mx, my := int32(mPos.X), int32(mPos.Y)
+	if m.HUD.HandleClick(mx, my, m.lastSim) {
+		return m.Selected
+	}
 	if m.Options.HandleClick(mx, my, m.Settings) {
 		return m.Selected
 	}
@@ -284,7 +288,7 @@ func (m *UIManager) ChromeTopY() int32 {
 func (m *UIManager) Unlocks() *UnlockRegistry { return m.unlocks }
 
 func (m *UIManager) Draw() {
-	m.HUD.Draw(m.Notifications, m.Settings)
+	m.HUD.Draw(m.Notifications, m.Settings, m.lastSim)
 	if len(m.Notifications.Active()) > 0 {
 		m.Notifications.Draw()
 	}
@@ -312,11 +316,11 @@ func (m *UIManager) Draw() {
 		m.Advisors.Draw()
 	}
 	m.Toolbar.Draw(&m.ToolSystem)
-	m.ToolSystem.DrawHelp()
+	m.ToolSystem.DrawHelp(m.ChromeTopY())
 	m.Gamepad.DrawHint(TopBarH+32, m.Settings.A11y)
 	m.Shortcuts.Draw(m.Settings)
 	if m.preview.Cost > 0 || len(m.preview.Messages) > 0 || m.preview.Elevation != 0 {
-		DrawPreviewHUD(m.preview, ToolbarY-int32(BuildMenuH)-int32(OptionsBarH)-50)
+		DrawPreviewHUD(m.preview, m.ChromeTopY()-40)
 	}
 	m.Dialogs.Draw()
 }

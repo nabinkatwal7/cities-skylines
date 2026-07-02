@@ -22,6 +22,7 @@ var (
 	csInputBg     = rl.NewColor(12, 18, 24, 230)
 	csBtnIdle     = rl.NewColor(38, 52, 64, 240)
 	csBtnHover    = rl.NewColor(48, 68, 84, 250)
+	csFadeEdge    = rl.NewColor(16, 22, 30, 200)
 )
 
 func drawBarTop() {
@@ -125,33 +126,53 @@ func toolLabel(tool GameTool) string {
 	}
 }
 
-// csToolBtn draws a CS-style bottom-toolbar utility button.
-func csToolBtn(x, y, w int32, tool GameTool, accent rl.Color, selected bool) {
-	iconSz := int32(44)
-	ix := x + (w-iconSz)/2
-	iy := y + 2
-	drawCategoryIcon(ix, iy, iconSz, toolIcon(tool), accent, selected)
-	tw := MeasureUIText(toolLabel(tool), FontSm)
-	drawLabel(toolLabel(tool), x+(w-tw)/2, y+iconSz+6, FontSm, csTextDim)
+func abbrevLabel(label string, max int) string {
+	if len(label) <= max {
+		return label
+	}
+	if max <= 1 {
+		return label[:max]
+	}
+	return label[:max-1] + "…"
 }
 
-// csCategoryBtn draws icon + label like the CS build menu strip.
-func csCategoryBtn(x, y, w int32, cat ToolbarCategory, def CategoryDef, selected bool) {
-	iconSz := int32(44)
-	ix := x + (w-iconSz)/2
-	iy := y + 2
-	drawCategoryIcon(ix, iy, iconSz, categoryIcon(cat), def.Color, selected)
-	label := def.Label
-	if len(label) > 10 {
-		label = label[:9] + "…"
+// csToolBtn draws a CS-style utility button with icon and label inside bounds.
+func csToolBtn(x, y, w, h int32, tool GameTool, accent rl.Color, selected bool) {
+	iconSz := int32(38)
+	labelH := int32(FontXs + 2)
+	iconY := y + 4
+	if iconY+iconSz+labelH > y+h {
+		iconSz = h - labelH - 8
+		iconY = y + 4
 	}
-	tw := MeasureUIText(label, FontSm)
-	drawLabel(label, x+(w-tw)/2, y+iconSz+6, FontSm, csText)
+	ix := x + (w-iconSz)/2
+	drawCategoryIcon(ix, iconY, iconSz, toolIcon(tool), accent, selected)
+	label := abbrevLabel(toolLabel(tool), 9)
+	tw := MeasureUIText(label, FontXs)
+	labelY := y + h - labelH
+	drawLabel(label, x+(w-tw)/2, labelY, FontXs, csTextDim)
+}
+
+// csCategoryBtn draws icon + label within the button cell (no overflow).
+func csCategoryBtn(x, y, w, h int32, cat ToolbarCategory, def CategoryDef, selected bool) {
+	iconSz := int32(38)
+	labelH := int32(FontXs + 2)
+	iconY := y + 4
+	ix := x + (w-iconSz)/2
+	drawCategoryIcon(ix, iconY, iconSz, categoryIcon(cat), def.Color, selected)
+	label := abbrevLabel(def.Label, 11)
+	tw := MeasureUIText(label, FontXs)
+	labelY := y + h - labelH
+	col := csTextDim
+	if selected {
+		col = csText
+	}
+	drawLabel(label, x+(w-tw)/2, labelY, FontXs, col)
 }
 
 func drawCategoryIcon(x, y, size int32, glyph string, accent rl.Color, selected bool) {
 	if selected {
-		rl.DrawRectangle(x-3, y-3, size+6, size+6, csSelectGlow)
+		rl.DrawRectangle(x-2, y-2, size+4, size+4, csSelectGlow)
 	}
 	rl.DrawRectangle(x, y, size, size, accent)
 	rl.DrawRectangleLines(x, y, size, size, rl.NewColor(255, 255, 255, 80))
@@ -171,8 +192,13 @@ func csOptionBtn(x, y, w, h int32, label string, fill rl.Color, selected bool) {
 		rl.DrawRectangle(x, y, w, h, csSelectFill)
 	}
 	rl.DrawRectangleLines(x, y, w, h, csPanelBorder)
-	tw := MeasureUIText(label, FontMd)
-	drawLabel(label, x+(w-tw)/2, y+(h-FontMd)/2, FontMd, csText)
+	short := abbrevLabel(label, 14)
+	tw := MeasureUIText(short, FontSm)
+	if tw > w-8 {
+		short = abbrevLabel(label, 10)
+		tw = MeasureUIText(short, FontSm)
+	}
+	drawLabel(short, x+(w-tw)/2, y+(h-FontSm)/2, FontSm, csText)
 }
 
 func csAssetBtn(x, y, w, h int32, name string, fav bool, selected bool) {
@@ -188,15 +214,21 @@ func csAssetBtn(x, y, w, h int32, name string, fav bool, selected bool) {
 		rl.DrawRectangle(x, y, w, h, csSelectFill)
 	}
 	rl.DrawRectangleLines(x, y, w, h, csPanelBorder)
-	short := name
-	if len(short) > 11 {
-		short = short[:10] + "…"
-	}
-	tw := MeasureUIText(short, FontMd)
-	drawLabel(short, x+(w-tw)/2, y+(h-FontMd)/2, FontMd, csText)
+	short := abbrevLabel(name, 11)
+	tw := MeasureUIText(short, FontSm)
+	drawLabel(short, x+(w-tw)/2, y+(h-FontSm)/2, FontSm, csText)
 }
 
 func csInputField(x, y, w, h int32) {
 	rl.DrawRectangle(x, y, w, h, csInputBg)
 	rl.DrawRectangleLines(x, y, w, h, csPanelBorder)
+}
+
+func drawScrollFade(x, y, w, h int32, left, right bool) {
+	if left {
+		rl.DrawRectangle(x, y, 14, h, csFadeEdge)
+	}
+	if right {
+		rl.DrawRectangle(x+w-14, y, 14, h, csFadeEdge)
+	}
 }

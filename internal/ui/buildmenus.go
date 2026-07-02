@@ -145,12 +145,22 @@ func (b *BuildMenus) Visible() bool { return b.open }
 
 func (b *BuildMenus) Close() { b.open = false }
 
-func (b *BuildMenus) Y() int32 {
-	y := ToolbarY - OptionsBarH
+func (b *BuildMenus) Y(hasOptionsBar bool) int32 {
+	y := ToolbarY
+	if hasOptionsBar {
+		y -= OptionsBarH
+	}
 	if b.open {
 		y -= BuildMenuH
 	}
-	return int32(y)
+	return y
+}
+
+func (b *BuildMenus) chromeY(ts *ToolSystem) int32 {
+	if ts == nil {
+		return b.Y(false)
+	}
+	return b.Y(ts.HasOptionsBar())
 }
 
 func (b *BuildMenus) refilter() {
@@ -226,7 +236,7 @@ func (b *BuildMenus) HandleClick(mx, my int32, ts *ToolSystem) bool {
 	if !b.open {
 		return false
 	}
-	y := b.Y()
+	y := b.chromeY(ts)
 	if my < y || my >= y+BuildMenuH {
 		return false
 	}
@@ -326,7 +336,7 @@ func (b *BuildMenus) Draw(ts *ToolSystem) {
 	if !b.open {
 		return
 	}
-	y := b.Y()
+	y := b.chromeY(ts)
 	drawBarBottom(y, BuildMenuH)
 
 	csInputField(10, y+8, 240, 26)
@@ -356,18 +366,22 @@ func (b *BuildMenus) Draw(ts *ToolSystem) {
 		}
 	}
 
-	px := int32(ScreenW - 300)
-	drawPanel(px, y+6, 290, BuildMenuH-12)
+	previewW := int32(280)
+	px := ScreenW - previewW - 8
+	if px < 520 {
+		px = 520
+	}
+	drawPanel(px, y+6, previewW, BuildMenuH-12)
 	if b.selected < len(b.filtered) {
 		a := b.catalog()[b.filtered[b.selected]]
-		drawLabel(a.Name, px+12, y+14, FontLg, csText)
-		drawLabel(a.Preview, px+12, y+38, FontSm, csTextDim)
-		drawLabel(fmtCost(a.Cost), px+12, y+58, FontMd, csMoney)
-		drawLabel(fmtMaint(a.Maintenance), px+12, y+78, FontSm, csTextDim)
-		drawLabel("Size: "+a.Size, px+12, y+98, FontSm, csTextDim)
-		drawLabel("Req: "+a.Requirements, px+12, y+118, FontSm, csTextDim)
+		drawLabel(a.Name, px+10, y+12, FontMd, csText)
+		drawLabel(a.Preview, px+10, y+30, FontXs, csTextDim)
+		drawLabel(fmtCost(a.Cost), px+10, y+46, FontSm, csMoney)
+		drawLabel(fmtMaint(a.Maintenance), px+10, y+62, FontXs, csTextDim)
+		drawLabel("Size: "+a.Size, px+10, y+78, FontXs, csTextDim)
+		drawLabel("Req: "+a.Requirements, px+10, y+94, FontXs, csTextDim)
 		if a.UnlockPop > 0 {
-			drawLabel(fmtUnlock(a.UnlockPop), px+12, y+138, FontSm, rl.NewColor(220, 190, 110, 255))
+			drawLabel(fmtUnlock(a.UnlockPop), px+10, y+110, FontXs, rl.NewColor(220, 190, 110, 255))
 		}
 	}
 }

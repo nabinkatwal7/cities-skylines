@@ -92,7 +92,7 @@ func (ts *ToolSystem) MeasureClick(x, z float32) {
 
 var ToolbarItems = []ToolbarItem{
 	{ToolPointer, "Pointer", rl.KeyOne, rl.NewColor(200, 200, 200, 255), nil, 0},
-	{ToolRoad, "Roads", rl.KeyTwo, rl.NewColor(180, 160, 120, 255), []string{"2-Lane", "1-Way", "4-Lane", "Gravel", "Highway", "6-Lane", "Avenue", "Bus Rd", "Tram Rd", "Bike Rd", "Tree Rd", "Asym Rd", "Pedestrian", "Quay"}, 0},
+	{ToolRoad, "Roads", rl.KeyTwo, rl.NewColor(180, 160, 120, 255), road.RoadTypeOptionNames, 0},
 	{ToolParking, "Parking", rl.KeyThree, rl.NewColor(100, 100, 200, 255), []string{"Lot", "Garage", "Bus Depot", "Tram Depot", "Metro Depot", "Ferry Depot", "Monorail Depot", "Cable Car Depot", "Taxi Depot", "Airport", "Port"}, 0},
 	{ToolTransport, "Transport", rl.KeyFour, rl.NewColor(50, 150, 200, 255), []string{"Bus", "Tram", "Metro", "Train", "Ferry", "Monorail", "Cable Car", "Taxi", "Air", "Ship", "Walk", "Bicycle", "Car", "Blimp", "Cargo Stn"}, 0},
 	{ToolZone, "Zones", rl.KeyFive, rl.NewColor(120, 200, 120, 255), []string{"Res Low", "Res High", "Com Low", "Com High", "Industrial", "Office"}, 0},
@@ -126,7 +126,7 @@ func (ts *ToolSystem) HandleKeyboard() GameTool {
 	if ts.Selected == ToolRoad && rl.IsKeyPressed(rl.KeyR) {
 		item := &ToolbarItems[1]
 		item.OptIndex = (item.OptIndex + 1) % len(item.Options)
-		ts.RoadType = road.RoadType(item.OptIndex)
+		ts.RoadType = road.RoadTypeFromOptionIndex(item.OptIndex)
 	}
 	if ts.Selected == ToolParking && rl.IsKeyPressed(rl.KeyR) {
 		item := &ToolbarItems[2]
@@ -154,8 +154,11 @@ func (ts *ToolSystem) HandleKeyboard() GameTool {
 	return ts.Selected
 }
 
-func (ts *ToolSystem) DrawHelp() {
-	helpY := ToolbarY - 28
+func (ts *ToolSystem) DrawHelp(chromeTop int32) {
+	helpY := chromeTop - 22
+	if helpY < TopBarH+4 {
+		helpY = TopBarH + 4
+	}
 	switch ts.Mode {
 	case ModeInspect:
 		drawLabel("Click to inspect  ·  I inspect  ·  M measure  ·  1 cursor  ·  6 bulldoze  ·  7 upgrade", 12, helpY, FontSm, csText)
@@ -204,7 +207,7 @@ func (ts *ToolSystem) ApplyAsset(a BuildAsset) {
 		for i, name := range roadOptions().Options {
 			if name == a.Name {
 				roadOptions().OptIndex = i
-				ts.RoadType = road.RoadType(i)
+				ts.RoadType = road.RoadTypeFromOptionIndex(i)
 				return
 			}
 		}
