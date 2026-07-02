@@ -55,6 +55,9 @@ type Building struct {
 	Household       Household
 	Business        Business
 	Occupancy       Occupancy
+	Consumption     Consumption
+	AI              BuildingAI
+	ServiceOK       bool
 }
 
 type Manager struct {
@@ -68,6 +71,11 @@ type Manager struct {
 	services zoning.ServiceCoverage
 	width    int
 	height   int
+
+	Stats        Statistics
+	recentSpawns int
+	lvTick       int
+	aiCursor     int
 }
 
 func NewManager(zm *zoning.ZoneManager, demand *zoning.DemandEngine, services zoning.ServiceCoverage) *Manager {
@@ -92,14 +100,16 @@ func (m *Manager) Update(dt float64) {
 	if m == nil || m.zones == nil || dt <= 0 {
 		return
 	}
-	m.updateLandValue()
+	m.updateLandValueIncremental()
 	for i := 0; i < len(m.Buildings); {
 		if m.tickBuilding(i, dt) {
 			continue
 		}
 		i++
 	}
+	m.tickAIBatch()
 	m.trySpawn()
+	m.refreshStats(dt)
 }
 
 func (m *Manager) trySpawn() {
@@ -137,6 +147,7 @@ func (m *Manager) startConstruction(lot *zoning.ZoneLot) {
 	idx := len(m.Buildings)
 	m.Buildings = append(m.Buildings, b)
 	m.byLot[lot.ID] = idx
+	m.recentSpawns++
 }
 
 func (m *Manager) tickBuilding(idx int, dt float64) bool {
@@ -147,6 +158,8 @@ func (m *Manager) tickBuilding(idx int, dt float64) bool {
 	case StateConstructing:
 		m.tickConstruction(b, dt)
 	case StateOccupied:
+		m.tickServices(b)
+		m.applyPolicies(b)
 		if m.shouldAbandon(b) {
 			b.AbandonTimer += float32(dt)
 			if b.AbandonTimer >= abandonGraceSec {
@@ -202,7 +215,8 @@ func (m *Manager) removeAt(idx int) {
 }
 
 func (m *Manager) tickUpgrade(b *Building, dt float64) {
-	if b.Level >= MaxLevel || m.demand == nil {
+	maxLv := m.maxLevelFor(b)
+	if b.Level >= maxLv || m.demand == nil {
 		return
 	}
 	if !m.upgradeReady(b) {
@@ -248,7 +262,7 @@ func (m *Manager) shouldAbandon(b *Building) bool {
 
 	switch cat {
 	case zoning.CategoryResidential:
-		if !m.services.HasElectricity(wx, wz) || !m.services.HasWater(wx, wz) {
+		if !b.ServiceOK || !m.services.HasElectricity(wx, wz) || !m.services.HasWater(wx, wz) {
 			return true
 		}
 		if f.Pollution > 0.65 || f.Crime > 0.6 || f.ResidentialTax > 0.16 {

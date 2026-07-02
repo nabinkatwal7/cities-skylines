@@ -120,6 +120,9 @@ type ZoneManager struct {
 	buildings    BuildingCatalog
 	lots         []ZoneLot
 	lotsDirty    bool
+	districts    []District
+	cellDistrict [][]uint8
+	dirtyLand    [][2]int
 }
 
 func NewZoneManager(w, h int, roads *road.RoadManager, bc *terrain.BuildabilityChecker) *ZoneManager {
@@ -138,6 +141,48 @@ func NewZoneManager(w, h int, roads *road.RoadManager, bc *terrain.BuildabilityC
 		buildability: bc,
 		lotsDirty:    true,
 	}
+}
+
+func (zm *ZoneManager) Init() {
+	zm.initDistricts()
+}
+
+func (zm *ZoneManager) Width() int  { return zm.width }
+func (zm *ZoneManager) Height() int { return zm.height }
+
+func (zm *ZoneManager) markLandDirty(x, z int) {
+	if x < 0 || x >= zm.width || z < 0 || z >= zm.height {
+		return
+	}
+	zm.dirtyLand = append(zm.dirtyLand, [2]int{x, z})
+}
+
+func (zm *ZoneManager) DrainDirtyLand() [][2]int {
+	d := zm.dirtyLand
+	zm.dirtyLand = nil
+	return d
+}
+
+func (zm *ZoneManager) ExportZoneTypes() []uint8 {
+	out := make([]uint8, zm.width*zm.height)
+	for z := 0; z < zm.height; z++ {
+		for x := 0; x < zm.width; x++ {
+			out[z*zm.width+x] = uint8(zm.Cells[z][x].Type)
+		}
+	}
+	return out
+}
+
+func (zm *ZoneManager) ImportZoneTypes(flat []uint8) {
+	if len(flat) != zm.width*zm.height {
+		return
+	}
+	for z := 0; z < zm.height; z++ {
+		for x := 0; x < zm.width; x++ {
+			zm.Cells[z][x].Type = ZoneType(flat[z*zm.width+x])
+		}
+	}
+	zm.lotsDirty = true
 }
 
 func (zm *ZoneManager) cellSize() float32 {
@@ -188,6 +233,15 @@ func (zm *ZoneManager) roadConnected(worldX, worldZ float32) bool {
 	return depth >= 1 && depth <= ZoneDepthForRoad(rt)
 }
 
+func (zm *ZoneManager) SetZoneCell(x, z int, zt ZoneType) {
+	if x < 0 || x >= zm.width || z < 0 || z >= zm.height {
+		return
+	}
+	zm.Cells[z][x].Type = zt
+	zm.markLotsDirty()
+	zm.markLandDirty(x, z)
+}
+
 func (zm *ZoneManager) SetZone(worldX, worldZ float32, zt ZoneType) {
 	x := zm.CellX(worldX)
 	z := zm.CellZ(worldZ)
@@ -197,16 +251,7 @@ func (zm *ZoneManager) SetZone(worldX, worldZ float32, zt ZoneType) {
 	if !zm.CanZone(worldX, worldZ) {
 		return
 	}
-	zm.Cells[z][x].Type = zt
-	zm.markLotsDirty()
-}
-
-func (zm *ZoneManager) SetZoneCell(x, z int, zt ZoneType) {
-	if x < 0 || x >= zm.width || z < 0 || z >= zm.height {
-		return
-	}
-	zm.Cells[z][x].Type = zt
-	zm.markLotsDirty()
+	zm.SetZoneCell(x, z, zt)
 }
 
 func (zm *ZoneManager) RemoveZone(worldX, worldZ float32) {
@@ -215,10 +260,18 @@ func (zm *ZoneManager) RemoveZone(worldX, worldZ float32) {
 	if x < 0 || x >= zm.width || z < 0 || z >= zm.height {
 		return
 	}
+	zm.RemoveZoneCell(x, z)
+}
+
+func (zm *ZoneManager) RemoveZoneCell(x, z int) {
+	if x < 0 || x >= zm.width || z < 0 || z >= zm.height {
+		return
+	}
 	zm.Cells[z][x].Type = ZoneNone
 	zm.Cells[z][x].Density = 0
 	zm.Cells[z][x].LotID = -1
 	zm.markLotsDirty()
+	zm.markLandDirty(x, z)
 }
 
 func (zm *ZoneManager) CellTypeAt(worldX, worldZ float32) ZoneType {

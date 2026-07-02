@@ -3,6 +3,7 @@ package save
 import (
 	"bytes"
 
+	"github.com/katwate/js-skylines/internal/building"
 	"github.com/katwate/js-skylines/internal/core"
 	"github.com/katwate/js-skylines/internal/road"
 	"github.com/katwate/js-skylines/internal/sim"
@@ -65,6 +66,8 @@ type SaveData struct {
 	TaxiFleet        []TransportVehicleData
 	TaxiRequests     []TaxiRequestData
 	TransferStations []TransferStationData
+
+	Zoning building.SaveZoning
 }
 
 type RoadNodeData struct {
@@ -271,7 +274,7 @@ type SaveStats struct {
 	TotalCount int32
 }
 
-const currentSaveVersion int32 = 11
+const currentSaveVersion int32 = 12
 
 func calcChecksum(data []byte) uint32 {
 	return crc32.ChecksumIEEE(data)
@@ -383,6 +386,8 @@ func migrateSaveData(data *SaveData) bool {
 			data.Version = 10
 		case 10:
 			data.Version = 11
+		case 11:
+			data.Version = 12
 		}
 	}
 	return true
@@ -773,6 +778,10 @@ func SaveGame(filename string, m *sim.SimulationManager, money float32, timeOfDa
 				DstX: r.DstX, DstZ: r.DstZ, Active: r.Active, Assigned: r.Assigned,
 			})
 		}
+	}
+
+	if m.Zones != nil {
+		data.Zoning = building.ExportZoning(m.Zones, m.Buildings, m.Demand)
 	}
 
 	f, err := os.Create(filename)
@@ -1295,6 +1304,10 @@ func LoadGame(filename string, m *sim.SimulationManager) (money float32, timeOfD
 				})
 			}
 		}
+	}
+
+	if m.Zones != nil && data.Zoning.Width > 0 {
+		building.ImportZoning(data.Zoning, m.Zones, m.Buildings, m.Demand)
 	}
 
 	return data.Money, data.TimeOfDay, nil

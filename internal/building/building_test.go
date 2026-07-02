@@ -33,7 +33,14 @@ func TestConstructionCompletes(t *testing.T) {
 		t.Fatal("expected foundation stage")
 	}
 	for i := 0; i < 200; i++ {
+		if len(bm.Buildings) == 0 {
+			break
+		}
 		bm.tickBuilding(0, 1)
+	}
+	b = &bm.Buildings[0]
+	if len(bm.Buildings) == 0 {
+		t.Fatal("building removed during construction")
 	}
 	if b.State != StateOccupied {
 		t.Fatalf("expected occupied after construction, got %v", b.State)
@@ -78,7 +85,7 @@ func TestUpgradeAndAbandon(t *testing.T) {
 	b.Progress = 1
 	b.LandValue = 0.7
 	for i := 0; i < 500; i++ {
-		bm.updateLandValue()
+		bm.updateLandValueIncremental()
 		bm.tickBuilding(0, 1)
 	}
 	if b.Level < 2 {
@@ -164,19 +171,89 @@ func TestHouseholdAndBusiness(t *testing.T) {
 
 func TestLandValue(t *testing.T) {
 	zm := zoning.NewZoneManager(8, 8, nil, nil)
+	zm.Init()
 	demand := zoning.NewDemandEngine()
 	bm := NewManager(zm, demand, services.NewStarter())
 
 	demand.Factors.Pollution = 0
 	demand.Factors.Crime = 0
-	bm.updateLandValue()
+	bm.calcLandValueAt(0, 0)
 	clean := bm.landValueAt(0, 0)
 
 	demand.Factors.Pollution = 0.9
 	demand.Factors.Crime = 0.8
-	bm.updateLandValue()
+	bm.calcLandValueAt(0, 0)
 	polluted := bm.landValueAt(0, 0)
 	if polluted >= clean {
 		t.Fatalf("pollution/crime should lower land value: clean=%v polluted=%v", clean, polluted)
+	}
+}
+
+func TestServiceConsumption(t *testing.T) {
+	zm := zoning.NewZoneManager(8, 8, nil, nil)
+	zm.Init()
+	demand := zoning.NewDemandEngine()
+	bm := NewManager(zm, demand, services.NewStarter())
+	lot := zoning.ZoneLot{ID: 3, X: 0, Z: 0, Width: 2, Height: 1, Type: zoning.ZoneResidentialLow, Cells: 2}
+	bm.startConstruction(&lot)
+	b := &bm.Buildings[0]
+	b.State = StateOccupied
+	bm.initOccupancy(b)
+	bm.tickServices(b)
+	if b.Consumption.Electricity <= 0 || b.Consumption.Water <= 0 {
+		t.Fatalf("residential should consume utilities: %+v", b.Consumption)
+	}
+	if !b.ServiceOK {
+		t.Fatal("starter services should satisfy building")
+	}
+}
+
+func TestStatistics(t *testing.T) {
+	zm := zoning.NewZoneManager(8, 8, nil, nil)
+	zm.Init()
+	demand := zoning.NewDemandEngine()
+	bm := NewManager(zm, demand, services.NewStarter())
+	lot := zoning.ZoneLot{ID: 4, X: 0, Z: 0, Width: 2, Height: 2, Type: zoning.ZoneResidentialLow, Cells: 4}
+	bm.startConstruction(&lot)
+	b := &bm.Buildings[0]
+	b.State = StateOccupied
+	bm.initOccupancy(b)
+	bm.refreshStats(1)
+	if bm.Stats.Population < 1 {
+		t.Fatalf("stats should track population: %+v", bm.Stats)
+	}
+}
+
+func TestZoningSnapshotRoundTrip(t *testing.T) {
+	zm := zoning.NewZoneManager(4, 4, nil, nil)
+	zm.Init()
+	zm.SetZoneCell(1, 1, zoning.ZoneIndustrial)
+	demand := zoning.NewDemandEngine()
+	bm := NewManager(zm, demand, services.NewStarter())
+	lot := zoning.ZoneLot{ID: 5, X: 1, Z: 1, Width: 1, Height: 1, Type: zoning.ZoneIndustrial, Cells: 1}
+	bm.startConstruction(&lot)
+	bm.Buildings[0].State = StateOccupied
+
+	sz := ExportZoning(zm, bm, demand)
+	zm2 := zoning.NewZoneManager(4, 4, nil, nil)
+	zm2.Init()
+	bm2 := NewManager(zm2, zoning.NewDemandEngine(), services.NewStarter())
+	ImportZoning(sz, zm2, bm2, demand)
+	if zm2.Cells[1][1].Type != zoning.ZoneIndustrial {
+		t.Fatal("zone grid should round-trip")
+	}
+	if len(bm2.Buildings) != 1 {
+		t.Fatalf("buildings should round-trip, got %d", len(bm2.Buildings))
+	}
+}
+
+func TestDistrictPolicyHighRiseBan(t *testing.T) {
+	zm := zoning.NewZoneManager(4, 4, nil, nil)
+	zm.Init()
+	zm.SetDistrictPolicy(0, zoning.PolicyHighRiseBan, true)
+	bm := NewManager(zm, zoning.NewDemandEngine(), services.NewStarter())
+	b := Building{CellX: 0, CellZ: 0, Level: 3}
+	if bm.maxLevelFor(&b) != 3 {
+		t.Fatal("high rise ban should cap at level 3")
 	}
 }

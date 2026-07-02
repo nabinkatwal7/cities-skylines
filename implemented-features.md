@@ -3740,7 +3740,7 @@ Construction consumes time.
 
 ---
 
-## 5.21 Service Consumption
+## 5.21 Service Consumption ✅
 
 Buildings consume:
 
@@ -3775,7 +3775,7 @@ Office
 
 ---
 
-## 5.22 District Integration
+## 5.22 District Integration ✅
 
 Zones inherit district policies.
 
@@ -3791,7 +3791,7 @@ Policies modify building behavior.
 
 ---
 
-## 5.23 Building AI
+## 5.23 Building AI ✅
 
 Every simulation cycle buildings evaluate:
 
@@ -3808,7 +3808,7 @@ Buildings react dynamically to city conditions.
 
 ---
 
-## 5.24 Statistics
+## 5.24 Statistics ✅
 
 The zoning system records:
 
@@ -3823,7 +3823,7 @@ The zoning system records:
 
 ---
 
-## 5.25 Serialization
+## 5.25 Serialization ✅
 
 Saved zoning data includes:
 
@@ -3838,7 +3838,7 @@ Saved zoning data includes:
 
 ---
 
-## 5.26 Performance Optimization
+## 5.26 Performance Optimization ✅
 
 Optimizations include:
 
@@ -3852,7 +3852,7 @@ Only changed districts are recalculated.
 
 ---
 
-## 5.27 Design Goals
+## 5.27 Design Goals ✅
 
 The zoning system is designed to support:
 

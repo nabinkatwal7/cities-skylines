@@ -85,6 +85,7 @@ func NewSimulationManager(seed int64) *SimulationManager {
 	sm.Buildability = terrain.NewBuildabilityChecker(sm.Heightmap, sm.Water, sm.Trees, sm.Roads, sm.Resources)
 	terrain.SetBuildabilityChecker(sm.Buildability)
 	sm.Zones = zoning.NewZoneManager(128, 128, sm.Roads, sm.Buildability)
+	sm.Zones.Init()
 	sm.Services = services.NewStarter()
 	sm.Demand = zoning.NewDemandEngine()
 	sm.Demand.Factors.ServiceScore = zoning.ServiceScore(sm.Services)
