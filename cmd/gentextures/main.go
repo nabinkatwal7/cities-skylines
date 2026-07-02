@@ -13,6 +13,30 @@ func main() {
 	os.MkdirAll("assets/textures", 0o755)
 	writeGrass("assets/textures/grass.png")
 	writeWater("assets/textures/water.png")
+	writeRoad("assets/textures/road.png")
+}
+
+func writeRoad(path string) {
+	const size = 256
+	img := image.NewNRGBA(image.Rect(0, 0, size, size))
+	for y := 0; y < size; y++ {
+		for x := 0; x < size; x++ {
+			n := hashNoise(x, y, 41)*0.06 + hashNoise(x*4, y*4, 7)*0.03
+			v := 0.20 + n
+			img.SetNRGBA(x, y, color.NRGBA{
+				R: uint8(clamp01(v*0.92) * 255),
+				G: uint8(clamp01(v) * 255),
+				B: uint8(clamp01(v*0.88) * 255),
+				A: 255,
+			})
+		}
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
+	png.Encode(f, img)
 }
 
 func writeGrass(path string) {

@@ -626,6 +626,7 @@ func (rm *RoadManager) LoadAssets() {
 	tex := rl.LoadTexture("assets/textures/road.png")
 	if tex.ID != 0 {
 		rm.roadTex = tex
+		rm.markAllDirty()
 	}
 }
 
@@ -634,6 +635,7 @@ func (rm *RoadManager) SetRoadTexture(tex rl.Texture2D) {
 		rl.UnloadTexture(rm.roadTex)
 	}
 	rm.roadTex = tex
+	rm.markAllDirty()
 }
 
 func (rm *RoadManager) ClearRoadTexture() {
@@ -661,8 +663,10 @@ func (rm *RoadManager) AddSegment(a, b uint32, rt RoadType) uint32 {
 	dz := nb.Z - na.Z
 	length := float32(math.Sqrt(float64(dx*dx + dz*dz)))
 
-	tx0, tz0 := rm.TangentAtNodeInternal(a, b)
-	tx1, tz1 := rm.TangentAtNodeInternal(b, a)
+	tx0 := (nb.X - na.X) * 0.3
+	tz0 := (nb.Z - na.Z) * 0.3
+	tx1 := (na.X - nb.X) * 0.3
+	tz1 := (na.Z - nb.Z) * 0.3
 
 	id := rm.NextID
 	rm.NextID++
@@ -968,22 +972,30 @@ func cubicBezier(t float32, p0, p1, p2, p3 float32) float32 {
 }
 
 func (rm *RoadManager) SampleSegment(seg RoadSegment, steps int) ([]float32, []float32, []float32) {
+	if steps < 2 {
+		steps = 2
+	}
 	na := &rm.Nodes[seg.NodeA]
 	nb := &rm.Nodes[seg.NodeB]
-
-	tx0, tz0 := rm.TangentAtNode(seg.NodeA, int(seg.ID))
-	tx1, tz1 := rm.TangentAtNode(seg.NodeB, int(seg.ID))
 
 	xs := make([]float32, steps+1)
 	zs := make([]float32, steps+1)
 	ds := make([]float32, steps+1)
 
-	for si := 0; si <= steps; si++ {
-		t := float32(si) / float32(steps)
-		x := cubicBezier(t, na.X, na.X+tx0, nb.X+tx1, nb.X)
-		z := cubicBezier(t, na.Z, na.Z+tz0, nb.Z+tz1, nb.Z)
-		xs[si] = x
-		zs[si] = z
+	if seg.RoadType == RoadRoundabout {
+		tx0, tz0 := seg.Curve.P1x, seg.Curve.P1z
+		tx1, tz1 := seg.Curve.P2x, seg.Curve.P2z
+		for si := 0; si <= steps; si++ {
+			t := float32(si) / float32(steps)
+			xs[si] = cubicBezier(t, na.X, na.X+tx0, nb.X+tx1, nb.X)
+			zs[si] = cubicBezier(t, na.Z, na.Z+tz0, nb.Z+tz1, nb.Z)
+		}
+	} else {
+		for si := 0; si <= steps; si++ {
+			t := float32(si) / float32(steps)
+			xs[si] = na.X + (nb.X-na.X)*t
+			zs[si] = na.Z + (nb.Z-na.Z)*t
+		}
 	}
 
 	ds[0] = 0
@@ -1128,7 +1140,7 @@ func (rm *RoadManager) buildSurfaceMesh(h *terrain.Heightmap, seg RoadSegment) r
 	if steps < 4 {
 		steps = 4
 	}
-	xs, zs, _ := rm.SampleSegment(seg, steps)
+	xs, zs, ds := rm.SampleSegment(seg, steps)
 	stripSteps := len(xs) - 1
 	if stripSteps < 1 {
 		return rl.Model{}
@@ -1136,7 +1148,7 @@ func (rm *RoadManager) buildSurfaceMesh(h *terrain.Heightmap, seg RoadSegment) r
 
 	lanes := seg.LaneCount
 	if lanes < 1 {
-		lanes = int32(int(seg.LaneCount))
+		lanes = int32(roadLanes(seg.RoadType))
 	}
 	total := float32(lanes) * laneW
 	half := total * 0.5
@@ -1148,6 +1160,8 @@ func (rm *RoadManager) buildSurfaceMesh(h *terrain.Heightmap, seg RoadSegment) r
 	normals := make([]float32, 0, vertCount*3)
 	tc := make([]float32, 0, vertCount*2)
 	indices := make([]uint16, 0, triCount*3)
+
+	const texRepeat = float32(4.0) // world meters per texture repeat
 
 	for si := 0; si <= stripSteps; si++ {
 		x := xs[si]
@@ -1176,10 +1190,10 @@ func (rm *RoadManager) buildSurfaceMesh(h *terrain.Heightmap, seg RoadSegment) r
 		if seg.Elevation > 0 {
 			hgt = float32(seg.Elevation) * 5
 		} else {
-			hgt = h.WorldHeight(x, z) + 0.15
+			hgt = h.WorldHeight(x, z) + 0.12
 		}
 
-		u := float32(si) / 4.0
+		u := ds[si] / texRepeat
 		verts = append(verts, x-perX*half, hgt, z-perZ*half)
 		verts = append(verts, x+perX*half, hgt, z+perZ*half)
 		normals = append(normals, 0, 1, 0, 0, 1, 0)

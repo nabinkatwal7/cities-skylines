@@ -345,23 +345,28 @@ func (ws *WaterSystem) emitFloodEvent(started bool) {
 	}
 }
 
-func (ws *WaterSystem) IsWet(worldX, worldZ float32) bool {
-	tx := worldX / WorldSize * float32(WaterGridSize-1)
-	tz := worldZ / WorldSize * float32(WaterGridSize-1)
-	x := int(tx + float32(WaterGridSize)/2)
-	z := int(tz + float32(WaterGridSize)/2)
+func waterWorldToGrid(worldX, worldZ float32) (x, z int, ok bool) {
+	tx := (worldX + WorldSize/2) / WorldSize * float32(WaterGridSize-1)
+	tz := (worldZ + WorldSize/2) / WorldSize * float32(WaterGridSize-1)
+	x = int(tx)
+	z = int(tz)
 	if x < 0 || x >= WaterGridSize || z < 0 || z >= WaterGridSize {
+		return 0, 0, false
+	}
+	return x, z, true
+}
+
+func (ws *WaterSystem) IsWet(worldX, worldZ float32) bool {
+	x, z, ok := waterWorldToGrid(worldX, worldZ)
+	if !ok {
 		return false
 	}
 	return ws.Grid[z][x].Height > 0.01
 }
 
 func (ws *WaterSystem) FloodDepthAt(worldX, worldZ float32) float32 {
-	tx := worldX / WorldSize * float32(WaterGridSize-1)
-	tz := worldZ / WorldSize * float32(WaterGridSize-1)
-	x := int(tx + float32(WaterGridSize)/2)
-	z := int(tz + float32(WaterGridSize)/2)
-	if x < 0 || x >= WaterGridSize || z < 0 || z >= WaterGridSize {
+	x, z, ok := waterWorldToGrid(worldX, worldZ)
+	if !ok {
 		return 0
 	}
 	cell := &ws.Grid[z][x]

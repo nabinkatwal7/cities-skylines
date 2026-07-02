@@ -73,6 +73,34 @@ func TestAddSegmentQueuesMeshRebuild(t *testing.T) {
 	}
 }
 
+func TestClearModelsResetsSlice(t *testing.T) {
+	rm := NewRoadManager()
+	a := rm.AddNode(0, 0, 0)
+	b := rm.AddNode(8, 0, 0)
+	rm.AddSegment(a, b, RoadTwoLane)
+	if len(rm.Models) != 1 {
+		t.Fatalf("models=%d want 1", len(rm.Models))
+	}
+	rm.ClearModels()
+	if len(rm.Models) != 0 {
+		t.Fatalf("models=%d want 0 after clear", len(rm.Models))
+	}
+	if rm.PendingMeshRebuilds() != 0 {
+		t.Fatal("dirty list should be cleared")
+	}
+}
+
+func TestValidNodeIndex(t *testing.T) {
+	rm := NewRoadManager()
+	idx := rm.AddNode(1, 0, 1)
+	if !rm.ValidNodeIndex(idx) {
+		t.Fatal("valid node")
+	}
+	if rm.ValidNodeIndex(99) {
+		t.Fatal("out of range")
+	}
+}
+
 func TestSegmentIndex(t *testing.T) {
 	rm := NewRoadManager()
 	a := rm.AddNode(0, 0, 0)

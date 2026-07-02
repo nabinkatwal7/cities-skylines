@@ -223,10 +223,9 @@ func main() {
 						}
 					}
 				case ui.ToolParking:
-				if !pv.Valid {
-					break
-				}
-				cost := pv.Cost
+					if !pv.Valid {
+						break
+					}
 					switch {
 					case gameUI.BusDepotMode:
 						sim.PlaceBusDepot(worldX, worldZ)
@@ -249,8 +248,7 @@ func main() {
 					default:
 						sim.PlaceParkingLot(worldX, worldZ, gameUI.ParkingGarage)
 					}
-				}
-			case ui.ToolTransport:
+				case ui.ToolTransport:
 				if gameUI.CargoMode {
 					if !pv.Valid {
 						break

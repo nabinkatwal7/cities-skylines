@@ -78,9 +78,6 @@ for pair in car:sedan bus:van truck:truck emergency:ambulance bike:hatchback-spo
 done
 
 unzip -joq "$TMP/roads.zip" "Models/OBJ format/Textures/colormap.png" -d "$ASSETS/textures" 2>/dev/null || true
-if [[ -f "$ASSETS/textures/colormap.png" ]]; then
-  mv -f "$ASSETS/textures/colormap.png" "$ASSETS/textures/road.png"
-fi
 
 cat >"$ASSETS/ATTRIBUTION.txt" <<'EOF'
 3D assets from Kenney (www.kenney.nl) — CC0 1.0 Universal.

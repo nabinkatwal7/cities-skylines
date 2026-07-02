@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/katwate/js-skylines/internal/road"
 	"github.com/katwate/js-skylines/internal/sim"
 	"github.com/katwate/js-skylines/internal/terrain"
 	"github.com/katwate/js-skylines/internal/transport"

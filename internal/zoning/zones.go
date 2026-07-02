@@ -250,7 +250,8 @@ func (zm *ZoneManager) roadConnected(worldX, worldZ float32) bool {
 		return false
 	}
 	cs := zm.cellSize()
-	if dist < cs*0.3 {
+	const minRoadDist = 4.0 // match road placement grid; don't zone on the pavement
+	if dist < minRoadDist {
 		return false
 	}
 	depth := int(math.Ceil(float64(dist / cs)))
