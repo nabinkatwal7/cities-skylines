@@ -276,11 +276,11 @@ func (bm *BuildingManager) collapseBuilding(slot int32, zm *ZoneManager) {
 func (bm *BuildingManager) LoadAssets() {
 }
 
-func (bm *BuildingManager) Update(zm *ZoneManager, h *Heightmap, roads *RoadManager, dm *DistrictManager) {
+func (bm *BuildingManager) Update(zm *ZoneManager, h *Heightmap, roads *RoadManager, dm *DistrictManager, transport *TransportManager) {
 	bm.processCommands(zm)
 	bm.calcDemand()
 	bm.developZones(zm, roads)
-	bm.updateBuildings(zm, h, roads, dm)
+	bm.updateBuildings(zm, h, roads, dm, transport)
 }
 
 func (bm *BuildingManager) calcDemand() {
@@ -393,7 +393,7 @@ func SetResourceForBuildings(rs *ResourceSystem) {
 	resourceForBuildings = rs
 }
 
-func (bm *BuildingManager) updateBuildings(zm *ZoneManager, h *Heightmap, roads *RoadManager, dm *DistrictManager) {
+func (bm *BuildingManager) updateBuildings(zm *ZoneManager, h *Heightmap, roads *RoadManager, dm *DistrictManager, transport *TransportManager) {
 	bm.Stats = BuildingStats{}
 	cellSize := WorldSize / float32(zm.width)
 
@@ -550,6 +550,15 @@ func (bm *BuildingManager) updateBuildings(zm *ZoneManager, h *Heightmap, roads 
 				if noise > 0.2 {
 					b.Household.Happiness -= 1
 				}
+				if transport != nil {
+					cov := transport.CoverageScore(b.Position.X, b.Position.Z)
+					if cov > 0.3 {
+						b.Household.Happiness++
+					}
+					if cov < 0.1 && noise < 0.1 {
+						b.Household.Happiness--
+					}
+				}
 			}
 
 			if b.Level >= 5 {
@@ -558,7 +567,7 @@ func (bm *BuildingManager) updateBuildings(zm *ZoneManager, h *Heightmap, roads 
 			b.UpgradeTimer++
 			needed := int32(600-b.Level*100) + b.Seed%60
 			if b.UpgradeTimer > needed {
-				lv := landValue(b, h)
+				lv := landValue(b, h, transport)
 				if lv > b.Level*10 {
 					bm.PushCmd(BuildingCommand{
 						Type: CmdBuildUpgrade,
@@ -620,7 +629,7 @@ func buildingHeight(zt ZoneType, seed int32) float32 {
 	return base + float32(seed%3)*0.8
 }
 
-func landValue(b *Building, h *Heightmap) int32 {
+func landValue(b *Building, h *Heightmap, transport *TransportManager) int32 {
 	val := int32(30)
 	if b.HasFlag(FlagHasRoad) {
 		val += 20
@@ -643,6 +652,10 @@ func landValue(b *Building, h *Heightmap) int32 {
 		if trees > 5 {
 			val += 10
 		}
+	}
+	if transport != nil {
+		cov := transport.CoverageScore(b.Position.X, b.Position.Z)
+		val += int32(cov * 20)
 	}
 	return val
 }

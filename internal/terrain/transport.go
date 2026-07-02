@@ -118,18 +118,24 @@ type TransportVehicle struct {
 }
 
 type TransportNetwork struct {
-	Type             TransportType
-	Active           bool
-	VehicleCount     int32
-	RouteCount       int32
-	StopCount        int32
-	StationCount     int32
-	PassengersPerDay int32
-	TotalIncome      float32
-	MaintenanceCost  float32
-	Capacity         int32
-	Pollution        float32
-	Noise            float32
+	Type              TransportType
+	Active            bool
+	VehicleCount      int32
+	RouteCount        int32
+	StopCount         int32
+	StationCount      int32
+	PassengersPerDay  int32
+	WeeklyPassengers  int32
+	LifetimePassengers int64
+	TotalIncome       float32
+	TotalExpenses     float32
+	MaintenanceCost   float32
+	Capacity          int32
+	AvgWaitTime       float32
+	CapacityUsage     float32
+	VehicleUtilization float32
+	Pollution         float32
+	Noise             float32
 }
 
 type TransferStation struct {
@@ -179,6 +185,8 @@ type TransportManager struct {
 	CableConnections []CableConnection
 	TransferStations []TransferStation
 	TransferNextID   uint32
+
+	RoadCongestion float32
 }
 
 type CableConnection struct {
@@ -859,6 +867,39 @@ func (tm *TransportManager) SpawnVehicle(lineIdx int) {
 	}
 }
 
+func (tm *TransportManager) InitExternalConnections(cs *ConnectionSystem) {
+	if cs == nil {
+		return
+	}
+	for _, c := range cs.GetByType(ConnAir) {
+		tm.AddStop(c.WorldX, c.WorldZ, TransAir)
+		if len(tm.Stops) > 0 {
+			s := &tm.Stops[len(tm.Stops)-1]
+			s.Name = "Airport (External)"
+			s.IsStation = true
+			s.Capacity = 500
+		}
+	}
+	for _, c := range cs.GetByType(ConnShip) {
+		tm.AddStop(c.WorldX, c.WorldZ, TransShip)
+		if len(tm.Stops) > 0 {
+			s := &tm.Stops[len(tm.Stops)-1]
+			s.Name = "Port (External)"
+			s.IsStation = true
+			s.Capacity = 500
+		}
+	}
+	for _, c := range cs.GetByType(ConnRail) {
+		tm.AddStop(c.WorldX, c.WorldZ, TransTrain)
+		if len(tm.Stops) > 0 {
+			s := &tm.Stops[len(tm.Stops)-1]
+			s.Name = "Rail (External)"
+			s.IsStation = true
+			s.Capacity = 500
+		}
+	}
+}
+
 func (tm *TransportManager) Update(rm *RoadManager, dm *DistrictManager, h *Heightmap) {
 	for i := 0; i < TransportVehiclePoolSize; i++ {
 		if tm.Pool[i].ID != math.MaxUint32 && tm.Pool[i].Maintenance <= 0 {
@@ -871,11 +912,29 @@ func (tm *TransportManager) Update(rm *RoadManager, dm *DistrictManager, h *Heig
 		}
 	}
 
+	if rm != nil {
+		roadVehCount := 0
+		tm.forEachVehicle(func(v *TransportVehicle, _ int32) {
+			if v.TransType == TransBus || v.TransType == TransTaxi {
+				roadVehCount++
+			}
+		})
+		tm.RoadCongestion = float32(roadVehCount) / 50.0
+		if tm.RoadCongestion > 1.0 {
+			tm.RoadCongestion = 1.0
+		}
+	}
+
 	for li := range tm.Lines {
 		line := &tm.Lines[li]
 		if !line.Active {
 			continue
 		}
+		netIdx := int(line.TransType)
+		if netIdx < len(tm.Networks) {
+			tm.Networks[netIdx].TotalExpenses += transportModeConfigs[line.TransType].OperatingCost * float32(line.VehicleCount) * (line.Budget / 100.0)
+		}
+
 		line.VehicleCount = 0
 		line.PassengerCount = 0
 		for _, v := range tm.Vehicles {
@@ -900,6 +959,17 @@ func (tm *TransportManager) Update(rm *RoadManager, dm *DistrictManager, h *Heig
 					desired = 2
 				case TransMetro:
 					desired = 3
+				}
+				budgetFactor := line.Budget / 100.0
+				if budgetFactor < 0.5 {
+					budgetFactor = 0.5
+				}
+				if budgetFactor > 2.0 {
+					budgetFactor = 2.0
+				}
+				desired = int(float32(desired) * budgetFactor)
+				if desired < 1 {
+					desired = 1
 				}
 			}
 		}
@@ -952,9 +1022,41 @@ func (tm *TransportManager) Update(rm *RoadManager, dm *DistrictManager, h *Heig
 	for i := range tm.Networks {
 		net := &tm.Networks[i]
 		if net.TotalIncome > 0 {
-			net.TotalIncome *= 0.95
+			net.TotalIncome *= 0.98
+		}
+		net.WeeklyPassengers += net.PassengersPerDay
+		if net.WeeklyPassengers > 999999 {
+			net.WeeklyPassengers = 0
+		}
+		net.LifetimePassengers += int64(net.PassengersPerDay)
+		net.PassengersPerDay = 0
+
+		var totalCap int32
+		var totalVeh int32
+		tm.forEachVehicle(func(v *TransportVehicle, _ int32) {
+			if v.TransType == TransportType(i) {
+				totalCap += v.Capacity + v.StandingCapacity
+				totalVeh++
+			}
+		})
+		if totalCap > 0 {
+			passengers := tm.countPassengers(TransportType(i))
+			net.CapacityUsage = float32(passengers) / float32(totalCap)
+		}
+		if totalVeh > 0 {
+			net.VehicleUtilization = float32(totalVeh) / float32(net.VehicleCount+1)
 		}
 	}
+}
+
+func (tm *TransportManager) countPassengers(tt TransportType) int32 {
+	var total int32
+	tm.forEachVehicle(func(v *TransportVehicle, _ int32) {
+		if v.TransType == tt {
+			total += v.Passengers
+		}
+	})
+	return total
 }
 
 func (tm *TransportManager) updatePoolVehicles(rm *RoadManager, h *Heightmap) {
@@ -1385,7 +1487,25 @@ func (tm *TransportManager) arriveAtStop(v *TransportVehicle, currentStop, nextS
 	v.Passengers += boarded
 	line.PassengerCount += boarded
 	line.TotalPassengers += int64(boarded)
-	income := float32(boarded) * 0.5
+
+	distFactor := float32(1.0)
+	if nextStop != nil && currentStop != nil {
+		dx := nextStop.X - currentStop.X
+		dz := nextStop.Z - currentStop.Z
+		segmentDist := float32(math.Sqrt(float64(dx*dx + dz*dz)))
+		distFactor = 1.0 + segmentDist/500.0
+		if distFactor > 3.0 {
+			distFactor = 3.0
+		}
+	}
+	ticketPrice := float32(0.5)
+	netIdx := int(v.TransType)
+	if netIdx < len(transportModeConfigs) {
+		ticketPrice = transportModeConfigs[v.TransType].TicketRevenue
+	}
+	income := float32(boarded) * ticketPrice * distFactor
+	touristBonus := income * 0.2
+	income += touristBonus
 	line.TotalIncome += income
 	if currentStop != nil {
 		currentStop.Passengers -= boarded
@@ -1393,7 +1513,7 @@ func (tm *TransportManager) arriveAtStop(v *TransportVehicle, currentStop, nextS
 			currentStop.Passengers = 0
 		}
 	}
-	netIdx := int(v.TransType)
+	netIdx = int(v.TransType)
 	if netIdx < len(tm.Networks) {
 		tm.Networks[netIdx].PassengersPerDay += boarded
 		tm.Networks[netIdx].TotalIncome += income
@@ -1614,6 +1734,61 @@ func (tm *TransportManager) TotalIncome() float32 {
 		total += tm.Networks[i].TotalIncome
 	}
 	return total
+}
+
+func (tm *TransportManager) CoverageScore(x, z float32) float32 {
+	if tm == nil {
+		return 0
+	}
+	var score float32
+	modesFound := make(map[TransportType]bool)
+	for i := range tm.Stops {
+		s := &tm.Stops[i]
+		dx := s.X - x
+		dz := s.Z - z
+		dist := float32(math.Sqrt(float64(dx*dx + dz*dz)))
+		if dist < 200 && !modesFound[s.TransType] {
+			modesFound[s.TransType] = true
+			walkTime := dist / 6
+			access := 1.0 - walkTime/33.0
+			if access > 0 {
+				score += access * 0.25
+			}
+		}
+	}
+	if score > 1.0 {
+		score = 1.0
+	}
+	return score
+}
+
+func (tm *TransportManager) TotalMonthlyCost() float32 {
+	var total float32
+	for li := range tm.Lines {
+		line := &tm.Lines[li]
+		netIdx := int(line.TransType)
+		if netIdx < len(transportModeConfigs) {
+			cfg := transportModeConfigs[line.TransType]
+			opCost := cfg.OperatingCost * float32(line.VehicleCount) * (line.Budget / 100.0)
+			total += opCost
+		}
+	}
+	return total
+}
+
+func (tm *TransportManager) SetLineBudget(lineID uint32, budget float32) {
+	for i := range tm.Lines {
+		if tm.Lines[i].ID == lineID {
+			if budget < 10 {
+				budget = 10
+			}
+			if budget > 200 {
+				budget = 200
+			}
+			tm.Lines[i].Budget = budget
+			return
+		}
+	}
 }
 
 func (tm *TransportManager) NearestStop(x, z float32, maxDist float32) *TransportStop {

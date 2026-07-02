@@ -1208,6 +1208,18 @@ func (pm *ParkingManager) depotMaintenance(tm *TransportManager) {
 
 		alive := depotStillAlive(pm, v.HomeDepotType, v.HomeDepotSlot)
 
+		repairRate := float32(0.01)
+		for li := range tm.Lines {
+			if tm.Lines[li].ID == v.LineID {
+				budgetFactor := tm.Lines[li].Budget / 100.0
+				if budgetFactor < 0.5 {
+					budgetFactor = 0.5
+				}
+				repairRate *= budgetFactor
+				break
+			}
+		}
+
 		if alive {
 			v.MaintenanceTimer++
 			v.Maintenance -= 0.0002
@@ -1215,7 +1227,7 @@ func (pm *ParkingManager) depotMaintenance(tm *TransportManager) {
 				v.Maintenance = 0
 			}
 			if v.MaintenanceTimer > 600 && v.Maintenance < 1.0 {
-				v.Maintenance += 0.01
+				v.Maintenance += repairRate
 				v.MaintenanceTimer = 0
 				if v.Maintenance > 1.0 {
 					v.Maintenance = 1.0

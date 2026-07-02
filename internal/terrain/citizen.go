@@ -215,8 +215,17 @@ func generalizedCost(legs []JourneyLeg, wealth int32, tm *TransportManager) floa
 	transferCost := float32(transferCount) * transferFixedCost
 	moneyCost := float32(transferCount) * 2.0 * (1.0 - float32(wealth)/150.0)
 
+	congestionPenalty := float32(0)
+	if tm != nil {
+		for _, leg := range legs {
+			if leg.LegType != LegWalk && (leg.Mode == TransBus || leg.Mode == TransTaxi) {
+				congestionPenalty += tm.RoadCongestion * 30
+			}
+		}
+	}
+
 	noise := float32(rand.Intn(20)) - 10
-	return timeCost + waitCost + transferCost + moneyCost + noise
+	return timeCost + waitCost + transferCost + moneyCost + congestionPenalty + noise
 }
 
 func (cm *CitizenManager) findRoutes(fromX, fromZ, toX, toZ float32, tm *TransportManager) [][]JourneyLeg {

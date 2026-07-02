@@ -64,6 +64,7 @@ type SaveData struct {
 	CargoTrains      []TransportVehicleData
 	TaxiFleet        []TransportVehicleData
 	TaxiRequests     []TaxiRequestData
+	TransferStations []TransferStationData
 }
 
 type RoadNodeData struct {
@@ -153,6 +154,8 @@ type TransportStopData struct {
 	DistrictID        int32
 	Accessibility     float32
 	Capacity          int32
+	TransferStationID uint32
+	Name              string
 }
 
 type TransportLineData struct {
@@ -183,6 +186,20 @@ type TransportNetworkData struct {
 	Capacity         int32
 	Pollution        float32
 	Noise            float32
+	WeeklyPassengers  int32
+	LifetimePassengers int64
+	TotalExpenses    float32
+	AvgWaitTime      float32
+	CapacityUsage    float32
+	VehicleUtilization float32
+}
+
+type TransferStationData struct {
+	ID      uint32
+	Name    string
+	StopIDs []uint32
+	X       float32
+	Z       float32
 }
 
 type TransportVehicleData struct {
@@ -198,6 +215,10 @@ type TransportVehicleData struct {
 	Moving     bool
 	TargetX    float32
 	TargetZ    float32
+	StandingCapacity int32
+	HomeDepotType    uint8
+	HomeDepotSlot    int32
+	MaintenanceTimer int32
 }
 
 type ParkingSpotData struct {
@@ -288,7 +309,7 @@ type SaveStats struct {
 	TotalCount int32
 }
 
-const currentSaveVersion int32 = 10
+const currentSaveVersion int32 = 11
 
 func calcChecksum(data []byte) uint32 {
 	return crc32.ChecksumIEEE(data)
@@ -398,6 +419,8 @@ func migrateSaveData(data *SaveData) bool {
 			data.Version = 9
 		case 9:
 			data.Version = 10
+		case 10:
+			data.Version = 11
 		}
 	}
 	return true
@@ -595,7 +618,8 @@ func SaveGame(filename string, m *SimulationManager, money float32, timeOfDay in
 			copyNet := make([]TransportType, len(s.ConnectedNetworks))
 			copy(copyNet, s.ConnectedNetworks)
 			data.TransportStops = append(data.TransportStops, TransportStopData{
-				X: s.X, Z: s.Z,
+				X:                 s.X,
+				Z:                 s.Z,
 				TransType:         s.TransType,
 				ConnectedNetworks: copyNet,
 				Passengers:        s.Passengers,
@@ -604,6 +628,8 @@ func SaveGame(filename string, m *SimulationManager, money float32, timeOfDay in
 				DistrictID:        s.DistrictID,
 				Accessibility:     s.Accessibility,
 				Capacity:          s.Capacity,
+				TransferStationID: s.TransferStationID,
+				Name:              s.Name,
 			})
 		}
 		for _, l := range m.Transport.Lines {
@@ -637,23 +663,33 @@ func SaveGame(filename string, m *SimulationManager, money float32, timeOfDay in
 				Capacity:         n.Capacity,
 				Pollution:        n.Pollution,
 				Noise:            n.Noise,
+				WeeklyPassengers:  n.WeeklyPassengers,
+				LifetimePassengers: n.LifetimePassengers,
+				TotalExpenses:    n.TotalExpenses,
+				AvgWaitTime:      n.AvgWaitTime,
+				CapacityUsage:    n.CapacityUsage,
+				VehicleUtilization: n.VehicleUtilization,
 			})
 		}
 		for _, v := range m.Transport.Vehicles {
 			data.TransportVehicles = append(data.TransportVehicles, TransportVehicleData{
-				ID:         v.ID,
-				LineID:     v.LineID,
-				TransType:  v.TransType,
-				X:          v.X,
-				Z:          v.Z,
-				Speed:      v.Speed,
-				StopIdx:    int32(v.StopIdx),
-				Passengers: v.Passengers,
-				Capacity:   v.Capacity,
-				Forward:    v.Forward,
-				Moving:     v.Moving,
-				TargetX:    v.TargetX,
-				TargetZ:    v.TargetZ,
+				ID:               v.ID,
+				LineID:           v.LineID,
+				TransType:        v.TransType,
+				X:                v.X,
+				Z:                v.Z,
+				Speed:            v.Speed,
+				StopIdx:          int32(v.StopIdx),
+				Passengers:       v.Passengers,
+				Capacity:         v.Capacity,
+				Forward:          v.Forward,
+				Moving:           v.Moving,
+				TargetX:          v.TargetX,
+				TargetZ:          v.TargetZ,
+				StandingCapacity: v.StandingCapacity,
+				HomeDepotType:    v.HomeDepotType,
+				HomeDepotSlot:    v.HomeDepotSlot,
+				MaintenanceTimer: v.MaintenanceTimer,
 			})
 		}
 		for _, v := range m.Transport.Pool {
@@ -661,19 +697,23 @@ func SaveGame(filename string, m *SimulationManager, money float32, timeOfDay in
 				continue
 			}
 			data.TransportVehicles = append(data.TransportVehicles, TransportVehicleData{
-				ID:         v.ID,
-				LineID:     v.LineID,
-				TransType:  v.TransType,
-				X:          v.X,
-				Z:          v.Z,
-				Speed:      v.Speed,
-				StopIdx:    int32(v.StopIdx),
-				Passengers: v.Passengers,
-				Capacity:   v.Capacity,
-				Forward:    v.Forward,
-				Moving:     v.Moving,
-				TargetX:    v.TargetX,
-				TargetZ:    v.TargetZ,
+				ID:               v.ID,
+				LineID:           v.LineID,
+				TransType:        v.TransType,
+				X:                v.X,
+				Z:                v.Z,
+				Speed:            v.Speed,
+				StopIdx:          int32(v.StopIdx),
+				Passengers:       v.Passengers,
+				Capacity:         v.Capacity,
+				Forward:          v.Forward,
+				Moving:           v.Moving,
+				TargetX:          v.TargetX,
+				TargetZ:          v.TargetZ,
+				StandingCapacity: v.StandingCapacity,
+				HomeDepotType:    v.HomeDepotType,
+				HomeDepotSlot:    v.HomeDepotSlot,
+				MaintenanceTimer: v.MaintenanceTimer,
 			})
 		}
 	}
@@ -750,6 +790,15 @@ func SaveGame(filename string, m *SimulationManager, money float32, timeOfDay in
 				ID: cc.ID, StopA: cc.StopA, StopB: cc.StopB,
 				StartX: cc.StartX, StartZ: cc.StartZ,
 				EndX: cc.EndX, EndZ: cc.EndZ,
+			})
+		}
+		for _, ts := range m.Transport.TransferStations {
+			stopIDs := make([]uint32, len(ts.StopIDs))
+			copy(stopIDs, ts.StopIDs)
+			data.TransferStations = append(data.TransferStations, TransferStationData{
+				ID: ts.ID, Name: ts.Name,
+				StopIDs: stopIDs,
+				X: ts.X, Z: ts.Z,
 			})
 		}
 	}
@@ -1023,6 +1072,8 @@ func LoadGame(filename string, m *SimulationManager) (money float32, timeOfDay i
 				if s.Capacity <= 0 {
 					s.Capacity = 50
 				}
+				s.TransferStationID = sd.TransferStationID
+				s.Name = sd.Name
 			}
 		}
 		for _, ld := range data.TransportLines {
@@ -1051,6 +1102,12 @@ func LoadGame(filename string, m *SimulationManager) (money float32, timeOfDay i
 				m.Transport.Networks[i].Capacity = nd.Capacity
 				m.Transport.Networks[i].Pollution = nd.Pollution
 				m.Transport.Networks[i].Noise = nd.Noise
+				m.Transport.Networks[i].WeeklyPassengers = nd.WeeklyPassengers
+				m.Transport.Networks[i].LifetimePassengers = nd.LifetimePassengers
+				m.Transport.Networks[i].TotalExpenses = nd.TotalExpenses
+				m.Transport.Networks[i].AvgWaitTime = nd.AvgWaitTime
+				m.Transport.Networks[i].CapacityUsage = nd.CapacityUsage
+				m.Transport.Networks[i].VehicleUtilization = nd.VehicleUtilization
 			}
 		}
 		m.Transport.Vehicles = make([]TransportVehicle, 0, len(data.TransportVehicles))
@@ -1079,6 +1136,10 @@ func LoadGame(filename string, m *SimulationManager) (money float32, timeOfDay i
 				v.Moving = vd.Moving
 				v.TargetX = vd.TargetX
 				v.TargetZ = vd.TargetZ
+				v.StandingCapacity = vd.StandingCapacity
+				v.HomeDepotType = vd.HomeDepotType
+				v.HomeDepotSlot = vd.HomeDepotSlot
+				v.MaintenanceTimer = vd.MaintenanceTimer
 				if vd.ID >= m.Transport.PoolNext {
 					m.Transport.PoolNext = vd.ID + 1
 				}
@@ -1209,17 +1270,28 @@ func LoadGame(filename string, m *SimulationManager) (money float32, timeOfDay i
 		}
 		if len(data.CableConnections) > 0 {
 			m.Transport.CableConnections = nil
-			for _, cd := range data.CableConnections {
-				m.Transport.CableConnections = append(m.Transport.CableConnections, CableConnection{
-					ID: cd.ID, StopA: cd.StopA, StopB: cd.StopB,
-					StartX: cd.StartX, StartZ: cd.StartZ,
-					EndX: cd.EndX, EndZ: cd.EndZ,
-				})
-				if cd.ID >= m.Transport.NextID {
-					m.Transport.NextID = cd.ID + 1
-				}
+		for _, cd := range data.CableConnections {
+			m.Transport.CableConnections = append(m.Transport.CableConnections, CableConnection{
+				ID: cd.ID, StopA: cd.StopA, StopB: cd.StopB,
+				StartX: cd.StartX, StartZ: cd.StartZ,
+				EndX: cd.EndX, EndZ: cd.EndZ,
+			})
+			if cd.ID >= m.Transport.NextID {
+				m.Transport.NextID = cd.ID + 1
 			}
 		}
+		m.Transport.TransferStations = nil
+		m.Transport.TransferNextID = 0
+		for _, td := range data.TransferStations {
+			m.Transport.TransferStations = append(m.Transport.TransferStations, TransferStation{
+				ID: td.ID, Name: td.Name, StopIDs: td.StopIDs,
+				X: td.X, Z: td.Z,
+			})
+			if td.ID >= m.Transport.TransferNextID {
+				m.Transport.TransferNextID = td.ID + 1
+			}
+		}
+	}
 	}
 
 	if m.Parking != nil {

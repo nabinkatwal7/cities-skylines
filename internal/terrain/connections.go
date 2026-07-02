@@ -1,5 +1,7 @@
 package terrain
 
+import "math/rand"
+
 type ConnectionType int
 
 const (
@@ -17,7 +19,11 @@ type OutsideConnection struct {
 }
 
 type ConnectionSystem struct {
-	Connections []OutsideConnection
+	Connections  []OutsideConnection
+	Immigration  int32
+	Tourism      int32
+	Imports      int32
+	Exports      int32
 }
 
 func NewConnectionSystem() *ConnectionSystem {
@@ -47,4 +53,19 @@ func (cs *ConnectionSystem) GetByType(t ConnectionType) []OutsideConnection {
 		}
 	}
 	return result
+}
+
+func (cs *ConnectionSystem) Update() {
+	if rand.Intn(120) == 0 {
+		cs.Immigration += int32(rand.Intn(5))
+	}
+	if rand.Intn(180) == 0 {
+		cs.Tourism += int32(rand.Intn(3))
+	}
+	if rand.Intn(240) == 0 {
+		cs.Imports += int32(rand.Intn(10))
+	}
+	if rand.Intn(300) == 0 {
+		cs.Exports += int32(rand.Intn(8))
+	}
 }

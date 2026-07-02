@@ -100,6 +100,7 @@ func NewSimulationManager(seed int64) *SimulationManager {
 	sm.Citizens = NewCitizenManager()
 	sm.Transport.Citizens = sm.Citizens
 	sm.Transport.Rails.InitOutsideConnections(conn)
+	sm.Transport.InitExternalConnections(conn)
 
 	sm.initScheduler()
 	sm.initEventListeners()
@@ -176,13 +177,19 @@ func (sm *SimulationManager) initScheduler() {
 		Name:     "buildings",
 		Priority: SchedPriorityHigh,
 		BudgetMs: 1,
-		Callback: func(dt float64) { sm.Buildings.Update(sm.Zones, sm.Heightmap, sm.Roads, sm.Districts) },
+		Callback: func(dt float64) { sm.Buildings.Update(sm.Zones, sm.Heightmap, sm.Roads, sm.Districts, sm.Transport) },
 	})
 	sm.scheduler.Register(GroupVerySlow, UpdateTask{
 		Name:     "tax",
 		Priority: SchedPriorityMedium,
 		BudgetMs: 1,
 		Callback: func(dt float64) { sm.collectTax(dt) },
+	})
+	sm.scheduler.Register(GroupVerySlow, UpdateTask{
+		Name:     "connections",
+		Priority: SchedPriorityLow,
+		BudgetMs: 0.5,
+		Callback: func(dt float64) { sm.Connections.Update() },
 	})
 
 }
