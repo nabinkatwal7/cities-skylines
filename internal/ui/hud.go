@@ -38,7 +38,7 @@ func (h *HUD) Sync(view ViewState) {
 	h.view = view
 }
 
-func (h *HUD) Draw(notices *Notifications) {
+func (h *HUD) Draw(notices *Notifications, settings *PlayerSettings) {
 	h.dirty = false
 
 	rl.DrawRectangle(0, 0, ScreenW, TopBarH, rl.NewColor(0, 0, 0, 190))

@@ -29,11 +29,23 @@ func UnloadUIFont() {
 }
 
 func DrawUIText(text string, x, y, size int32, col rl.Color) {
+	drawUITextScaled(text, x, y, size, col, 1)
+}
+
+func DrawUITextScaled(text string, x, y, size int32, col rl.Color, scale float32) {
+	drawUITextScaled(text, x, y, size, col, scale)
+}
+
+func drawUITextScaled(text string, x, y, size int32, col rl.Color, scale float32) {
+	if scale <= 0 {
+		scale = 1
+	}
+	fs := int32(float32(size) * scale)
 	if uiFont.Texture.ID == 0 {
-		rl.DrawText(text, x, y, size, col)
+		rl.DrawText(text, x, y, fs, col)
 		return
 	}
-	rl.DrawTextEx(uiFont, text, rl.NewVector2(float32(x), float32(y)), float32(size), 1, col)
+	rl.DrawTextEx(uiFont, text, rl.NewVector2(float32(x), float32(y)), float32(fs), 1, col)
 }
 
 func MeasureUIText(text string, size int32) int32 {

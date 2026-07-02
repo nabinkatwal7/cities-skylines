@@ -90,7 +90,7 @@ func (s *StatisticsPanel) Draw() {
 	y := int32(TopBarH + 8)
 	rl.DrawRectangle(x, y, w, h, rl.NewColor(0, 0, 0, 220))
 	rl.DrawRectangleLines(x, y, w, h, rl.Gray)
-	DrawUIText("City Statistics", x+10, y+8, 16, rl.White)
+	DrawUIText(T("stats.title"), x+10, y+8, 16, rl.White)
 
 	tabs := []string{"Pop", "Economy", "Traffic", "Industry", "Transit", "Env"}
 	for i, label := range tabs {

@@ -3,12 +3,6 @@ package save
 import (
 	"bytes"
 
-	"github.com/katwate/js-skylines/internal/building"
-	"github.com/katwate/js-skylines/internal/core"
-	"github.com/katwate/js-skylines/internal/road"
-	"github.com/katwate/js-skylines/internal/sim"
-	"github.com/katwate/js-skylines/internal/terrain"
-	"github.com/katwate/js-skylines/internal/transport"
 	"encoding/binary"
 	"encoding/gob"
 	"fmt"
@@ -16,6 +10,13 @@ import (
 	"io"
 	"math"
 	"os"
+
+	"github.com/katwate/js-skylines/internal/building"
+	"github.com/katwate/js-skylines/internal/core"
+	"github.com/katwate/js-skylines/internal/road"
+	"github.com/katwate/js-skylines/internal/sim"
+	"github.com/katwate/js-skylines/internal/terrain"
+	"github.com/katwate/js-skylines/internal/transport"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
@@ -812,6 +813,9 @@ func LoadGame(filename string, m *sim.SimulationManager) (money float32, timeOfD
 
 	if data.Version < 1 || data.Version > currentSaveVersion {
 		return 0, 0, fmt.Errorf("unsupported save version: %d", data.Version)
+	}
+	if m.Undo != nil {
+		m.Undo.Clear()
 	}
 
 	m.Seed = data.Seed

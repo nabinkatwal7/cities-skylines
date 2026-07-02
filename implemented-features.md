@@ -3998,3 +3998,45 @@ Nineteen overlay modes (electricity, water, sewage, heating, garbage, healthcare
 ## 24.17 Selection System ✅
 
 `SelectionSystem` unifies building, road, citizen, vehicle, district, tree, and prop selection with world-space highlight wireframes. Synced from inspector picks and contextual actions.
+
+---
+
+## 24.18 Camera Controls ✅
+
+`CameraController` in `internal/ui/camera.go`: pan (WASD/QE), rotate (RMB), zoom (scroll), focus (search), follow citizen/vehicle (inspector), reset (Home). Smooth interpolation; disabled when Reduced Motion is on.
+
+---
+
+## 24.19 Time Controls ✅
+
+`TimeControls` routes pause (Space) and 1×/2×/3× speed (F1–F3) to `SimulationManager`. HUD shows current speed; simulation speed scales `dt` only.
+
+---
+
+## 24.20 Undo Support ✅
+
+`sim.UndoStack` (32 entries) for road placement, zoning, road demolition, and tree removal. Ctrl+Z undoes; stack clears on `LoadGame`.
+
+---
+
+## 24.21 Keyboard Shortcuts ✅
+
+`KeyBindings` centralizes configurable actions (build, camera, time, info views, search, statistics, screenshot). `GlobalShortcuts` dispatches them; Options panel lists bindings.
+
+---
+
+## 24.22 Controller Support ✅
+
+`GamepadInput` polls gamepad 0: left stick pan, right stick rotate, triggers zoom, face button toggles radial menu shell. UI shows active device hint.
+
+---
+
+## 24.23 Accessibility ✅
+
+`PlayerSettings.A11y`: UI scale, high contrast, subtitles, reduced motion, color-blind mode. Options panel (toolbar → Options). Presentation-only; no gameplay effect.
+
+---
+
+## 24.24 Localization ✅
+
+`T(key)` with `en`/`es` catalogs; `SetLocale` switches at runtime without restart. HUD, search, advisors, statistics, and options use localized strings.

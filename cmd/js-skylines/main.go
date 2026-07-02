@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"math"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
 
@@ -52,18 +51,6 @@ func main() {
 	gameUI := ui.NewManager()
 	gameUI.Attach(sim.EventBus)
 
-	cam := rl.Camera3D{
-		Position:   rl.NewVector3(100, 80, 100),
-		Target:     rl.NewVector3(0, 0, 0),
-		Up:         rl.NewVector3(0, 1, 0),
-		Fovy:       60,
-		Projection: rl.CameraPerspective,
-	}
-	yaw := float32(-135 * math.Pi / 180)
-	pitch := float32(25 * math.Pi / 180)
-	dist := float32(140)
-	target := rl.NewVector3(0, 0, 0)
-
 	uploaded := false
 	roadActive := false
 	roadStartNode := uint32(0)
@@ -97,86 +84,8 @@ func main() {
 			save.SaveGame(saveFilename, sim, sim.Money, int32(sim.Time.TotalTime))
 		}
 
-		// Camera
-		wheel := rl.GetMouseWheelMove()
-		dist -= wheel * 5
-		if dist < 5 {
-			dist = 5
-		}
-		if dist > 500 {
-			dist = 500
-		}
-
-		if rl.IsMouseButtonDown(rl.MouseButtonRight) {
-			delta := rl.GetMouseDelta()
-			yaw -= delta.X * 0.005
-			pitch -= delta.Y * 0.005
-			if pitch > 1.4 {
-				pitch = 1.4
-			}
-			if pitch < -0.3 {
-				pitch = -0.3
-			}
-		}
-
-		speed := float32(80.0) * float32(rl.GetFrameTime())
-		if rl.IsKeyDown(rl.KeyW) {
-			forward := rl.Vector3Subtract(cam.Target, cam.Position)
-			forward.Y = 0
-			forward = rl.Vector3Normalize(forward)
-			target = rl.Vector3Add(target, rl.Vector3Scale(forward, speed))
-		}
-		if rl.IsKeyDown(rl.KeyS) {
-			forward := rl.Vector3Subtract(cam.Target, cam.Position)
-			forward.Y = 0
-			forward = rl.Vector3Normalize(forward)
-			target = rl.Vector3Add(target, rl.Vector3Scale(forward, -speed))
-		}
-		if rl.IsKeyDown(rl.KeyA) {
-			forward := rl.Vector3Subtract(cam.Target, cam.Position)
-			forward.Y = 0
-			forward = rl.Vector3Normalize(forward)
-			right := rl.Vector3CrossProduct(forward, rl.NewVector3(0, 1, 0))
-			target = rl.Vector3Add(target, rl.Vector3Scale(right, -speed))
-		}
-		if rl.IsKeyDown(rl.KeyD) {
-			forward := rl.Vector3Subtract(cam.Target, cam.Position)
-			forward.Y = 0
-			forward = rl.Vector3Normalize(forward)
-			right := rl.Vector3CrossProduct(forward, rl.NewVector3(0, 1, 0))
-			target = rl.Vector3Add(target, rl.Vector3Scale(right, speed))
-		}
-		if rl.IsKeyDown(rl.KeyQ) {
-			target.Y -= speed
-		}
-		if rl.IsKeyDown(rl.KeyE) {
-			target.Y += speed
-		}
-
-		if fx, fz, ok := gameUI.FollowTarget(); ok {
-			target.X += (fx - target.X) * 0.08
-			target.Z += (fz - target.Z) * 0.08
-			gameUI.Search.ClearCamera()
-		}
-
-		cam.Target = target
-		cam.Position.X = target.X + dist*float32(math.Cos(float64(pitch)))*float32(math.Sin(float64(yaw)))
-		cam.Position.Y = target.Y + dist*float32(math.Sin(float64(pitch)))
-		cam.Position.Z = target.Z + dist*float32(math.Cos(float64(pitch)))*float32(math.Cos(float64(yaw)))
-
-		// Simulation speed / pause
-		if rl.IsKeyPressed(rl.KeySpace) {
-			sim.TogglePause()
-		}
-		if rl.IsKeyPressed(rl.KeyF1) {
-			sim.SetSpeed(1)
-		}
-		if rl.IsKeyPressed(rl.KeyF2) {
-			sim.SetSpeed(2)
-		}
-		if rl.IsKeyPressed(rl.KeyF3) {
-			sim.SetSpeed(3)
-		}
+		dt := float32(rl.GetFrameTime())
+		cam := gameUI.UpdateCamera(dt)
 
 		// Road elevation control
 		if rl.IsKeyPressed(rl.KeyPageUp) {
@@ -285,9 +194,11 @@ func main() {
 								roadActive = false
 								break
 							}
-							newNode, _, ok := sim.PlaceRoadSegment(roadStartNode, px, pz, gameUI.RoadType, roadElevation)
+							moneyBefore := sim.Money
+							newNode, segID, ok := sim.PlaceRoadSegment(roadStartNode, px, pz, gameUI.RoadType, roadElevation)
 							if ok {
 								roadStartNode = newNode
+								sim.PushRoadPlace(segID, moneyBefore-sim.Money)
 							}
 							if !ok {
 								gameUI.HelpText = "Cannot place road: check terrain slope, water, or obstacles"
@@ -364,15 +275,18 @@ func main() {
 					if sim.Heightmap.IsUnderwater(worldX, worldZ) {
 						break
 					}
-					if rl.IsKeyDown(rl.KeyLeftShift) || rl.IsKeyDown(rl.KeyRightShift) {
-						if sim.Zones != nil {
+					if sim.Zones != nil {
+						cx := sim.Zones.CellX(previewX)
+						cz := sim.Zones.CellZ(previewZ)
+						before := sim.Zones.Cells[cz][cx]
+						if rl.IsKeyDown(rl.KeyLeftShift) || rl.IsKeyDown(rl.KeyRightShift) {
 							sim.Zones.RemoveZone(previewX, previewZ)
 							sim.EventBus.Emit(string(core.EventZoneRemoved), nil)
-						}
-					} else {
-						if sim.Zones != nil && sim.Zones.CanZone(previewX, previewZ) {
+							sim.PushZoneChange(cx, cz, before)
+						} else if sim.Zones.CanZone(previewX, previewZ) {
 							sim.Zones.SetZone(previewX, previewZ, zt)
 							sim.EventBus.Emit(string(core.EventZonePlaced), zt)
+							sim.PushZoneChange(cx, cz, before)
 						}
 					}
 				case ui.ToolRemove:
@@ -390,9 +304,10 @@ func main() {
 					}
 					idx := sim.Roads.NearestSegment(worldX, worldZ)
 					if idx >= 0 {
-						sim.RemoveSegment(idx)
+						sim.PushRoadRemove(idx)
+					} else {
+						sim.PushTreeRemove(worldX, worldZ, 10)
 					}
-					sim.RemoveTrees(worldX, worldZ, 10)
 				case ui.ToolUpgrade:
 					idx := sim.Roads.NearestSegment(worldX, worldZ)
 					if idx >= 0 {
@@ -426,6 +341,9 @@ func main() {
 		rl.EndMode3D()
 
 		gameUI.Draw()
+		if gameUI.Shortcuts.ConsumeScreenshot() {
+			rl.TakeScreenshot("screenshot.png")
+		}
 		rl.DrawFPS(10, 30)
 
 		rl.EndDrawing()

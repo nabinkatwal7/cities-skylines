@@ -92,15 +92,11 @@ func (a *Advisors) Draw() {
 	y := int32(TopBarH + 60)
 	rl.DrawRectangle(x, y, w, h, rl.NewColor(0, 0, 0, 210))
 	rl.DrawRectangleLines(x, y, w, h, rl.NewColor(180, 160, 100, 200))
-	DrawUIText("City Advisors", x+10, y+8, 15, rl.NewColor(255, 220, 150, 230))
+	DrawUIText(T("advisors.title"), x+10, y+8, 15, rl.NewColor(255, 220, 150, 230))
 	for i, tip := range a.tips {
 		DrawUIText(advisorNames[tip.Category]+":", x+10, y+28+int32(i*36), 13, rl.NewColor(180, 200, 255, 220))
 		DrawUIText(tip.Message, x+10, y+44+int32(i*36), 12, rl.LightGray)
 	}
 }
 
-func (a *Advisors) HandleInput() {
-	if rl.IsKeyPressed(rl.KeyF6) {
-		a.Toggle()
-	}
-}
+func (a *Advisors) HandleInput() {}

@@ -71,14 +71,7 @@ func (v *InfoViews) Cycle() {
 
 func (v *InfoViews) Clear() { v.active = ViewNone }
 
-func (v *InfoViews) HandleInput() {
-	if rl.IsKeyPressed(rl.KeyF4) {
-		v.Cycle()
-	}
-	if rl.IsKeyPressed(rl.KeyF5) {
-		v.Clear()
-	}
-}
+func (v *InfoViews) HandleInput() {}
 
 func (v *InfoViews) Draw() {
 	if v.active == ViewNone {

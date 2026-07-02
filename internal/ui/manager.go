@@ -23,6 +23,12 @@ type UIManager struct {
 	Overlays      *OverlayManager
 	Dialogs       *DialogManager
 	Input         *InputManager
+	Camera        *CameraController
+	Settings      *PlayerSettings
+	TimeControls  *TimeControls
+	Gamepad       *GamepadInput
+	Options       *OptionsPanel
+	Shortcuts     *GlobalShortcuts
 	unlocks       *UnlockRegistry
 
 	Money         float32
@@ -40,6 +46,8 @@ type UIManager struct {
 
 func NewManager() *UIManager {
 	unlocks := NewUnlockRegistry()
+	settings := NewPlayerSettings()
+	SetLocale(settings.Locale)
 	m := &UIManager{
 		ToolSystem:    *NewToolSystem(),
 		HUD:           NewHUD(),
@@ -54,6 +62,12 @@ func NewManager() *UIManager {
 		Search:        NewSearchSystem(),
 		Overlays:      NewOverlayManager(),
 		Dialogs:       NewDialogManager(),
+		Camera:        NewCameraController(),
+		Settings:      settings,
+		TimeControls:  NewTimeControls(),
+		Gamepad:       NewGamepadInput(),
+		Options:       NewOptionsPanel(),
+		Shortcuts:     NewGlobalShortcuts(),
 		unlocks:       unlocks,
 	}
 	m.Input = NewInputManager(m)
@@ -100,6 +114,7 @@ func (m *UIManager) SyncView(view ViewState) {
 	m.unlocks.SyncPopulation(view.Population)
 	m.Statistics.Sync(view)
 	m.Statistics.open = m.Toolbar.Selected == CatStatistics
+	m.Options.open = m.Toolbar.Selected == CatOptions
 	if m.lastSim != nil {
 		m.Notifications.Refresh(m.lastSim, view)
 		m.Advisors.Refresh(m.lastSim, view)
@@ -108,7 +123,6 @@ func (m *UIManager) SyncView(view ViewState) {
 	}
 }
 
-// UpdateWorld refreshes placement preview from simulation state (24.6).
 func (m *UIManager) UpdateWorld(ctx WorldContext) {
 	ctx.Tools = &m.ToolSystem
 	m.worldCtx = ctx
@@ -117,6 +131,18 @@ func (m *UIManager) UpdateWorld(ctx WorldContext) {
 	if ctx.Sim != nil {
 		m.Notifications.Refresh(ctx.Sim, m.lastView)
 	}
+}
+
+func (m *UIManager) UpdateCamera(dt float32) rl.Camera3D {
+	if fx, fz, ok := m.FollowTarget(); ok {
+		m.Camera.SetFollowTarget(fx, fz)
+		m.Search.ClearCamera()
+	} else {
+		m.Camera.ClearFollow()
+	}
+	m.Gamepad.Update(m.Camera, m.Settings.A11y)
+	m.Camera.Update(dt, m.Settings.Bindings, m.Settings.A11y, m.Camera.Position())
+	return m.Camera.Camera3D()
 }
 
 func (m *UIManager) Preview() PlacementPreview { return m.preview }
@@ -148,7 +174,8 @@ func (m *UIManager) HandleInput() GameTool {
 	if m.Dialogs.CapturesInput() {
 		return m.Selected
 	}
-	m.InfoViews.HandleInput()
+	m.Shortcuts.Handle(m)
+	m.TimeControls.HandleInput(m.lastSim, m.Settings.Bindings)
 	m.Advisors.HandleInput()
 	m.Search.HandleInput()
 	if m.Search.IsOpen() {
@@ -182,6 +209,9 @@ func (m *UIManager) HandleClick() GameTool {
 	}
 	mPos := rl.GetMousePosition()
 	mx, my := int32(mPos.X), int32(mPos.Y)
+	if m.Options.HandleClick(mx, my, m.Settings) {
+		return m.Selected
+	}
 	if m.Notifications.HandleClick(mx, my) {
 		return m.Selected
 	}
@@ -206,9 +236,11 @@ func (m *UIManager) ChromeTopY() int32 {
 func (m *UIManager) Unlocks() *UnlockRegistry { return m.unlocks }
 
 func (m *UIManager) Draw() {
-	m.HUD.Draw(m.Notifications)
+	m.HUD.Draw(m.Notifications, m.Settings)
+	m.TimeControls.DrawHUD(300, 28, m.lastView, m.Settings.A11y)
 	m.Notifications.Draw()
 	m.Statistics.Draw()
+	m.Options.Draw(m.Settings)
 	m.Search.Draw()
 	m.Overlays.Draw()
 	m.BuildMenus.Draw(&m.ToolSystem)
@@ -218,6 +250,8 @@ func (m *UIManager) Draw() {
 	m.Advisors.Draw()
 	m.Toolbar.Draw(&m.ToolSystem)
 	m.ToolSystem.DrawHelp()
+	m.Gamepad.DrawHint(TopBarH+32, m.Settings.A11y)
+	m.Shortcuts.Draw(m.Settings)
 	if m.preview.Cost > 0 || len(m.preview.Messages) > 0 || m.preview.Elevation != 0 {
 		DrawPreviewHUD(m.preview, ToolbarY-int32(BuildMenuH)-int32(OptionsBarH)-50)
 	}

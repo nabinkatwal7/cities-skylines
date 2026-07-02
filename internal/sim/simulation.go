@@ -39,6 +39,7 @@ type SimulationManager struct {
 	scheduler *core.Scheduler
 	Time      *core.GameTime
 	Jobs      *core.JobQueue
+	Undo      *UndoStack
 }
 
 func NewSimulationManager(seed int64) *SimulationManager {
@@ -73,6 +74,7 @@ func NewSimulationManager(seed int64) *SimulationManager {
 		scheduler:   core.NewScheduler(),
 		Time:        core.NewGameTime(),
 		Jobs:        core.NewJobQueue(),
+		Undo:        NewUndoStack(),
 	}
 	sm.Transport.Parking = parking
 	sm.Transport.Rails.InitOutsideConnections(conn)

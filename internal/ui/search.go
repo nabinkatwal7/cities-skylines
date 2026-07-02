@@ -58,12 +58,6 @@ func (s *SearchSystem) CameraTarget() (x, z float32, ok bool) {
 func (s *SearchSystem) ClearCamera() { s.hasCam = false }
 
 func (s *SearchSystem) HandleInput() {
-	if rl.IsKeyPressed(rl.KeySlash) {
-		s.open = !s.open
-		if !s.open {
-			s.query = ""
-		}
-	}
 	if !s.open {
 		return
 	}
@@ -182,11 +176,11 @@ func (s *SearchSystem) Draw() {
 	y := int32(TopBarH + 40)
 	rl.DrawRectangle(x, y, w, h, rl.NewColor(0, 0, 0, 230))
 	rl.DrawRectangleLines(x, y, w, h, rl.Gray)
-	DrawUIText("Search (Enter go, Esc close)", x+10, y+8, 14, rl.White)
+	DrawUIText(T("search.title"), x+10, y+8, 14, rl.White)
 	rl.DrawRectangle(x+10, y+28, w-20, 22, rl.NewColor(30, 30, 35, 220))
 	q := s.query
 	if q == "" {
-		q = "Type to search..."
+		q = T("search.placeholder")
 	}
 	DrawUIText(q, x+14, y+32, 13, rl.Gray)
 	for i, r := range s.results {

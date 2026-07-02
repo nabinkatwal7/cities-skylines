@@ -263,6 +263,15 @@ func (zm *ZoneManager) RemoveZone(worldX, worldZ float32) {
 	zm.RemoveZoneCell(x, z)
 }
 
+func (zm *ZoneManager) RestoreCell(x, z int, cell ZoneCell) {
+	if x < 0 || x >= zm.width || z < 0 || z >= zm.height {
+		return
+	}
+	zm.Cells[z][x] = cell
+	zm.markLotsDirty()
+	zm.markLandDirty(x, z)
+}
+
 func (zm *ZoneManager) RemoveZoneCell(x, z int) {
 	if x < 0 || x >= zm.width || z < 0 || z >= zm.height {
 		return
