@@ -3867,3 +3867,38 @@ The zoning system is designed to support:
 - Deterministic building lifecycle
 
 The zoning engine transforms player planning into a living city by continuously evaluating demand, services, land value, and economic conditions to determine where and how development occurs.
+
+---
+
+# 24. User Interface, Information Views & Player Interaction
+
+The User Interface (UI) System provides every tool required for city construction, management, monitoring, and analysis. It presents simulation data without modifying simulation behavior and acts as the primary communication layer between the player and the city.
+
+The UI is fully event-driven, modular, scalable, keyboard/controller compatible, and independent from rendering and simulation systems.
+
+---
+
+## 24.1 UI Architecture ✅
+
+The UI Manager coordinates every interface subsystem.
+
+```text
+UIManager
+
+├── HUD
+├── Main Toolbar
+├── Build Menus
+├── Information Views
+├── Inspector Panels
+├── Statistics
+├── Notifications
+├── Advisors
+├── Tool System
+├── Overlay Manager
+├── Dialog Manager
+└── Input Manager
+```
+
+UI components subscribe to simulation events rather than polling continuously.
+
+Implementation: `internal/ui/manager.go` with subsystem packages; `UIManager.Attach(EventBus)` wires HUD and notifications to simulation events; `SyncView` supplies read-only presentation state from the game loop.

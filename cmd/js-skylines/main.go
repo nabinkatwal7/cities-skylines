@@ -49,7 +49,8 @@ func main() {
 	}
 	t.PrepareUpload()
 
-	gameUI := ui.NewGameUI()
+	gameUI := ui.NewManager()
+	gameUI.Attach(sim.EventBus)
 
 	cam := rl.Camera3D{
 		Position:   rl.NewVector3(100, 80, 100),
@@ -208,18 +209,14 @@ func main() {
 		ray := rl.GetScreenToWorldRay(rl.GetMousePosition(), cam)
 		worldX, worldZ, mouseOnTerrain = sim.Heightmap.PickXZ(ray)
 
-		// Update UI state
-		gameUI.Money = sim.Money
-		gameUI.TimeStr = sim.Time.TimeString()
-		if sim.Time.IsPaused {
-			gameUI.TimeStr += " ⏸"
-		} else if sim.Time.Speed > 1 {
-			speedStr := fmt.Sprintf(" ⏩x%.0f", sim.Time.Speed)
-			gameUI.TimeStr += speedStr
-		}
-		gameUI.MouseWorldX = worldX
-		gameUI.MouseWorldZ = worldZ
-		gameUI.MouseOnGround = mouseOnTerrain
+		// Update UI state (presentation only)
+		gameUI.SyncView(ui.ViewState{
+			Money:         sim.Money,
+			TimeStr:       timeStr(sim),
+			MouseWorldX:   worldX,
+			MouseWorldZ:   worldZ,
+			MouseOnGround: mouseOnTerrain,
+		})
 
 		// Snap to outside connection for preview
 		previewX, previewZ := worldX, worldZ
@@ -536,4 +533,14 @@ func clamp(v, min, max float32) float32 {
 		return max
 	}
 	return v
+}
+
+func timeStr(sim *simpkg.SimulationManager) string {
+	s := sim.Time.TimeString()
+	if sim.Time.IsPaused {
+		s += " ⏸"
+	} else if sim.Time.Speed > 1 {
+		s += fmt.Sprintf(" ⏩x%.0f", sim.Time.Speed)
+	}
+	return s
 }
