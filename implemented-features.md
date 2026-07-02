@@ -3457,3 +3457,17 @@ Residential demand decreases when:
 - Abandonment
 
 ---
+
+## 5.8 Commercial Demand ✅
+
+Commercial demand depends on:
+
+- Population
+- Household income
+- Goods availability
+- Tourism
+- Shopping demand
+
+Too much commercial zoning causes business failure.
+
+---

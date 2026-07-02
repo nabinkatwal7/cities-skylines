@@ -28,14 +28,23 @@ type CityFactors struct {
 	Crime          float32 // 0..1
 	DeathWave      float32 // 0..1 active wave strength
 	Abandonment    float32 // 0..1 abandoned residential share
+
+	HouseholdIncome   float32 // 0..1
+	GoodsAvailability float32 // 0..1
+	Tourism           float32 // 0..1
+	ShoppingDemand    float32 // 0..1
 }
 
 func DefaultCityFactors() CityFactors {
 	return CityFactors{
 		Happiness:      0.55,
 		ResidentialTax: 0.09,
-		LandValue:      0.5,
-		ServiceScore:   1.0,
+		LandValue:         0.5,
+		ServiceScore:      1.0,
+		HouseholdIncome:   0.5,
+		GoodsAvailability: 0.6,
+		Tourism:           0.2,
+		ShoppingDemand:    0.5,
 	}
 }
 
@@ -85,9 +94,10 @@ func (d *DemandEngine) Update(dt float64, zm *ZoneManager) {
 	d.Population = resCap
 	d.Jobs = jobCap
 	d.refreshResidentialFactors(zm, resCells, comCells, indCells, offCells, float32(dt))
+	d.refreshCommercialFactors(resCells, comCells, indCells, float32(dt))
 
 	resTarget := clampf((jobCap-resCap)*0.15+d.residentialModifier(), -1, 1)
-	comTarget := clampf((resCap*0.8-comCap)*0.15, -1, 1)
+	comTarget := clampf((resCap*0.8-comCap)*0.15+d.commercialModifier(comCap), -1, 1)
 	indTarget := clampf((resCap*0.4-indCap)*0.12, -1, 1)
 
 	rate := float32(dt) * 0.35
@@ -132,6 +142,40 @@ func (d *DemandEngine) residentialModifier() float32 {
 	mod -= f.Crime * 0.3
 	mod -= f.DeathWave * 0.45
 	mod -= f.Abandonment * 0.35
+
+	return clampf(mod, -0.6, 0.6)
+}
+
+func (d *DemandEngine) refreshCommercialFactors(res, com, ind int, dt float32) {
+	if d.Population > 0 {
+		goodsSupply := float32(ind) * 0.3
+		d.Factors.GoodsAvailability = clampf(goodsSupply/d.Population, 0, 1)
+		d.Factors.HouseholdIncome = clampf(0.35+(d.Jobs/d.Population)*0.25+d.Factors.Happiness*0.2, 0, 1)
+	}
+	d.Factors.ShoppingDemand = clampf(d.Population*0.06+d.Factors.HouseholdIncome*0.35, 0, 1)
+	d.Factors.Tourism = clampf(d.Factors.Tourism+dt*0.00015*d.Population, 0, 1)
+	_ = res
+	_ = com
+}
+
+func (d *DemandEngine) commercialModifier(comCap float32) float32 {
+	f := d.Factors
+	mod := float32(0)
+
+	mod += clampf(d.Population*0.08, 0, 0.3)
+	mod += (f.HouseholdIncome - 0.5) * 0.35
+	mod += (f.GoodsAvailability - 0.5) * 0.25
+	mod += f.Tourism * 0.2
+	mod += (f.ShoppingDemand - 0.5) * 0.3
+
+	if d.Population > 0 {
+		ratio := comCap / d.Population
+		if ratio > 1.2 {
+			mod -= clampf((ratio-1.2)*0.45, 0, 0.55)
+		}
+	} else if comCap > 0 {
+		mod -= 0.35
+	}
 
 	return clampf(mod, -0.6, 0.6)
 }

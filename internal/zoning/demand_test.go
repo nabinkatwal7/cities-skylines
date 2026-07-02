@@ -133,3 +133,80 @@ func TestResidentialDemand_jobsAndUnemployment(t *testing.T) {
 		t.Fatalf("housing surplus should lower demand vs job surplus: resHeavy=%v jobsHeavy=%v", d2.Residential, d.Residential)
 	}
 }
+
+func TestCommercialDemand_populationBoost(t *testing.T) {
+	sparse := NewZoneManager(8, 8, nil, nil)
+	sparse.SetZoneCell(0, 0, ZoneResidentialLow)
+
+	dense := NewZoneManager(8, 8, nil, nil)
+	for x := 0; x < 6; x++ {
+		for z := 0; z < 6; z++ {
+			dense.SetZoneCell(x, z, ZoneResidentialLow)
+		}
+	}
+
+	dSparse := NewDemandEngine()
+	dDense := NewDemandEngine()
+	for i := 0; i < 50; i++ {
+		dSparse.Update(1, sparse)
+		dDense.Update(1, dense)
+	}
+	if dDense.Commercial <= dSparse.Commercial {
+		t.Fatalf("more population should raise commercial demand: sparse=%v dense=%v", dSparse.Commercial, dDense.Commercial)
+	}
+}
+
+func TestCommercialDemand_oversupplyPenalty(t *testing.T) {
+	balanced := NewZoneManager(8, 8, nil, nil)
+	for x := 0; x < 4; x++ {
+		balanced.SetZoneCell(x, 0, ZoneResidentialLow)
+	}
+	balanced.SetZoneCell(0, 1, ZoneCommercialLow)
+
+	oversupplied := NewZoneManager(8, 8, nil, nil)
+	for x := 0; x < 2; x++ {
+		oversupplied.SetZoneCell(x, 0, ZoneResidentialLow)
+	}
+	for x := 0; x < 8; x++ {
+		for z := 0; z < 6; z++ {
+			oversupplied.SetZoneCell(x, z, ZoneCommercialLow)
+		}
+	}
+
+	dBalanced := NewDemandEngine()
+	dOver := NewDemandEngine()
+	for i := 0; i < 60; i++ {
+		dBalanced.Update(1, balanced)
+		dOver.Update(1, oversupplied)
+	}
+	if dOver.Commercial >= dBalanced.Commercial {
+		t.Fatalf("commercial oversupply should lower demand: balanced=%v over=%v", dBalanced.Commercial, dOver.Commercial)
+	}
+}
+
+func TestCommercialDemand_incomeAndTourism(t *testing.T) {
+	zm := NewZoneManager(8, 8, nil, nil)
+	for x := 0; x < 4; x++ {
+		zm.SetZoneCell(x, 0, ZoneResidentialLow)
+	}
+	for x := 0; x < 3; x++ {
+		zm.SetZoneCell(x, 1, ZoneIndustrial)
+	}
+
+	low := NewDemandEngine()
+	low.Factors.HouseholdIncome = 0.3
+	low.Factors.Tourism = 0.05
+	for i := 0; i < 40; i++ {
+		low.Update(1, zm)
+	}
+
+	high := NewDemandEngine()
+	high.Factors.HouseholdIncome = 0.85
+	high.Factors.Tourism = 0.7
+	for i := 0; i < 40; i++ {
+		high.Update(1, zm)
+	}
+	if high.Commercial <= low.Commercial {
+		t.Fatalf("income/tourism should raise commercial demand: low=%v high=%v", low.Commercial, high.Commercial)
+	}
+}
