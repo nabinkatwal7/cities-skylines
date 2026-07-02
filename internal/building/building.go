@@ -8,10 +8,13 @@ import (
 )
 
 const (
-	MaxLevel            = 5
-	baseConstructSec    = 10.0
-	upgradeSecPerLevel  = 20.0
-	abandonGraceSec     = 8.0
+	MaxLevel           = 5
+	baseConstructSec   = 10.0
+	upgradeSecPerLevel = 20.0
+	abandonGraceSec    = 8.0
+	demolishGraceSec   = 15.0
+	stageFoundationEnd = 0.33
+	stageFrameworkEnd  = 0.66
 )
 
 type State uint8
@@ -20,6 +23,14 @@ const (
 	StateConstructing State = iota
 	StateOccupied
 	StateAbandoned
+)
+
+type ConstructStage uint8
+
+const (
+	StageFoundation ConstructStage = iota
+	StageFramework
+	StageCompleted
 )
 
 type Building struct {
@@ -34,11 +45,16 @@ type Building struct {
 	WorldZ   float32
 	Level    int
 	State    State
+	Stage    ConstructStage
 	Progress float32
 	BuildTime float32
 	UpgradeProgress float32
 	AbandonTimer    float32
+	DemolishTimer   float32
 	LandValue       float32
+	Household       Household
+	Business        Business
+	Occupancy       Occupancy
 }
 
 type Manager struct {
@@ -77,8 +93,11 @@ func (m *Manager) Update(dt float64) {
 		return
 	}
 	m.updateLandValue()
-	for i := range m.Buildings {
-		m.tickBuilding(&m.Buildings[i], dt)
+	for i := 0; i < len(m.Buildings); {
+		if m.tickBuilding(i, dt) {
+			continue
+		}
+		i++
 	}
 	m.trySpawn()
 }
@@ -112,6 +131,7 @@ func (m *Manager) startConstruction(lot *zoning.ZoneLot) {
 		WorldZ:    wz,
 		Level:     1,
 		State:     StateConstructing,
+		Stage:     StageFoundation,
 		BuildTime: baseConstructSec + cells*4,
 	}
 	idx := len(m.Buildings)
@@ -119,16 +139,13 @@ func (m *Manager) startConstruction(lot *zoning.ZoneLot) {
 	m.byLot[lot.ID] = idx
 }
 
-func (m *Manager) tickBuilding(b *Building, dt float64) {
+func (m *Manager) tickBuilding(idx int, dt float64) bool {
+	b := &m.Buildings[idx]
 	b.LandValue = m.landValueAt(b.CellX+b.Width/2, b.CellZ+b.Height/2)
 
 	switch b.State {
 	case StateConstructing:
-		b.Progress += float32(dt) / b.BuildTime
-		if b.Progress >= 1 {
-			b.Progress = 1
-			b.State = StateOccupied
-		}
+		m.tickConstruction(b, dt)
 	case StateOccupied:
 		if m.shouldAbandon(b) {
 			b.AbandonTimer += float32(dt)
@@ -139,12 +156,49 @@ func (m *Manager) tickBuilding(b *Building, dt float64) {
 		} else {
 			b.AbandonTimer = 0
 			m.tickUpgrade(b, dt)
+			m.tickOccupancy(b, dt)
 		}
 	case StateAbandoned:
 		if !m.shouldAbandon(b) {
 			b.State = StateOccupied
+			b.DemolishTimer = 0
+		} else {
+			b.DemolishTimer += float32(dt)
+			if b.DemolishTimer >= demolishGraceSec {
+				m.removeAt(idx)
+				return true
+			}
 		}
 	}
+	return false
+}
+
+func (m *Manager) tickConstruction(b *Building, dt float64) {
+	b.Progress += float32(dt) / b.BuildTime
+	switch {
+	case b.Progress >= 1:
+		b.Progress = 1
+		b.Stage = StageCompleted
+		b.State = StateOccupied
+		m.initOccupancy(b)
+	case b.Progress >= stageFrameworkEnd:
+		b.Stage = StageCompleted
+	case b.Progress >= stageFoundationEnd:
+		b.Stage = StageFramework
+	default:
+		b.Stage = StageFoundation
+	}
+}
+
+func (m *Manager) removeAt(idx int) {
+	lotID := m.Buildings[idx].LotID
+	delete(m.byLot, lotID)
+	last := len(m.Buildings) - 1
+	if idx != last {
+		m.Buildings[idx] = m.Buildings[last]
+		m.byLot[m.Buildings[idx].LotID] = idx
+	}
+	m.Buildings = m.Buildings[:last]
 }
 
 func (m *Manager) tickUpgrade(b *Building, dt float64) {
@@ -160,6 +214,7 @@ func (m *Manager) tickUpgrade(b *Building, dt float64) {
 	if b.UpgradeProgress >= need {
 		b.Level++
 		b.UpgradeProgress = 0
+		m.initOccupancy(b)
 	}
 }
 
@@ -200,11 +255,11 @@ func (m *Manager) shouldAbandon(b *Building) bool {
 			return true
 		}
 	case zoning.CategoryCommercial:
-		if f.ShoppingDemand < 0.15 || f.GoodsAvailability < 0.2 || f.WorkerShortage > 0.7 {
+		if b.Business.Profitability < -0.2 || f.ShoppingDemand < 0.15 || f.GoodsAvailability < 0.2 || f.WorkerShortage > 0.7 {
 			return true
 		}
 	case zoning.CategoryIndustrial:
-		if f.WorkerShortage > 0.75 || f.FreightCongestion > 0.7 || f.ResourceShortage > 0.65 {
+		if b.Business.Profitability < -0.2 || f.WorkerShortage > 0.75 || f.FreightCongestion > 0.7 || f.ResourceShortage > 0.65 {
 			return true
 		}
 	case zoning.CategoryOffice:
@@ -229,7 +284,7 @@ func (m *Manager) Residents() int {
 		if b.State != StateOccupied {
 			continue
 		}
-		n += levelCapacity(b) / 2
+		n += b.Occupancy.Residents
 	}
 	return n
 }
@@ -249,9 +304,10 @@ func (m *Manager) Draw(h *terrain.Heightmap) {
 	cs := terrain.WorldSize / float32(m.width)
 	for i := range m.Buildings {
 		b := &m.Buildings[i]
-		hgt := 1.5 + float32(b.Level)*1.2
+		fullHgt := 1.5 + float32(b.Level)*1.2
+		hgt := fullHgt
 		if b.State == StateConstructing {
-			hgt *= b.Progress
+			hgt = constructionHeight(b, fullHgt)
 		}
 		hy := h.WorldHeight(b.WorldX, b.WorldZ) + hgt*0.5
 		w := cs * float32(b.Width) * 0.85
@@ -261,12 +317,30 @@ func (m *Manager) Draw(h *terrain.Heightmap) {
 	}
 }
 
+func constructionHeight(b *Building, full float32) float32 {
+	switch b.Stage {
+	case StageFoundation:
+		return full * 0.12
+	case StageFramework:
+		return full * 0.45
+	default:
+		return full * clampf(b.Progress, 0.5, 1)
+	}
+}
+
 func buildingColor(b *Building) rl.Color {
 	if b.State == StateAbandoned {
 		return rl.NewColor(90, 90, 90, 200)
 	}
 	if b.State == StateConstructing {
-		return rl.NewColor(160, 140, 100, 180)
+		switch b.Stage {
+		case StageFoundation:
+			return rl.NewColor(120, 110, 90, 180)
+		case StageFramework:
+			return rl.NewColor(150, 140, 110, 190)
+		default:
+			return rl.NewColor(180, 170, 140, 200)
+		}
 	}
 	switch zoning.ZoneCategoryOf(b.Type) {
 	case zoning.CategoryResidential:
@@ -280,4 +354,14 @@ func buildingColor(b *Building) rl.Color {
 	default:
 		return rl.NewColor(180, 180, 180, 200)
 	}
+}
+
+func clampf(v, lo, hi float32) float32 {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
 }

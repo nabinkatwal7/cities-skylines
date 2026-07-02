@@ -3645,7 +3645,7 @@ Office
 
 ---
 
-## 5.16 Demolition
+## 5.16 Demolition ✅
 
 Abandoned buildings may eventually be demolished.
 
@@ -3657,7 +3657,7 @@ New development may occur later.
 
 ---
 
-## 5.17 Household Simulation
+## 5.17 Household Simulation ✅
 
 Residential buildings contain households.
 
@@ -3673,7 +3673,7 @@ Citizens belong to households rather than buildings directly.
 
 ---
 
-## 5.18 Business Simulation
+## 5.18 Business Simulation ✅
 
 Commercial and industrial buildings maintain:
 
@@ -3687,7 +3687,7 @@ Businesses continuously evaluate profitability.
 
 ---
 
-## 5.19 Building Occupancy
+## 5.19 Building Occupancy ✅
 
 Every building tracks:
 
@@ -3712,7 +3712,7 @@ Office
 
 ---
 
-## 5.20 Construction
+## 5.20 Construction ✅
 
 Construction stages:
 
@@ -3739,3 +3739,131 @@ Occupied
 Construction consumes time.
 
 ---
+
+## 5.21 Service Consumption
+
+Buildings consume:
+
+Residential
+
+- Electricity
+- Water
+- Garbage
+- Healthcare
+- Education
+
+Commercial
+
+- Goods
+- Workers
+- Electricity
+- Water
+
+Industrial
+
+- Workers
+- Electricity
+- Water
+- Freight
+
+Office
+
+- Educated Workers
+- Electricity
+- Internet (Future DLC)
+- Water
+
+---
+
+## 5.22 District Integration
+
+Zones inherit district policies.
+
+Examples:
+
+- High Rise Ban
+- Heavy Traffic Ban
+- Self Sufficient Housing
+- IT Cluster
+- Organic Produce
+
+Policies modify building behavior.
+
+---
+
+## 5.23 Building AI
+
+Every simulation cycle buildings evaluate:
+
+- Occupancy
+- Resources
+- Services
+- Income
+- Expenses
+- Happiness
+- Growth
+- Pollution
+
+Buildings react dynamically to city conditions.
+
+---
+
+## 5.24 Statistics
+
+The zoning system records:
+
+- Population
+- Vacant Homes
+- Vacant Jobs
+- Demand
+- Building Levels
+- Land Value
+- Development Rate
+- Abandonment
+
+---
+
+## 5.25 Serialization
+
+Saved zoning data includes:
+
+- Zone Grid
+- Building Levels
+- Occupancy
+- Land Value
+- Demand
+- Construction Progress
+- Policies
+- Statistics
+
+---
+
+## 5.26 Performance Optimization
+
+Optimizations include:
+
+- Incremental growth updates
+- Dirty zone recalculation
+- Cached land value
+- Spatial indexing
+- Batched building evaluation
+
+Only changed districts are recalculated.
+
+---
+
+## 5.27 Design Goals
+
+The zoning system is designed to support:
+
+- Organic city growth
+- Dynamic building evolution
+- Realistic economic development
+- Service-dependent expansion
+- Policy-driven specialization
+- Continuous land valuation
+- Large-scale city simulation
+- Efficient performance
+- Deterministic building lifecycle
+
+The zoning engine transforms player planning into a living city by continuously evaluating demand, services, land value, and economic conditions to determine where and how development occurs.
