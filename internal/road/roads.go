@@ -1009,6 +1009,26 @@ func (rm *RoadManager) HasNearbyRoad(x, z, maxDist float32) bool {
 	return false
 }
 
+// NearestRoad returns the road type and world distance to the closest sampled point on the nearest segment.
+func (rm *RoadManager) NearestRoad(x, z float32) (RoadType, float32, bool) {
+	idx := rm.NearestSegment(x, z)
+	if idx < 0 {
+		return 0, 0, false
+	}
+	seg := rm.Segments[idx]
+	xs, zs, _ := rm.SampleSegment(seg, 16)
+	best := float32(math.MaxFloat32)
+	for i := range xs {
+		dx := x - xs[i]
+		dz := z - zs[i]
+		d := dx*dx + dz*dz
+		if d < best {
+			best = d
+		}
+	}
+	return seg.RoadType, float32(math.Sqrt(float64(best))), true
+}
+
 func (rm *RoadManager) Rebuild(h *terrain.Heightmap) {
 	if len(rm.dirtyModels) == 0 {
 		return

@@ -3358,7 +3358,7 @@ Requires educated workforce.
 
 ---
 
-## 5.3 Zone Grid
+## 5.3 Zone Grid ✅
 
 Zones are placed adjacent to roads.
 
@@ -3380,7 +3380,7 @@ Buildings automatically occupy contiguous zone cells.
 
 ---
 
-## 5.4 Buildable Lots
+## 5.4 Buildable Lots ✅
 
 Adjacent zone cells combine into lots.
 
@@ -3397,5 +3397,41 @@ Example:
 ```
 
 Lot size determines which assets may spawn.
+
+---
+
+## 5.5 Development Requirements ✅
+
+A zone develops only when all conditions are met.
+
+Required:
+
+- Road Connection
+- Electricity
+- Water
+- Sewage
+- Demand
+- Buildable Terrain
+- Available Building Asset
+
+Failure prevents development.
+
+---
+
+## 5.6 RCI Demand
+
+City growth is driven by RCI demand.
+
+```text
+Residential
+
+Commercial
+
+Industrial
+```
+
+Office demand is derived from Industrial demand as education levels increase.
+
+Demand changes continuously.
 
 ---

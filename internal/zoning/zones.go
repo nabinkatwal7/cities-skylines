@@ -1,6 +1,8 @@
 package zoning
 
 import (
+	"math"
+
 	"github.com/katwate/js-skylines/internal/road"
 	"github.com/katwate/js-skylines/internal/terrain"
 
@@ -79,32 +81,67 @@ func ZoneTraitsOf(zt ZoneType) ZoneTraits {
 	}
 }
 
+// ZoneDepthForRoad returns how many grid cells may be zoned away from a road of this type.
+func ZoneDepthForRoad(rt road.RoadType) int {
+	switch road.HierarchyForRoad(rt) {
+	case road.HierarchyHighway:
+		return 8
+	case road.HierarchyArterial:
+		return 6
+	case road.HierarchyCollector:
+		return 4
+	default:
+		return 2
+	}
+}
+
 type ZoneCell struct {
 	Type    ZoneType
 	Density float32
+	LotID   int
+}
+
+type ZoneLot struct {
+	ID     int
+	X, Z   int
+	Width  int
+	Height int
+	Type   ZoneType
+	Cells  int
 }
 
 type ZoneManager struct {
-	Cells       [][]ZoneCell
+	Cells        [][]ZoneCell
 	width, height int
-	roads       *road.RoadManager
+	roads        *road.RoadManager
 	buildability *terrain.BuildabilityChecker
-	MaxZoneDepth int
+	services     ServiceCoverage
+	demand       DemandProvider
+	buildings    BuildingCatalog
+	lots         []ZoneLot
+	lotsDirty    bool
 }
 
 func NewZoneManager(w, h int, roads *road.RoadManager, bc *terrain.BuildabilityChecker) *ZoneManager {
 	cells := make([][]ZoneCell, h)
 	for z := range cells {
 		cells[z] = make([]ZoneCell, w)
+		for x := range cells[z] {
+			cells[z][x].LotID = -1
+		}
 	}
 	return &ZoneManager{
-		Cells:       cells,
-		width:       w,
-		height:      h,
-		roads:       roads,
+		Cells:        cells,
+		width:        w,
+		height:       h,
+		roads:        roads,
 		buildability: bc,
-		MaxZoneDepth: 4,
+		lotsDirty:    true,
 	}
+}
+
+func (zm *ZoneManager) cellSize() float32 {
+	return terrain.WorldSize / float32(zm.width)
 }
 
 func (zm *ZoneManager) CellX(worldX float32) int {
@@ -115,24 +152,36 @@ func (zm *ZoneManager) CellZ(worldZ float32) int {
 	return int((worldZ + terrain.WorldSize/2) / terrain.WorldSize * float32(zm.height-1))
 }
 
+func (zm *ZoneManager) CellCenter(x, z int) (float32, float32) {
+	cs := zm.cellSize()
+	return float32(x)*cs - terrain.WorldSize/2 + cs*0.5,
+		float32(z)*cs - terrain.WorldSize/2 + cs*0.5
+}
+
 func (zm *ZoneManager) CanZone(worldX, worldZ float32) bool {
-	cellSize := terrain.WorldSize / float32(zm.width)
-	for dz := -zm.MaxZoneDepth; dz <= zm.MaxZoneDepth; dz++ {
-		for dx := -zm.MaxZoneDepth; dx <= zm.MaxZoneDepth; dx++ {
-			checkX := worldX + float32(dx)*cellSize
-			checkZ := worldZ + float32(dz)*cellSize
-			if zm.roads != nil && zm.roads.HasNearbyRoad(checkX, checkZ, cellSize*1.5) {
-				if zm.buildability != nil {
-					info := zm.buildability.GetBuildability(worldX, worldZ)
-					if info.Score < 0.3 || info.IsUnderwater {
-						return false
-					}
-				}
-				return true
-			}
+	if zm.buildability != nil {
+		info := zm.buildability.GetBuildability(worldX, worldZ)
+		if info.Score < 0.3 || info.IsUnderwater {
+			return false
 		}
 	}
-	return false
+	return zm.roadConnected(worldX, worldZ)
+}
+
+func (zm *ZoneManager) roadConnected(worldX, worldZ float32) bool {
+	if zm.roads == nil {
+		return false
+	}
+	rt, dist, ok := zm.roads.NearestRoad(worldX, worldZ)
+	if !ok {
+		return false
+	}
+	cs := zm.cellSize()
+	if dist < cs*0.3 {
+		return false
+	}
+	depth := int(math.Ceil(float64(dist / cs)))
+	return depth >= 1 && depth <= ZoneDepthForRoad(rt)
 }
 
 func (zm *ZoneManager) SetZone(worldX, worldZ float32, zt ZoneType) {
@@ -145,6 +194,15 @@ func (zm *ZoneManager) SetZone(worldX, worldZ float32, zt ZoneType) {
 		return
 	}
 	zm.Cells[z][x].Type = zt
+	zm.markLotsDirty()
+}
+
+func (zm *ZoneManager) SetZoneCell(x, z int, zt ZoneType) {
+	if x < 0 || x >= zm.width || z < 0 || z >= zm.height {
+		return
+	}
+	zm.Cells[z][x].Type = zt
+	zm.markLotsDirty()
 }
 
 func (zm *ZoneManager) RemoveZone(worldX, worldZ float32) {
@@ -155,6 +213,8 @@ func (zm *ZoneManager) RemoveZone(worldX, worldZ float32) {
 	}
 	zm.Cells[z][x].Type = ZoneNone
 	zm.Cells[z][x].Density = 0
+	zm.Cells[z][x].LotID = -1
+	zm.markLotsDirty()
 }
 
 func (zm *ZoneManager) CellTypeAt(worldX, worldZ float32) ZoneType {
@@ -164,6 +224,112 @@ func (zm *ZoneManager) CellTypeAt(worldX, worldZ float32) ZoneType {
 		return ZoneNone
 	}
 	return zm.Cells[z][x].Type
+}
+
+func (zm *ZoneManager) markLotsDirty() {
+	zm.lotsDirty = true
+}
+
+func (zm *ZoneManager) Lots() []ZoneLot {
+	if zm.lotsDirty {
+		zm.rebuildLots()
+	}
+	return zm.lots
+}
+
+func (zm *ZoneManager) LotAtCell(x, z int) *ZoneLot {
+	if x < 0 || x >= zm.width || z < 0 || z >= zm.height {
+		return nil
+	}
+	zm.Lots()
+	id := zm.Cells[z][x].LotID
+	if id < 0 || id >= len(zm.lots) {
+		return nil
+	}
+	return &zm.lots[id]
+}
+
+func (zm *ZoneManager) LotAt(worldX, worldZ float32) *ZoneLot {
+	return zm.LotAtCell(zm.CellX(worldX), zm.CellZ(worldZ))
+}
+
+func (zm *ZoneManager) rebuildLots() {
+	zm.lots = zm.lots[:0]
+	for z := 0; z < zm.height; z++ {
+		for x := 0; x < zm.width; x++ {
+			zm.Cells[z][x].LotID = -1
+		}
+	}
+
+	visited := make([][]bool, zm.height)
+	for z := range visited {
+		visited[z] = make([]bool, zm.width)
+	}
+
+	for z := 0; z < zm.height; z++ {
+		for x := 0; x < zm.width; x++ {
+			zt := zm.Cells[z][x].Type
+			if zt == ZoneNone || visited[z][x] {
+				continue
+			}
+			cells := zm.floodFill(x, z, zt, visited)
+			minX, maxX := x, x
+			minZ, maxZ := z, z
+			for _, c := range cells {
+				if c.x < minX {
+					minX = c.x
+				}
+				if c.x > maxX {
+					maxX = c.x
+				}
+				if c.z < minZ {
+					minZ = c.z
+				}
+				if c.z > maxZ {
+					maxZ = c.z
+				}
+			}
+			w := maxX - minX + 1
+			h := maxZ - minZ + 1
+			if len(cells) != w*h {
+				continue
+			}
+			id := len(zm.lots)
+			zm.lots = append(zm.lots, ZoneLot{
+				ID: id, X: minX, Z: minZ, Width: w, Height: h, Type: zt, Cells: len(cells),
+			})
+			for _, c := range cells {
+				zm.Cells[c.z][c.x].LotID = id
+			}
+		}
+	}
+	zm.lotsDirty = false
+}
+
+type gridPoint struct{ x, z int }
+
+func (zm *ZoneManager) floodFill(startX, startZ int, zt ZoneType, visited [][]bool) []gridPoint {
+	var cells []gridPoint
+	stack := []gridPoint{{startX, startZ}}
+	for len(stack) > 0 {
+		p := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if p.x < 0 || p.x >= zm.width || p.z < 0 || p.z >= zm.height {
+			continue
+		}
+		if visited[p.z][p.x] || zm.Cells[p.z][p.x].Type != zt {
+			continue
+		}
+		visited[p.z][p.x] = true
+		cells = append(cells, p)
+		stack = append(stack,
+			gridPoint{p.x + 1, p.z},
+			gridPoint{p.x - 1, p.z},
+			gridPoint{p.x, p.z + 1},
+			gridPoint{p.x, p.z - 1},
+		)
+	}
+	return cells
 }
 
 func ZoneTypeName(zt ZoneType) string {
@@ -205,7 +371,7 @@ func ZoneColor(zt ZoneType) rl.Color {
 }
 
 func (zm *ZoneManager) Draw(h *terrain.Heightmap) {
-	cellSize := terrain.WorldSize / float32(zm.width)
+	cellSize := zm.cellSize()
 	for z := 0; z < zm.height; z++ {
 		for x := 0; x < zm.width; x++ {
 			cell := &zm.Cells[z][x]

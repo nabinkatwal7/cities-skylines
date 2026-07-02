@@ -1,39 +1,3 @@
-## 5.5 Development Requirements
-
-A zone develops only when all conditions are met.
-
-Required:
-
-- Road Connection
-- Electricity
-- Water
-- Sewage
-- Demand
-- Buildable Terrain
-- Available Building Asset
-
-Failure prevents development.
-
----
-
-## 5.6 RCI Demand
-
-City growth is driven by RCI demand.
-
-```text
-Residential
-
-Commercial
-
-Industrial
-```
-
-Office demand is derived from Industrial demand as education levels increase.
-
-Demand changes continuously.
-
----
-
 ## 5.7 Residential Demand
 
 Residential demand increases when:

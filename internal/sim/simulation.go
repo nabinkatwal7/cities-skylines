@@ -5,6 +5,7 @@ import (
 
 	"github.com/katwate/js-skylines/internal/core"
 	"github.com/katwate/js-skylines/internal/road"
+	"github.com/katwate/js-skylines/internal/services"
 	"github.com/katwate/js-skylines/internal/terrain"
 	"github.com/katwate/js-skylines/internal/transport"
 	"github.com/katwate/js-skylines/internal/zoning"
@@ -80,6 +81,7 @@ func NewSimulationManager(seed int64) *SimulationManager {
 	sm.Buildability = terrain.NewBuildabilityChecker(sm.Heightmap, sm.Water, sm.Trees, sm.Roads, sm.Resources)
 	terrain.SetBuildabilityChecker(sm.Buildability)
 	sm.Zones = zoning.NewZoneManager(128, 128, sm.Roads, sm.Buildability)
+	sm.Zones.SetDevelopmentDeps(services.NewStarter(), zoning.NewDemandEngine(), zoning.Catalog{})
 	sm.Trees.SetResources(sm.Resources)
 	sm.Resources.SetTrees(sm.Trees)
 	sm.Parking.GenerateRoadsideSpots(sm.Roads)
