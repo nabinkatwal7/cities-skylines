@@ -24,6 +24,7 @@ type SimulationManager struct {
 	Transport    *transport.TransportManager
 	Zones        *zoning.ZoneManager
 	Demand       *zoning.DemandEngine
+	Services     *services.CityServices
 	Buildability *terrain.BuildabilityChecker
 	Parking      *road.ParkingManager
 
@@ -82,8 +83,10 @@ func NewSimulationManager(seed int64) *SimulationManager {
 	sm.Buildability = terrain.NewBuildabilityChecker(sm.Heightmap, sm.Water, sm.Trees, sm.Roads, sm.Resources)
 	terrain.SetBuildabilityChecker(sm.Buildability)
 	sm.Zones = zoning.NewZoneManager(128, 128, sm.Roads, sm.Buildability)
+	sm.Services = services.NewStarter()
 	sm.Demand = zoning.NewDemandEngine()
-	sm.Zones.SetDevelopmentDeps(services.NewStarter(), sm.Demand, zoning.Catalog{})
+	sm.Demand.Factors.ServiceScore = zoning.ServiceScore(sm.Services)
+	sm.Zones.SetDevelopmentDeps(sm.Services, sm.Demand, zoning.Catalog{})
 	sm.Trees.SetResources(sm.Resources)
 	sm.Resources.SetTrees(sm.Trees)
 	sm.Parking.GenerateRoadsideSpots(sm.Roads)
@@ -143,6 +146,9 @@ func (sm *SimulationManager) initScheduler() {
 		BudgetMs: 0.5,
 		Callback: func(dt float64) {
 			if sm.Demand != nil && sm.Zones != nil {
+				if sm.Services != nil {
+					sm.Demand.Factors.ServiceScore = zoning.ServiceScore(sm.Services)
+				}
 				sm.Demand.Update(dt, sm.Zones)
 			}
 		},

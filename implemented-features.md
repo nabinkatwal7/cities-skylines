@@ -3436,7 +3436,7 @@ Demand changes continuously.
 
 ---
 
-## 5.7 Residential Demand
+## 5.7 Residential Demand ✅
 
 Residential demand increases when:
 

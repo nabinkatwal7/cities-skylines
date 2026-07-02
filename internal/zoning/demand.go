@@ -14,6 +14,29 @@ type DemandEngine struct {
 	Education  float32 // 0..1 city education level
 	Population float32 // ponytail: zone proxy until household sim exists
 	Jobs       float32 // ponytail: zone proxy until business sim exists
+	Factors    CityFactors
+}
+
+// CityFactors tune residential demand; ponytail: derived fields refresh in Update until dedicated sims exist.
+type CityFactors struct {
+	Happiness      float32 // 0..1
+	ResidentialTax float32 // 0..1
+	LandValue      float32 // 0..1
+	ServiceScore   float32 // 0..1 electricity/water/sewage/police etc.
+	Immigration    float32 // 0..1 inflow
+	Pollution      float32 // 0..1
+	Crime          float32 // 0..1
+	DeathWave      float32 // 0..1 active wave strength
+	Abandonment    float32 // 0..1 abandoned residential share
+}
+
+func DefaultCityFactors() CityFactors {
+	return CityFactors{
+		Happiness:      0.55,
+		ResidentialTax: 0.09,
+		LandValue:      0.5,
+		ServiceScore:   1.0,
+	}
 }
 
 func NewDemandEngine() *DemandEngine {
@@ -21,6 +44,7 @@ func NewDemandEngine() *DemandEngine {
 		Residential: 0.5,
 		Commercial:  0.5,
 		Industrial:  0.5,
+		Factors:     DefaultCityFactors(),
 	}
 }
 
@@ -60,8 +84,9 @@ func (d *DemandEngine) Update(dt float64, zm *ZoneManager) {
 
 	d.Population = resCap
 	d.Jobs = jobCap
+	d.refreshResidentialFactors(zm, resCells, comCells, indCells, offCells, float32(dt))
 
-	resTarget := clampf((jobCap-resCap)*0.15, -1, 1)
+	resTarget := clampf((jobCap-resCap)*0.15+d.residentialModifier(), -1, 1)
 	comTarget := clampf((resCap*0.8-comCap)*0.15, -1, 1)
 	indTarget := clampf((resCap*0.4-indCap)*0.12, -1, 1)
 
@@ -73,6 +98,59 @@ func (d *DemandEngine) Update(dt float64, zm *ZoneManager) {
 	eduGrowth := float32(dt) * 0.00005 * (1 + resCap*0.1)
 	d.Education = clampf(d.Education+eduGrowth, 0, 1)
 	d.Office = clampf(d.Industrial*d.Education, 0, 1)
+}
+
+func (d *DemandEngine) refreshResidentialFactors(zm *ZoneManager, res, com, ind, off int, dt float32) {
+	total := res + com + ind + off
+	if total > 0 {
+		d.Factors.Pollution = clampf(float32(ind)/float32(total)*0.9, 0, 1)
+	}
+	if d.Jobs > d.Population {
+		d.Factors.Immigration = clampf(d.Factors.Immigration+dt*0.002, 0, 1)
+	} else {
+		d.Factors.Immigration = clampf(d.Factors.Immigration-dt*0.004, 0, 1)
+	}
+	_ = zm
+}
+
+func (d *DemandEngine) residentialModifier() float32 {
+	f := d.Factors
+	mod := float32(0)
+
+	if d.Jobs > d.Population {
+		mod += clampf((d.Jobs-d.Population)*0.04, 0, 0.25)
+	} else if d.Population > 0 {
+		mod -= clampf((d.Population-d.Jobs)/d.Population*0.35, 0, 0.35)
+	}
+
+	mod += (f.Happiness - 0.5) * 0.35
+	mod += (0.12 - f.ResidentialTax) * 1.0
+	mod += (f.ServiceScore - 0.5) * 0.3
+	mod += f.Immigration * 0.25
+	mod += (f.LandValue - 0.5) * 0.25
+	mod -= f.Pollution * 0.35
+	mod -= f.Crime * 0.3
+	mod -= f.DeathWave * 0.45
+	mod -= f.Abandonment * 0.35
+
+	return clampf(mod, -0.6, 0.6)
+}
+
+func ServiceScore(s ServiceCoverage) float32 {
+	if s == nil {
+		return 0
+	}
+	score := float32(0)
+	if s.HasElectricity(0, 0) {
+		score += 0.34
+	}
+	if s.HasWater(0, 0) {
+		score += 0.33
+	}
+	if s.HasSewage(0, 0) {
+		score += 0.33
+	}
+	return score
 }
 
 func clampf(v, lo, hi float32) float32 {
