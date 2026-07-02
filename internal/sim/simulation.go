@@ -315,6 +315,9 @@ func (sm *SimulationManager) CanPlaceRoad(x1, z1, x2, z2 float32, rt road.RoadTy
 		}
 		xs, zs, _ := sm.Roads.SampleSegment(seg, 8)
 		for i := 0; i < len(xs); i++ {
+			if isNearNode(sm, xs[i], zs[i]) {
+				continue
+			}
 			sdx := x1 - xs[i]
 			sdz := z1 - zs[i]
 			if sdx*sdx+sdz*sdz < RoadProximityDist*RoadProximityDist {
@@ -329,6 +332,17 @@ func (sm *SimulationManager) CanPlaceRoad(x1, z1, x2, z2 float32, rt road.RoadTy
 	}
 
 	return ""
+}
+
+func isNearNode(sm *SimulationManager, x, z float32) bool {
+	for _, n := range sm.Roads.Nodes {
+		dx := n.X - x
+		dz := n.Z - z
+		if dx*dx+dz*dz < RoadProximityDist*RoadProximityDist {
+			return true
+		}
+	}
+	return false
 }
 
 func (sm *SimulationManager) PlaceRoadNode(x, z float32) uint32 {
@@ -383,7 +397,20 @@ func (sm *SimulationManager) PlaceRoadSegment(nodeA uint32, x, z float32, roadTy
 	if reason != "" {
 		return math.MaxUint32, math.MaxUint32, false
 	}
-	nodeB := sm.Roads.AddNode(snapX, 0, snapZ)
+
+	nodeB := uint32(math.MaxUint32)
+	for i := range sm.Roads.Nodes {
+		n := &sm.Roads.Nodes[i]
+		dx := n.X - snapX
+		dz := n.Z - snapZ
+		if dx*dx+dz*dz < RoadProximityDist*RoadProximityDist && uint32(i) != nodeA {
+			nodeB = uint32(i)
+			break
+		}
+	}
+	if nodeB == math.MaxUint32 {
+		nodeB = sm.Roads.AddNode(snapX, 0, snapZ)
+	}
 	segID := sm.Roads.AddSegment(nodeA, nodeB, roadType)
 	sm.finalizeSegment(segID, nodeA, nodeB, roadType, elevation)
 	return nodeB, segID, true

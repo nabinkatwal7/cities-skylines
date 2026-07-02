@@ -3271,3 +3271,34 @@ The transportation system is designed to provide:
 - Independent simulation of every transport mode
 
 Together with the road system, public transportation forms the complete mobility network of the city, enabling efficient movement of citizens, tourists, goods, and services while directly influencing traffic congestion, land value, economic activity, and overall city development.
+
+# 5. Zoning System & City Growth Simulation
+
+The zoning system governs how land is developed over time. Unlike traditional city builders where zoning immediately creates buildings, zones represent **development opportunities**. Buildings are constructed only when demand, services, accessibility, and economic conditions satisfy growth requirements.
+
+Every zoned cell continuously evaluates whether it should develop, upgrade, remain occupied, become abandoned, or be demolished.
+
+---
+
+## 5.1 Zone Architecture
+
+The Zone Manager maintains all zoned land independently from buildings.
+
+```text
+ZoneManager
+
+├── Residential
+├── Commercial
+├── Industrial
+├── Office
+├── District Policies
+├── Demand Engine
+├── Growth Simulation
+└── Land Value
+```
+
+Zones are simulation objects rather than buildings.
+
+Removing a building does not remove its zone.
+
+---
