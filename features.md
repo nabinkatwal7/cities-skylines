@@ -1,25 +1,3 @@
-## 5.7 Residential Demand
-
-Residential demand increases when:
-
-- Jobs available
-- High happiness
-- Low taxes
-- Good services
-- Immigration
-- High land value
-
-Residential demand decreases when:
-
-- High unemployment
-- Pollution
-- Crime
-- High taxes
-- Death waves
-- Abandonment
-
----
-
 ## 5.8 Commercial Demand
 
 Commercial demand depends on:

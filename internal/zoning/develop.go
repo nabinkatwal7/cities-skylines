@@ -41,35 +41,6 @@ type BuildingCatalog interface {
 	HasAsset(zt ZoneType, width, height int) bool
 }
 
-type DemandEngine struct {
-	Residential float32
-	Commercial  float32
-	Industrial  float32
-	Office      float32
-}
-
-func NewDemandEngine() *DemandEngine {
-	return &DemandEngine{Residential: 1, Commercial: 1, Industrial: 1}
-}
-
-func (d *DemandEngine) HasDemand(cat ZoneCategory) bool {
-	if d == nil {
-		return false
-	}
-	switch cat {
-	case CategoryResidential:
-		return d.Residential > 0
-	case CategoryCommercial:
-		return d.Commercial > 0
-	case CategoryIndustrial:
-		return d.Industrial > 0
-	case CategoryOffice:
-		return d.Office > 0
-	default:
-		return false
-	}
-}
-
 type Catalog struct{}
 
 func (Catalog) HasAsset(zt ZoneType, width, height int) bool {

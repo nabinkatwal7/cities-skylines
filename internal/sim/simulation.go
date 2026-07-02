@@ -23,6 +23,7 @@ type SimulationManager struct {
 	Vehicles     *road.VehicleManager
 	Transport    *transport.TransportManager
 	Zones        *zoning.ZoneManager
+	Demand       *zoning.DemandEngine
 	Buildability *terrain.BuildabilityChecker
 	Parking      *road.ParkingManager
 
@@ -81,7 +82,8 @@ func NewSimulationManager(seed int64) *SimulationManager {
 	sm.Buildability = terrain.NewBuildabilityChecker(sm.Heightmap, sm.Water, sm.Trees, sm.Roads, sm.Resources)
 	terrain.SetBuildabilityChecker(sm.Buildability)
 	sm.Zones = zoning.NewZoneManager(128, 128, sm.Roads, sm.Buildability)
-	sm.Zones.SetDevelopmentDeps(services.NewStarter(), zoning.NewDemandEngine(), zoning.Catalog{})
+	sm.Demand = zoning.NewDemandEngine()
+	sm.Zones.SetDevelopmentDeps(services.NewStarter(), sm.Demand, zoning.Catalog{})
 	sm.Trees.SetResources(sm.Resources)
 	sm.Resources.SetTrees(sm.Trees)
 	sm.Parking.GenerateRoadsideSpots(sm.Roads)
@@ -134,6 +136,16 @@ func (sm *SimulationManager) initScheduler() {
 		Priority: core.SchedPriorityLow,
 		BudgetMs: 0.5,
 		Callback: func(dt float64) { sm.Parking.Update(sm.Transport) },
+	})
+	sm.scheduler.Register(core.GroupSlow, core.UpdateTask{
+		Name:     "demand",
+		Priority: core.SchedPriorityMedium,
+		BudgetMs: 0.5,
+		Callback: func(dt float64) {
+			if sm.Demand != nil && sm.Zones != nil {
+				sm.Demand.Update(dt, sm.Zones)
+			}
+		},
 	})
 	sm.scheduler.Register(core.GroupVerySlow, core.UpdateTask{
 		Name:     "tax",

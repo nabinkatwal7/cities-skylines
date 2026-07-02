@@ -3418,7 +3418,7 @@ Failure prevents development.
 
 ---
 
-## 5.6 RCI Demand
+## 5.6 RCI Demand ✅
 
 City growth is driven by RCI demand.
 
@@ -3433,5 +3433,27 @@ Industrial
 Office demand is derived from Industrial demand as education levels increase.
 
 Demand changes continuously.
+
+---
+
+## 5.7 Residential Demand
+
+Residential demand increases when:
+
+- Jobs available
+- High happiness
+- Low taxes
+- Good services
+- Immigration
+- High land value
+
+Residential demand decreases when:
+
+- High unemployment
+- Pollution
+- Crime
+- High taxes
+- Death waves
+- Abandonment
 
 ---

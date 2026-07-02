@@ -226,6 +226,24 @@ func (zm *ZoneManager) CellTypeAt(worldX, worldZ float32) ZoneType {
 	return zm.Cells[z][x].Type
 }
 
+func (zm *ZoneManager) CategoryCounts() (residential, commercial, industrial, office int) {
+	for z := 0; z < zm.height; z++ {
+		for x := 0; x < zm.width; x++ {
+			switch zm.Cells[z][x].Type {
+			case ZoneResidentialLow, ZoneResidentialHigh:
+				residential++
+			case ZoneCommercialLow, ZoneCommercialHigh:
+				commercial++
+			case ZoneIndustrial:
+				industrial++
+			case ZoneOffice:
+				office++
+			}
+		}
+	}
+	return
+}
+
 func (zm *ZoneManager) markLotsDirty() {
 	zm.lotsDirty = true
 }
