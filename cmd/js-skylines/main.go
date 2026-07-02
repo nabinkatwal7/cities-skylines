@@ -6,12 +6,14 @@ import (
 
 	rl "github.com/gen2brain/raylib-go/raylib"
 
+	"github.com/katwate/js-skylines/internal/core"
 	"github.com/katwate/js-skylines/internal/road"
 	"github.com/katwate/js-skylines/internal/save"
 	simpkg "github.com/katwate/js-skylines/internal/sim"
 	"github.com/katwate/js-skylines/internal/terrain"
 	"github.com/katwate/js-skylines/internal/transport"
 	"github.com/katwate/js-skylines/internal/ui"
+	"github.com/katwate/js-skylines/internal/zoning"
 )
 
 func skyColor(isNight bool) rl.Color {
@@ -345,6 +347,22 @@ func main() {
 						transportStartStopID = stopID
 					}
 				}
+				case ui.ToolZone:
+					zt := zoning.ZoneType(gameUI.ZoneType + 1)
+					if sim.Heightmap.IsUnderwater(worldX, worldZ) {
+						break
+					}
+					if rl.IsKeyDown(rl.KeyLeftShift) || rl.IsKeyDown(rl.KeyRightShift) {
+						if sim.Zones != nil {
+							sim.Zones.RemoveZone(previewX, previewZ)
+							sim.EventBus.Emit(string(core.EventZoneRemoved), nil)
+						}
+					} else {
+						if sim.Zones != nil && sim.Zones.CanZone(previewX, previewZ) {
+							sim.Zones.SetZone(previewX, previewZ, zt)
+							sim.EventBus.Emit(string(core.EventZonePlaced), zt)
+						}
+					}
 				case ui.ToolRemove:
 					if sim.Transport != nil {
 						stop := sim.Transport.NearestStop(worldX, worldZ, 8)

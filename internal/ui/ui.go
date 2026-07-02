@@ -5,6 +5,7 @@ import (
 
 	"github.com/katwate/js-skylines/internal/road"
 	"github.com/katwate/js-skylines/internal/transport"
+	"github.com/katwate/js-skylines/internal/zoning"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
@@ -16,6 +17,7 @@ const (
 	ToolRoad
 	ToolParking
 	ToolTransport
+	ToolZone
 	ToolRemove
 	ToolUpgrade
 )
@@ -32,6 +34,7 @@ type ToolbarItem struct {
 type GameUI struct {
 	Selected          GameTool
 	RoadType          road.RoadType
+	ZoneType          int
 	ParkingGarage     bool
 	BusDepotMode      bool
 	TramDepotMode     bool
@@ -64,8 +67,9 @@ var ToolbarItems = []ToolbarItem{
 	{ToolRoad, "Roads", rl.KeyTwo, rl.NewColor(180, 160, 120, 255), []string{"2-Lane", "1-Way", "4-Lane", "Gravel", "Highway", "6-Lane", "Avenue", "Bus Rd", "Tram Rd", "Bike Rd", "Tree Rd", "Asym Rd", "Pedestrian", "Quay"}, 0},
 	{ToolParking, "Parking", rl.KeyThree, rl.NewColor(100, 100, 200, 255), []string{"Lot", "Garage", "Bus Depot", "Tram Depot", "Metro Depot", "Ferry Depot", "Monorail Depot", "Cable Car Depot", "Taxi Depot", "Airport", "Port"}, 0},
 	{ToolTransport, "Transport", rl.KeyFour, rl.NewColor(50, 150, 200, 255), []string{"Bus", "Tram", "Metro", "Train", "Ferry", "Monorail", "Cable Car", "Taxi", "Air", "Ship", "Walk", "Bicycle", "Car", "Blimp", "Cargo Stn"}, 0},
-	{ToolRemove, "Remove", rl.KeyFive, rl.NewColor(200, 80, 80, 255), nil, 0},
-	{ToolUpgrade, "Upgrade", rl.KeySix, rl.NewColor(200, 200, 80, 255), nil, 0},
+	{ToolZone, "Zones", rl.KeyFive, rl.NewColor(120, 200, 120, 255), []string{"Res Low", "Res High", "Com Low", "Com High", "Industrial", "Office"}, 0},
+	{ToolRemove, "Remove", rl.KeySix, rl.NewColor(200, 80, 80, 255), nil, 0},
+	{ToolUpgrade, "Upgrade", rl.KeySeven, rl.NewColor(200, 200, 80, 255), nil, 0},
 }
 
 const (
@@ -93,7 +97,7 @@ func (ui *GameUI) setParkingMode(oi int) {
 
 func (ui *GameUI) HasOptionsBar() bool {
 	switch ui.Selected {
-	case ToolRoad, ToolParking, ToolTransport:
+	case ToolRoad, ToolParking, ToolTransport, ToolZone:
 		return true
 	default:
 		return false
@@ -126,6 +130,11 @@ func (ui *GameUI) HandleInput() GameTool {
 			ui.CargoMode = false
 			ui.TransportType = transport.TransportType(item.OptIndex)
 		}
+	}
+	if ui.Selected == ToolZone && rl.IsKeyPressed(rl.KeyR) {
+		item := &ToolbarItems[4]
+		item.OptIndex = (item.OptIndex + 1) % len(item.Options)
+		ui.ZoneType = item.OptIndex
 	}
 	if rl.IsKeyPressed(rl.KeyEscape) {
 		ui.Selected = ToolPointer
@@ -264,6 +273,26 @@ func (ui *GameUI) drawOptions() {
 				}
 			}
 		}
+	case ToolZone:
+		item := &ToolbarItems[4]
+		optW := int32(80)
+		total := len(item.Options) * int(optW+ToolbarPad)
+		sx := (1280 - total) / 2
+		for oi, opt := range item.Options {
+			bx := int32(sx + oi*(int(optW)+int(ToolbarPad)))
+			by := int32(ToolbarY - OptionsBarH + 4)
+			sel := oi == item.OptIndex
+			col := rl.NewColor(40, 40, 40, 200)
+			if oi < 6 {
+				col = zoning.ZoneColor(zoning.ZoneType(oi+1))
+				col.A = 200
+			}
+			uiBtn(bx, by, optW, OptionsBarH-8, opt, col, rl.White, sel)
+			if rl.IsMouseButtonPressed(rl.MouseButtonLeft) && mx >= bx && mx < bx+optW && my >= by && my < by+OptionsBarH-8 {
+				item.OptIndex = oi
+				ui.ZoneType = oi
+			}
+		}
 	}
 }
 
@@ -282,6 +311,8 @@ func (ui *GameUI) drawHelpText() {
 		} else {
 			DrawUIText(fmt.Sprintf("L-click place %s stop | R cycle type", ToolbarItems[3].Options[ToolbarItems[3].OptIndex]), 10, helpY, 14, rl.White)
 		}
+	case ToolZone:
+		DrawUIText(fmt.Sprintf("L-click paint %s | R cycle type", ToolbarItems[4].Options[ToolbarItems[4].OptIndex]), 10, helpY, 14, rl.White)
 	case ToolRemove:
 		DrawUIText("L-click stop, line, or road segment to remove | Esc deselect", 10, helpY, 14, rl.White)
 	case ToolUpgrade:

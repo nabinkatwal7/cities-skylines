@@ -16,4 +16,6 @@ const (
 	EventParkingLotPlaced    EventName = "parkinglot:placed"
 	EventParkingGaragePlaced EventName = "parkinggarage:placed"
 	EventParkingLotRemoved   EventName = "parkinglot:removed"
+	EventZonePlaced          EventName = "zone:placed"
+	EventZoneRemoved         EventName = "zone:removed"
 )

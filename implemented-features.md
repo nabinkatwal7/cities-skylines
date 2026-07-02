@@ -3280,7 +3280,7 @@ Every zoned cell continuously evaluates whether it should develop, upgrade, rema
 
 ---
 
-## 5.1 Zone Architecture
+## 5.1 Zone Architecture ✅
 
 The Zone Manager maintains all zoned land independently from buildings.
 
@@ -3300,5 +3300,102 @@ ZoneManager
 Zones are simulation objects rather than buildings.
 
 Removing a building does not remove its zone.
+
+---
+
+## 5.2 Zone Types ✅
+
+Supported zones:
+
+### Residential
+
+- Low Density Residential
+- High Density Residential
+
+Purpose:
+
+- Housing
+- Population Growth
+- Tax Income
+
+---
+
+### Commercial
+
+- Low Density Commercial
+- High Density Commercial
+
+Purpose:
+
+- Shopping
+- Entertainment
+- Employment
+
+---
+
+### Industrial
+
+Generic Industry
+
+Produces:
+
+- Goods
+- Freight
+- Pollution
+- Employment
+
+---
+
+### Office
+
+Produces:
+
+- High Education Jobs
+- Low Pollution
+- Tax Revenue
+
+Requires educated workforce.
+
+---
+
+## 5.3 Zone Grid
+
+Zones are placed adjacent to roads.
+
+```text
+Road
+
+□□□□□□□□
+
+□□□□□□□□
+
+□□□□□□□□
+
+□□□□□□□□
+```
+
+Maximum depth depends on road type.
+
+Buildings automatically occupy contiguous zone cells.
+
+---
+
+## 5.4 Buildable Lots
+
+Adjacent zone cells combine into lots.
+
+Example:
+
+```text
+■■■■
+
+■■■■
+
+↓↓↓
+
+4×2 Building Lot
+```
+
+Lot size determines which assets may spawn.
 
 ---

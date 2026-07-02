@@ -149,6 +149,9 @@ func (m *Manager) Draw(camX, camZ float32) {
 	if sim.Transport != nil {
 		sim.Transport.Draw(sim.Heightmap)
 	}
+	if sim.Zones != nil {
+		sim.Zones.Draw(sim.Heightmap)
+	}
 }
 
 func (m *Manager) Unload() {
