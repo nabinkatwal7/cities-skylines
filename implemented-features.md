@@ -3042,3 +3042,127 @@ Office
 Every leg is independently simulated.
 
 ---
+
+## 4.17 Route Selection
+
+Citizens compute a generalized travel cost.
+
+Example factors:
+
+- Walking Time
+- Vehicle Time
+- Waiting Time
+- Transfer Penalty
+- Monetary Cost
+
+The route with the lowest total cost is selected.
+
+---
+
+## 4.18 Transfers
+
+Stations may connect multiple transport systems.
+
+Example:
+
+```text
+Bus Stop
+
+↓
+
+Metro Station
+
+↓
+
+Train Station
+
+↓
+
+Airport
+```
+
+Transfers increase travel time but expand reachable destinations.
+
+---
+
+## 4.19 Vehicle Capacity
+
+Each vehicle maintains:
+
+```cpp
+Maximum Capacity
+
+Current Passengers
+
+Standing Capacity
+
+Boarding Queue
+```
+
+If full:
+
+Passengers remain waiting.
+
+Alternative routes may be selected.
+
+---
+
+## 4.20 Depot System
+
+Vehicles originate from depots.
+
+Responsibilities:
+
+- Spawn vehicles
+- Store vehicles
+- Maintenance
+- Replacement
+
+Destroying a depot removes associated vehicles over time.
+
+---
+
+## 4.21 Budgets
+
+Each transport mode has its own operating budget.
+
+Budget influences:
+
+- Vehicle Count
+- Maintenance
+- Frequency
+- Operating Cost
+
+Reducing the budget decreases service quality.
+
+---
+
+## 4.22 Ticket Revenue
+
+Revenue is generated from passenger trips.
+
+Income depends on:
+
+- Passenger Count
+- Ticket Price
+- Distance
+- Transport Type
+
+Tourists also contribute to transport income.
+
+---
+
+## 4.23 Public Transport Coverage
+
+Coverage is calculated based on walking distance to stations.
+
+Higher coverage:
+
+- Reduces traffic
+- Increases land value
+- Encourages development
+- Improves citizen happiness
+
+Poor coverage increases dependence on private vehicles.
+
+---

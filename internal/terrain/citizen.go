@@ -171,15 +171,52 @@ func (cm *CitizenManager) evaluateRoute(c *Citizen, tm *TransportManager) []Jour
 	}
 
 	bestLegs := candidates[0]
-	bestScore := scoreRoute(candidates[0], c.Wealth, c.Patience)
+	bestCost := generalizedCost(candidates[0], c.Wealth, tm)
 	for i := 1; i < len(candidates); i++ {
-		s := scoreRoute(candidates[i], c.Wealth, c.Patience)
-		if s < bestScore {
-			bestScore = s
+		cost := generalizedCost(candidates[i], c.Wealth, tm)
+		if cost < bestCost {
+			bestCost = cost
 			bestLegs = candidates[i]
 		}
 	}
 	return bestLegs
+}
+
+const walkSpeed float32 = 6
+const valueOfTime float32 = 0.5
+const transferFixedCost float32 = 120
+const waitCostPerMinute float32 = 20
+
+func generalizedCost(legs []JourneyLeg, wealth int32, tm *TransportManager) float32 {
+	var walkTime, vehicleTime, waitTime float32
+	transferCount := 0
+
+	for _, leg := range legs {
+		switch leg.LegType {
+		case LegWalk:
+			walkTime += leg.Distance / walkSpeed
+		default:
+			speed := float32(30)
+			if tm != nil && int(leg.Mode) < len(transportModeConfigs) {
+				speed = transportModeConfigs[leg.Mode].Speed
+			}
+			vehicleTime += leg.Distance / speed
+			waitTime += 30 / speed
+			transferCount++
+		}
+	}
+
+	if transferCount > 0 {
+		transferCount--
+	}
+
+	timeCost := (walkTime + vehicleTime) * valueOfTime * 60
+	waitCost := waitTime * waitCostPerMinute
+	transferCost := float32(transferCount) * transferFixedCost
+	moneyCost := float32(transferCount) * 2.0 * (1.0 - float32(wealth)/150.0)
+
+	noise := float32(rand.Intn(20)) - 10
+	return timeCost + waitCost + transferCost + moneyCost + noise
 }
 
 func (cm *CitizenManager) findRoutes(fromX, fromZ, toX, toZ float32, tm *TransportManager) [][]JourneyLeg {
@@ -238,10 +275,19 @@ func (cm *CitizenManager) findRoutes(fromX, fromZ, toX, toZ float32, tm *Transpo
 				continue
 			}
 			fromStop := tm.NearestStopOfType(fromX, fromZ, modeA, 200)
-			midStopA := tm.NearestStopOfType(toX, toZ, modeA, 200)
-			midStopB := tm.NearestStopOfType(fromX, fromZ, modeB, 200)
 			toStop := tm.NearestStopOfType(toX, toZ, modeB, 200)
-			if fromStop == nil || midStopA == nil || midStopB == nil || toStop == nil {
+			if fromStop == nil || toStop == nil || fromStop.ID == toStop.ID {
+				continue
+			}
+
+			transferMid := cm.findTransferStop(fromStop, toStop, modeB, tm)
+			if transferMid == nil {
+				continue
+			}
+
+			midStopA := tm.StopByID(transferMid.StopA)
+			midStopB := tm.StopByID(transferMid.StopB)
+			if midStopA == nil || midStopB == nil {
 				continue
 			}
 			if !tm.HasLineBetween(modeA, fromStop.ID, midStopA.ID) {
@@ -250,6 +296,7 @@ func (cm *CitizenManager) findRoutes(fromX, fromZ, toX, toZ float32, tm *Transpo
 			if !tm.HasLineBetween(modeB, midStopB.ID, toStop.ID) {
 				continue
 			}
+
 			transferDist := dist(midStopA.X, midStopA.Z, midStopB.X, midStopB.Z)
 			if transferDist > 100 {
 				continue
@@ -267,6 +314,32 @@ func (cm *CitizenManager) findRoutes(fromX, fromZ, toX, toZ float32, tm *Transpo
 	}
 
 	return routes
+}
+
+type transferMatch struct {
+	StopA, StopB uint32
+}
+
+func (cm *CitizenManager) findTransferStop(fromStop, toStop *TransportStop, modeB TransportType, tm *TransportManager) *transferMatch {
+	if fromStop.TransferStationID != math.MaxUint32 {
+		for _, ts := range tm.TransferStations {
+			if ts.ID != fromStop.TransferStationID {
+				continue
+			}
+			for _, sid := range ts.StopIDs {
+				s := tm.StopByID(sid)
+				if s != nil && s.TransType == modeB {
+					return &transferMatch{StopA: fromStop.ID, StopB: sid}
+				}
+			}
+		}
+	}
+
+	midA := tm.NearestStopOfType(fromStop.X, fromStop.Z, modeB, 100)
+	if midA != nil {
+		return &transferMatch{StopA: fromStop.ID, StopB: midA.ID}
+	}
+	return nil
 }
 
 func scoreRoute(legs []JourneyLeg, wealth int32, patience int32) float32 {

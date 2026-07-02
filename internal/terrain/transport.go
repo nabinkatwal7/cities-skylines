@@ -72,6 +72,8 @@ type TransportStop struct {
 	DistrictID  int32
 	Accessibility float32
 	Capacity    int32
+	BoardingQueue []uint32
+	TransferStationID uint32
 }
 
 type TransportLine struct {
@@ -98,6 +100,7 @@ type TransportVehicle struct {
 	StopIdx    int
 	Passengers int32
 	Capacity   int32
+	StandingCapacity int32
 	Forward    bool
 	Timer      int32
 	Moving     bool
@@ -109,6 +112,9 @@ type TransportVehicle struct {
 	Maintenance float32
 	Delay      int32
 	CurrentStopID uint32
+	HomeDepotType   uint8
+	HomeDepotSlot   int32
+	MaintenanceTimer int32
 }
 
 type TransportNetwork struct {
@@ -124,6 +130,13 @@ type TransportNetwork struct {
 	Capacity         int32
 	Pollution        float32
 	Noise            float32
+}
+
+type TransferStation struct {
+	ID      uint32
+	Name    string
+	StopIDs []uint32
+	X, Z    float32
 }
 
 const TransportVehiclePoolSize = 200
@@ -164,6 +177,8 @@ type TransportManager struct {
 	Citizens *CitizenManager
 
 	CableConnections []CableConnection
+	TransferStations []TransferStation
+	TransferNextID   uint32
 }
 
 type CableConnection struct {
@@ -431,6 +446,7 @@ func (tm *TransportManager) AddStop(x, z float32, tt TransportType) uint32 {
 		DistrictID:       -1,
 		Accessibility:    0,
 		Capacity:         50,
+		TransferStationID: math.MaxUint32,
 	})
 	if int(tt) < len(tm.Networks) {
 		tm.Networks[tt].StopCount++
@@ -438,7 +454,62 @@ func (tm *TransportManager) AddStop(x, z float32, tt TransportType) uint32 {
 			tm.Networks[tt].StationCount++
 		}
 	}
+
+	linkDist := float32(15)
+	for i := range tm.Stops {
+		s := &tm.Stops[i]
+		if s.ID == id || s.TransType == tt {
+			continue
+		}
+		dx := s.X - x
+		dz := s.Z - z
+		if dx*dx+dz*dz <= linkDist*linkDist {
+			tm.linkStops(s.ID, id)
+			break
+		}
+	}
+
 	return id
+}
+
+func (tm *TransportManager) linkStops(stopA, stopB uint32) {
+	for i := range tm.TransferStations {
+		ts := &tm.TransferStations[i]
+		for _, sid := range ts.StopIDs {
+			if sid == stopA {
+				for _, sid2 := range ts.StopIDs {
+					if sid2 == stopB {
+						return
+					}
+				}
+				ts.StopIDs = append(ts.StopIDs, stopB)
+				for si := range tm.Stops {
+					if tm.Stops[si].ID == stopB {
+						tm.Stops[si].TransferStationID = ts.ID
+						break
+					}
+				}
+				return
+			}
+		}
+	}
+
+	tsID := tm.TransferNextID
+	tm.TransferNextID++
+	ts := TransferStation{
+		ID:      tsID,
+		Name:    "Transfer Hub",
+		StopIDs: []uint32{stopA, stopB},
+	}
+	for si := range tm.Stops {
+		s := &tm.Stops[si]
+		if s.ID == stopA || s.ID == stopB {
+			s.TransferStationID = tsID
+			ts.X += s.X / 2
+			ts.Z += s.Z / 2
+		}
+	}
+	tm.TransferStations = append(tm.TransferStations, ts)
 }
 
 func (tm *TransportManager) AddLine(name string, tt TransportType, stopIDs []uint32, col rl.Color) uint32 {
@@ -667,6 +738,42 @@ func (tm *TransportManager) RemoveStop(id uint32) {
 	}
 }
 
+func (tm *TransportManager) findNearestDepot(tt TransportType, x, z, maxDist float32) (uint8, int32, float32, float32) {
+	if tm.Parking == nil {
+		return 0, -1, x, z
+	}
+	switch tt {
+	case TransBus:
+		slot, _ := tm.Parking.NearestBusDepot(x, z, maxDist)
+		if slot >= 0 { return DepotBus, slot, tm.Parking.BusDepots[slot].X, tm.Parking.BusDepots[slot].Z }
+	case TransTram:
+		slot, _ := tm.Parking.NearestTramDepot(x, z, maxDist)
+		if slot >= 0 { return DepotTram, slot, tm.Parking.TramDepots[slot].X, tm.Parking.TramDepots[slot].Z }
+	case TransMetro:
+		slot, _ := tm.Parking.NearestMetroDepot(x, z, maxDist)
+		if slot >= 0 { return DepotMetro, slot, tm.Parking.MetroDepots[slot].X, tm.Parking.MetroDepots[slot].Z }
+	case TransFerry:
+		slot, _ := tm.Parking.NearestFerryDepot(x, z, maxDist)
+		if slot >= 0 { return DepotFerry, slot, tm.Parking.FerryDepots[slot].X, tm.Parking.FerryDepots[slot].Z }
+	case TransMonorail:
+		slot, _ := tm.Parking.NearestMonorailDepot(x, z, maxDist)
+		if slot >= 0 { return DepotMonorail, slot, tm.Parking.MonorailDepots[slot].X, tm.Parking.MonorailDepots[slot].Z }
+	case TransCableCar:
+		slot, _ := tm.Parking.NearestCableCarDepot(x, z, maxDist)
+		if slot >= 0 { return DepotCableCar, slot, tm.Parking.CableCarDepots[slot].X, tm.Parking.CableCarDepots[slot].Z }
+	case TransTaxi:
+		slot, _ := tm.Parking.NearestTaxiDepot(x, z, maxDist)
+		if slot >= 0 { return DepotTaxi, slot, tm.Parking.TaxiDepots[slot].X, tm.Parking.TaxiDepots[slot].Z }
+	case TransAir:
+		slot, _ := tm.Parking.NearestAirportDepot(x, z, maxDist)
+		if slot >= 0 { return DepotAirport, slot, tm.Parking.AirportDepots[slot].X, tm.Parking.AirportDepots[slot].Z }
+	case TransShip:
+		slot, _ := tm.Parking.NearestPortDepot(x, z, maxDist)
+		if slot >= 0 { return DepotPort, slot, tm.Parking.PortDepots[slot].X, tm.Parking.PortDepots[slot].Z }
+	}
+	return 0, -1, x, z
+}
+
 func (tm *TransportManager) SpawnVehicle(lineIdx int) {
 	if lineIdx < 0 || lineIdx >= len(tm.Lines) {
 		return
@@ -684,71 +791,18 @@ func (tm *TransportManager) SpawnVehicle(lineIdx int) {
 	}
 	stop0 := &tm.Stops[line.Stops[0]]
 	spawnX, spawnZ := stop0.X, stop0.Z
-	if line.TransType == TransBus && tm.Parking != nil {
-		slot, _ := tm.Parking.NearestBusDepot(spawnX, spawnZ, 5000)
-		if slot >= 0 {
-			spawnX = tm.Parking.BusDepots[slot].X
-			spawnZ = tm.Parking.BusDepots[slot].Z
-		}
-	}
-	if line.TransType == TransTram && tm.Parking != nil {
-		slot, _ := tm.Parking.NearestTramDepot(spawnX, spawnZ, 5000)
-		if slot >= 0 {
-			spawnX = tm.Parking.TramDepots[slot].X
-			spawnZ = tm.Parking.TramDepots[slot].Z
-		}
-	}
-	if line.TransType == TransMetro && tm.Parking != nil {
-		slot, _ := tm.Parking.NearestMetroDepot(spawnX, spawnZ, 5000)
-		if slot >= 0 {
-			spawnX = tm.Parking.MetroDepots[slot].X
-			spawnZ = tm.Parking.MetroDepots[slot].Z
-		}
-	}
-	if line.TransType == TransFerry && tm.Parking != nil {
-		slot, _ := tm.Parking.NearestFerryDepot(spawnX, spawnZ, 5000)
-		if slot >= 0 {
-			spawnX = tm.Parking.FerryDepots[slot].X
-			spawnZ = tm.Parking.FerryDepots[slot].Z
-		}
-	}
-	if line.TransType == TransMonorail && tm.Parking != nil {
-		slot, _ := tm.Parking.NearestMonorailDepot(spawnX, spawnZ, 5000)
-		if slot >= 0 {
-			spawnX = tm.Parking.MonorailDepots[slot].X
-			spawnZ = tm.Parking.MonorailDepots[slot].Z
-		}
-	}
-	if line.TransType == TransCableCar && tm.Parking != nil {
-		slot, _ := tm.Parking.NearestCableCarDepot(spawnX, spawnZ, 5000)
-		if slot >= 0 {
-			spawnX = tm.Parking.CableCarDepots[slot].X
-			spawnZ = tm.Parking.CableCarDepots[slot].Z
-		}
-	}
-	if line.TransType == TransTaxi && tm.Parking != nil {
-		slot, _ := tm.Parking.NearestTaxiDepot(spawnX, spawnZ, 5000)
-		if slot >= 0 {
-			spawnX = tm.Parking.TaxiDepots[slot].X
-			spawnZ = tm.Parking.TaxiDepots[slot].Z
-		}
-	}
-	if line.TransType == TransAir && tm.Parking != nil {
-		slot, _ := tm.Parking.NearestAirportDepot(spawnX, spawnZ, 5000)
-		if slot >= 0 {
-			spawnX = tm.Parking.AirportDepots[slot].X
-			spawnZ = tm.Parking.AirportDepots[slot].Z
-		}
-	}
-	if line.TransType == TransShip && tm.Parking != nil {
-		slot, _ := tm.Parking.NearestPortDepot(spawnX, spawnZ, 5000)
-		if slot >= 0 {
-			spawnX = tm.Parking.PortDepots[slot].X
-			spawnZ = tm.Parking.PortDepots[slot].Z
-		}
+	depotType := uint8(0)
+	depotSlot := int32(-1)
+	dt, ds, dx, dz := tm.findNearestDepot(line.TransType, spawnX, spawnZ, 5000)
+	if ds >= 0 {
+		depotType = dt
+		depotSlot = ds
+		spawnX = dx
+		spawnZ = dz
 	}
 	cap := cfg.Capacity
 	spd := cfg.Speed
+	standCap := cap * 3 / 2
 
 	slot := tm.allocVehicle()
 	if slot < 0 {
@@ -759,12 +813,15 @@ func (tm *TransportManager) SpawnVehicle(lineIdx int) {
 			X:         spawnX,
 			Z:         spawnZ,
 			Capacity:  cap,
+			StandingCapacity: standCap,
 			Speed:     spd,
 			Forward:   true,
 			Moving:    true,
 			FuelType:  0,
 			Maintenance: 1.0,
 			CurrentStopID: line.Stops[0],
+			HomeDepotType: depotType,
+			HomeDepotSlot: depotSlot,
 		})
 		tm.NextID++
 		line.VehicleCount++
@@ -783,6 +840,7 @@ func (tm *TransportManager) SpawnVehicle(lineIdx int) {
 	v.X = spawnX
 	v.Z = spawnZ
 	v.Capacity = cap
+	v.StandingCapacity = standCap
 	v.Speed = spd
 	v.Forward = true
 	v.Moving = true
@@ -790,6 +848,8 @@ func (tm *TransportManager) SpawnVehicle(lineIdx int) {
 	v.FuelType = 0
 	v.Maintenance = 1.0
 	v.CurrentStopID = line.Stops[0]
+	v.HomeDepotType = depotType
+	v.HomeDepotSlot = depotSlot
 
 	line.VehicleCount++
 	netIdx := int(line.TransType)
@@ -800,6 +860,17 @@ func (tm *TransportManager) SpawnVehicle(lineIdx int) {
 }
 
 func (tm *TransportManager) Update(rm *RoadManager, dm *DistrictManager, h *Heightmap) {
+	for i := 0; i < TransportVehiclePoolSize; i++ {
+		if tm.Pool[i].ID != math.MaxUint32 && tm.Pool[i].Maintenance <= 0 {
+			tm.freeVehicle(int32(i))
+		}
+	}
+	for vi := len(tm.Vehicles) - 1; vi >= 0; vi-- {
+		if tm.Vehicles[vi].Maintenance <= 0 {
+			tm.Vehicles = append(tm.Vehicles[:vi], tm.Vehicles[vi+1:]...)
+		}
+	}
+
 	for li := range tm.Lines {
 		line := &tm.Lines[li]
 		if !line.Active {
@@ -1296,10 +1367,21 @@ func (tm *TransportManager) arriveAtStop(v *TransportVehicle, currentStop, nextS
 			v.Forward = !v.Forward
 		}
 	}
-	boarded := v.Capacity / 10
-	if v.Passengers+boarded > v.Capacity {
-		boarded = v.Capacity - v.Passengers
+
+	totalCap := v.Capacity + v.StandingCapacity
+	available := totalCap - v.Passengers
+	boarded := int32(0)
+	if currentStop != nil && available > 0 {
+		maxBoard := v.Capacity / 10
+		if maxBoard > available {
+			maxBoard = available
+		}
+		if maxBoard > currentStop.Passengers {
+			maxBoard = currentStop.Passengers
+		}
+		boarded = maxBoard
 	}
+
 	v.Passengers += boarded
 	line.PassengerCount += boarded
 	line.TotalPassengers += int64(boarded)
@@ -1321,11 +1403,22 @@ func (tm *TransportManager) arriveAtStop(v *TransportVehicle, currentStop, nextS
 		return
 	}
 	currentStopID := line.Stops[nextIdx]
+	wasFull := available <= 0
 	tm.Citizens.ForEach(func(c *Citizen, slot int32) {
 		if c.State == CivWaiting && c.Journey.LegIndex < len(c.Journey.Legs) {
 			leg := &c.Journey.Legs[c.Journey.LegIndex]
 			if leg.LegType != LegWalk && leg.Mode == v.TransType && leg.FromStopID == currentStopID {
-				leg.VehicleID = v.ID
+				if wasFull {
+					c.Timer++
+					if c.Timer > c.Patience*2 {
+						cm := tm.Citizens
+						cm.StartJourney(c, tm)
+						c.Timer = 0
+					}
+				} else {
+					leg.VehicleID = v.ID
+					c.Timer = 0
+				}
 			}
 		}
 		if c.State == CivRiding && c.Journey.LegIndex < len(c.Journey.Legs) {

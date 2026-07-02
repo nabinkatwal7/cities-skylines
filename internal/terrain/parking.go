@@ -45,6 +45,18 @@ const TaxiDepotPoolSize = 50
 const AirportDepotPoolSize = 20
 const PortDepotPoolSize = 20
 
+const (
+	DepotBus uint8 = iota
+	DepotTram
+	DepotMetro
+	DepotFerry
+	DepotMonorail
+	DepotCableCar
+	DepotTaxi
+	DepotAirport
+	DepotPort
+)
+
 type BusDepot struct {
 	Entity
 	X, Z   float32
@@ -1046,8 +1058,10 @@ func (pm *ParkingManager) Draw(h *Heightmap) {
 	}
 }
 
-func (pm *ParkingManager) Update() {
+func (pm *ParkingManager) Update(tm *TransportManager) {
 	pm.Timer++
+
+	pm.depotMaintenance(tm)
 
 	for i := 0; i < PortDepotPoolSize; i++ {
 		d := &pm.PortDepots[i]
@@ -1153,6 +1167,72 @@ func (pm *ParkingManager) Update() {
 			pm.TaxiRequests = append(pm.TaxiRequests[:ri], pm.TaxiRequests[ri+1:]...)
 		}
 	}
+}
+
+func depotStillAlive(pm *ParkingManager, dt uint8, slot int32) bool {
+	if slot < 0 {
+		return false
+	}
+	switch dt {
+	case DepotBus:
+		return slot < BusDepotPoolSize && pm.BusDepots[slot].Lifecycle == LifecycleAllocated
+	case DepotTram:
+		return slot < TramDepotPoolSize && pm.TramDepots[slot].Lifecycle == LifecycleAllocated
+	case DepotMetro:
+		return slot < MetroDepotPoolSize && pm.MetroDepots[slot].Lifecycle == LifecycleAllocated
+	case DepotFerry:
+		return slot < FerryDepotPoolSize && pm.FerryDepots[slot].Lifecycle == LifecycleAllocated
+	case DepotMonorail:
+		return slot < MonorailDepotPoolSize && pm.MonorailDepots[slot].Lifecycle == LifecycleAllocated
+	case DepotCableCar:
+		return slot < CableCarDepotPoolSize && pm.CableCarDepots[slot].Lifecycle == LifecycleAllocated
+	case DepotTaxi:
+		return slot < TaxiDepotPoolSize && pm.TaxiDepots[slot].Lifecycle == LifecycleAllocated
+	case DepotAirport:
+		return slot < AirportDepotPoolSize && pm.AirportDepots[slot].Lifecycle == LifecycleAllocated
+	case DepotPort:
+		return slot < PortDepotPoolSize && pm.PortDepots[slot].Lifecycle == LifecycleAllocated
+	}
+	return false
+}
+
+func (pm *ParkingManager) depotMaintenance(tm *TransportManager) {
+	if tm == nil {
+		return
+	}
+
+	tm.forEachVehicle(func(v *TransportVehicle, slot int32) {
+		if v.HomeDepotSlot < 0 {
+			return
+		}
+
+		alive := depotStillAlive(pm, v.HomeDepotType, v.HomeDepotSlot)
+
+		if alive {
+			v.MaintenanceTimer++
+			v.Maintenance -= 0.0002
+			if v.Maintenance < 0 {
+				v.Maintenance = 0
+			}
+			if v.MaintenanceTimer > 600 && v.Maintenance < 1.0 {
+				v.Maintenance += 0.01
+				v.MaintenanceTimer = 0
+				if v.Maintenance > 1.0 {
+					v.Maintenance = 1.0
+				}
+			}
+		} else {
+			v.MaintenanceTimer++
+			if v.MaintenanceTimer > 1800 {
+				v.Maintenance = 0
+				v.MaintenanceTimer = 0
+			}
+		}
+
+		if v.Maintenance < 0.1 {
+			v.Maintenance = 0
+		}
+	})
 }
 
 func (pm *ParkingManager) Unload() {
