@@ -2885,3 +2885,79 @@ Railways support:
 - Outside Connections
 
 ---
+
+## 4.10 Ferry Network
+
+Ferries operate on navigable water.
+
+Requirements:
+
+- Ferry Depot
+- Ferry Stops
+- Water Route
+
+Water depth is validated before route construction.
+
+---
+
+## 4.11 Monorail
+
+Monorails operate on elevated guideways.
+
+Characteristics:
+
+- High capacity
+- Medium speed
+- Independent network
+- Elevated only
+
+---
+
+## 4.12 Cable Cars
+
+Cable cars operate between stations connected by cables.
+
+Best suited for:
+
+- Mountains
+- Valleys
+- Rivers
+
+Cable cars ignore terrain.
+
+---
+
+## 4.13 Taxi System
+
+Unlike fixed-route transportation, taxis operate on demand.
+
+Process:
+
+```text
+Citizen Requests Taxi
+
+↓
+
+Taxi Dispatch
+
+↓
+
+Pickup
+
+↓
+
+Destination
+
+↓
+
+Available Again
+```
+
+Taxi availability depends on:
+
+- Taxi Depot
+- Number of Vehicles
+- Traffic
+- Distance
+
+---

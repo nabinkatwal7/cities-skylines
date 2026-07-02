@@ -306,17 +306,26 @@ func main() {
 				if ui.ParkingGarage {
 					cost = 3000
 				}
-				if ui.BusDepotMode || ui.TramDepotMode || ui.MetroDepotMode {
+				if ui.BusDepotMode || ui.TramDepotMode || ui.MetroDepotMode || ui.FerryDepotMode || ui.MonorailDepotMode || ui.CableCarDepotMode || ui.TaxiDepotMode {
 					cost = 5000
 				}
 				if sim.Money >= cost && !sim.Heightmap.IsUnderwater(worldX, worldZ) {
-					if ui.BusDepotMode {
+					switch {
+					case ui.BusDepotMode:
 						sim.PlaceBusDepot(worldX, worldZ)
-					} else if ui.TramDepotMode {
+					case ui.TramDepotMode:
 						sim.PlaceTramDepot(worldX, worldZ)
-					} else if ui.MetroDepotMode {
+					case ui.MetroDepotMode:
 						sim.PlaceMetroDepot(worldX, worldZ)
-					} else {
+					case ui.FerryDepotMode:
+						sim.PlaceFerryDepot(worldX, worldZ)
+					case ui.MonorailDepotMode:
+						sim.PlaceMonorailDepot(worldX, worldZ)
+					case ui.CableCarDepotMode:
+						sim.PlaceCableCarDepot(worldX, worldZ)
+					case ui.TaxiDepotMode:
+						sim.PlaceTaxiDepot(worldX, worldZ)
+					default:
 						sim.PlaceParkingLot(worldX, worldZ, ui.ParkingGarage)
 					}
 				}
@@ -405,7 +414,19 @@ func main() {
 			case terrain.ToolPark:
 				rl.DrawCube(rl.NewVector3(worldX, h+0.3, worldZ), 3, 0.2, 3, rl.NewColor(80, 200, 80, 120))
 			case terrain.ToolParking:
-				if ui.MetroDepotMode {
+				if ui.FerryDepotMode {
+					rl.DrawCube(rl.NewVector3(worldX, h+0.3, worldZ), 5, 0.5, 5, rl.NewColor(50, 150, 200, 120))
+					rl.DrawCubeWires(rl.NewVector3(worldX, h+0.3, worldZ), 5, 0.5, 5, rl.NewColor(50, 150, 200, 200))
+				} else if ui.MonorailDepotMode {
+					rl.DrawCube(rl.NewVector3(worldX, h+2, worldZ), 8, 2, 4, rl.NewColor(100, 200, 200, 120))
+					rl.DrawCubeWires(rl.NewVector3(worldX, h+2, worldZ), 8, 2, 4, rl.NewColor(100, 200, 200, 200))
+				} else if ui.CableCarDepotMode {
+					rl.DrawCube(rl.NewVector3(worldX, h+2, worldZ), 4, 3, 4, rl.NewColor(200, 200, 100, 120))
+					rl.DrawCubeWires(rl.NewVector3(worldX, h+2, worldZ), 4, 3, 4, rl.NewColor(200, 200, 100, 200))
+				} else if ui.TaxiDepotMode {
+					rl.DrawCube(rl.NewVector3(worldX, h+0.5, worldZ), 5, 1, 4, rl.NewColor(200, 200, 50, 120))
+					rl.DrawCubeWires(rl.NewVector3(worldX, h+0.5, worldZ), 5, 1, 4, rl.NewColor(200, 200, 50, 200))
+				} else if ui.MetroDepotMode {
 					rl.DrawCube(rl.NewVector3(worldX, h+0.5, worldZ), 6, 1, 4, rl.NewColor(80, 80, 200, 120))
 					rl.DrawCubeWires(rl.NewVector3(worldX, h+0.5, worldZ), 6, 1, 4, rl.NewColor(80, 80, 200, 200))
 				} else if ui.TramDepotMode {

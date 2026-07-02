@@ -29,16 +29,20 @@ type ToolbarItem struct {
 }
 
 type GameUI struct {
-	Selected       GameTool
-	ZoneType       ZoneType
-	RoadType       RoadType
-	ParkMode       bool
-	ParkingGarage  bool
-	BusDepotMode   bool
-	TramDepotMode  bool
-	MetroDepotMode bool
-	CargoMode      bool
-	TransportType  TransportType
+	Selected          GameTool
+	ZoneType          ZoneType
+	RoadType          RoadType
+	ParkMode          bool
+	ParkingGarage     bool
+	BusDepotMode      bool
+	TramDepotMode     bool
+	MetroDepotMode    bool
+	FerryDepotMode    bool
+	MonorailDepotMode bool
+	CableCarDepotMode bool
+	TaxiDepotMode     bool
+	CargoMode         bool
+	TransportType     TransportType
 	Money          float32
 	Population    int32
 	ResDemand     int
@@ -65,7 +69,7 @@ var ToolbarItems = []ToolbarItem{
 	{ToolRoad, "Roads", rl.KeyTwo, rl.NewColor(180, 160, 120, 255), []string{"2-Lane", "1-Way", "4-Lane", "Gravel", "Highway", "6-Lane", "Avenue", "Bus Rd", "Tram Rd", "Bike Rd", "Tree Rd", "Asym Rd", "Pedestrian", "Quay"}, 0},
 	{ToolZone, "Zones", rl.KeyThree, rl.NewColor(100, 200, 100, 255), []string{"Res Low", "Res High", "Com Low", "Com High", "Industrial", "Office"}, 0},
 	{ToolPark, "Parks", rl.KeyFour, rl.NewColor(80, 200, 80, 255), nil, 0},
-	{ToolParking, "Parking", rl.KeyFive, rl.NewColor(100, 100, 200, 255), []string{"Lot", "Garage", "Bus Depot", "Tram Depot", "Metro Depot"}, 0},
+	{ToolParking, "Parking", rl.KeyFive, rl.NewColor(100, 100, 200, 255), []string{"Lot", "Garage", "Bus Depot", "Tram Depot", "Metro Depot", "Ferry Depot", "Monorail Depot", "Cable Car Depot", "Taxi Depot"}, 0},
 	{ToolTransport, "Transport", rl.KeySix, rl.NewColor(50, 150, 200, 255), []string{"Bus", "Tram", "Metro", "Train", "Ferry", "Monorail", "Cable Car", "Taxi", "Air", "Ship", "Walk", "Bicycle", "Car", "Blimp", "Cargo Stn"}, 0},
 	{ToolRemove, "Remove", rl.KeySeven, rl.NewColor(200, 80, 80, 255), nil, 0},
 	{ToolUpgrade, "Upgrade", rl.KeyEight, rl.NewColor(200, 200, 80, 255), nil, 0},
@@ -105,6 +109,10 @@ func (ui *GameUI) HandleInput() GameTool {
 		ui.BusDepotMode = item.OptIndex == 2
 		ui.TramDepotMode = item.OptIndex == 3
 		ui.MetroDepotMode = item.OptIndex == 4
+		ui.FerryDepotMode = item.OptIndex == 5
+		ui.MonorailDepotMode = item.OptIndex == 6
+		ui.CableCarDepotMode = item.OptIndex == 7
+		ui.TaxiDepotMode = item.OptIndex == 8
 	}
 	if ui.Selected == ToolTransport && rl.IsKeyPressed(rl.KeyR) {
 		item := &ToolbarItems[5]
@@ -262,7 +270,7 @@ func (ui *GameUI) drawOptions() {
 		}
 	case ToolParking:
 		item := &ToolbarItems[4]
-		optW := int32(80)
+		optW := int32(95)
 		total := len(item.Options) * int(optW+ToolbarPad)
 		sx := (1280 - total) / 2
 		for oi, opt := range item.Options {
@@ -276,6 +284,10 @@ func (ui *GameUI) drawOptions() {
 				ui.BusDepotMode = oi == 2
 				ui.TramDepotMode = oi == 3
 				ui.MetroDepotMode = oi == 4
+				ui.FerryDepotMode = oi == 5
+				ui.MonorailDepotMode = oi == 6
+				ui.CableCarDepotMode = oi == 7
+				ui.TaxiDepotMode = oi == 8
 			}
 		}
 	case ToolTransport:
@@ -325,11 +337,19 @@ func (ui *GameUI) drawHelpText() {
 		case 1:
 			rl.DrawText("Parking Garage ($3000)", 10, helpY+18, 14, rl.White)
 		case 2:
-			rl.DrawText("Bus Depot ($5000) — spawns buses for bus lines", 10, helpY+18, 14, rl.White)
+			rl.DrawText("Bus Depot ($5000)", 10, helpY+18, 14, rl.White)
 		case 3:
-			rl.DrawText("Tram Depot ($5000) — spawns trams for tram lines", 10, helpY+18, 14, rl.White)
+			rl.DrawText("Tram Depot ($5000)", 10, helpY+18, 14, rl.White)
 		case 4:
-			rl.DrawText("Metro Depot ($5000) — spawns metro trains for metro lines", 10, helpY+18, 14, rl.White)
+			rl.DrawText("Metro Depot ($5000)", 10, helpY+18, 14, rl.White)
+		case 5:
+			rl.DrawText("Ferry Depot ($5000)", 10, helpY+18, 14, rl.White)
+		case 6:
+			rl.DrawText("Monorail Depot ($5000)", 10, helpY+18, 14, rl.White)
+		case 7:
+			rl.DrawText("Cable Car Depot ($5000)", 10, helpY+18, 14, rl.White)
+		case 8:
+			rl.DrawText("Taxi Depot ($5000)", 10, helpY+18, 14, rl.White)
 		}
 	case ToolTransport:
 		if ui.CargoMode {

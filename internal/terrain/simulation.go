@@ -161,7 +161,7 @@ func (sm *SimulationManager) initScheduler() {
 		Name:     "parking",
 		Priority: SchedPriorityLow,
 		BudgetMs: 0.5,
-		Callback: func(dt float64) { sm.Parking.Timer++ },
+		Callback: func(dt float64) { sm.Parking.Update() },
 	})
 	sm.scheduler.Register(GroupSlow, UpdateTask{
 		Name:     "buildings",
@@ -615,6 +615,54 @@ func (sm *SimulationManager) PlaceMetroDepot(x, z float32) bool {
 		return false
 	}
 	slot := sm.Parking.PlaceMetroDepot(x, z)
+	if slot >= 0 {
+		sm.Money -= 5000
+		return true
+	}
+	return false
+}
+
+func (sm *SimulationManager) PlaceFerryDepot(x, z float32) bool {
+	if sm.Money < 5000 {
+		return false
+	}
+	slot := sm.Parking.PlaceFerryDepot(x, z)
+	if slot >= 0 {
+		sm.Money -= 5000
+		return true
+	}
+	return false
+}
+
+func (sm *SimulationManager) PlaceMonorailDepot(x, z float32) bool {
+	if sm.Money < 5000 {
+		return false
+	}
+	slot := sm.Parking.PlaceMonorailDepot(x, z)
+	if slot >= 0 {
+		sm.Money -= 5000
+		return true
+	}
+	return false
+}
+
+func (sm *SimulationManager) PlaceCableCarDepot(x, z float32) bool {
+	if sm.Money < 5000 {
+		return false
+	}
+	slot := sm.Parking.PlaceCableCarDepot(x, z)
+	if slot >= 0 {
+		sm.Money -= 5000
+		return true
+	}
+	return false
+}
+
+func (sm *SimulationManager) PlaceTaxiDepot(x, z float32) bool {
+	if sm.Money < 5000 {
+		return false
+	}
+	slot := sm.Parking.PlaceTaxiDepot(x, z)
 	if slot >= 0 {
 		sm.Money -= 5000
 		return true

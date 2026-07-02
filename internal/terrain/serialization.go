@@ -45,6 +45,23 @@ type SaveData struct {
 
 	ParkingSpots []ParkingSpotData
 	ParkingLots  []ParkingLotData
+
+	MetroTracks []MetroTrackData
+	RailTracks  []RailTrackData
+
+	BusDepots    []DepotData
+	TramDepots   []DepotData
+	MetroDepots  []DepotData
+	FerryDepots  []DepotData
+	MonorailDepots  []DepotData
+	CableCarDepots  []DepotData
+	TaxiDepots      []DepotData
+
+	CableConnections []CableConnectionData
+	CargoStations    []CargoStationData
+	CargoTrains      []TransportVehicleData
+	TaxiFleet        []TransportVehicleData
+	TaxiRequests     []TaxiRequestData
 }
 
 type RoadNodeData struct {
@@ -206,6 +223,58 @@ type TreeData struct {
 	Scale   float32
 }
 
+type MetroTrackData struct {
+	ID         uint32
+	StartX, StartZ float32
+	EndX, EndZ float32
+	Length     float32
+	Elevated   bool
+}
+
+type RailTrackData struct {
+	ID         uint32
+	StartX, StartZ float32
+	EndX, EndZ float32
+	Length     float32
+	SignalA    SignalState
+	SignalB    SignalState
+	BlockID    int32
+	OutsideA   bool
+	OutsideB   bool
+	Occupied   bool
+	OccupierID uint32
+}
+
+type DepotData struct {
+	X, Z        float32
+	CellX, CellZ int
+}
+
+type CableConnectionData struct {
+	ID         uint32
+	StopA, StopB uint32
+	StartX, StartZ float32
+	EndX, EndZ float32
+}
+
+type CargoStationData struct {
+	ID          uint32
+	X, Z        float32
+	Name        string
+	GoodsStored int32
+	Capacity    int32
+	Active      bool
+	TrainSlot   int32
+}
+
+type TaxiRequestData struct {
+	ID        uint32
+	CitizenX, CitizenZ float32
+	DstX, DstZ float32
+	Active    bool
+	Assigned  bool
+}
+
 type ResourceCell struct {
 	Fertility float32
 	Ore       float32
@@ -217,7 +286,7 @@ type SaveStats struct {
 	TotalCount int32
 }
 
-const currentSaveVersion int32 = 9
+const currentSaveVersion int32 = 10
 
 func calcChecksum(data []byte) uint32 {
 	return crc32.ChecksumIEEE(data)
@@ -325,6 +394,8 @@ func migrateSaveData(data *SaveData) bool {
 			data.Version = 8
 		case 8:
 			data.Version = 9
+		case 9:
+			data.Version = 10
 		}
 	}
 	return true
@@ -635,6 +706,110 @@ func SaveGame(filename string, m *SimulationManager, money float32, timeOfDay in
 		})
 	}
 
+	if m.Transport != nil {
+		if m.Transport.Tracks != nil {
+			m.Transport.Tracks.ForEachTrack(func(t *MetroTrack, slot int32) {
+				data.MetroTracks = append(data.MetroTracks, MetroTrackData{
+					ID: t.ID, StartX: t.StartX, StartZ: t.StartZ,
+					EndX: t.EndX, EndZ: t.EndZ, Length: t.Length, Elevated: t.Elevated,
+				})
+			})
+		}
+		if m.Transport.Rails != nil {
+			m.Transport.Rails.ForEachTrack(func(t *RailTrack, slot int32) {
+				data.RailTracks = append(data.RailTracks, RailTrackData{
+					ID: t.ID, StartX: t.StartX, StartZ: t.StartZ,
+					EndX: t.EndX, EndZ: t.EndZ, Length: t.Length,
+					SignalA: t.SignalA, SignalB: t.SignalB, BlockID: t.BlockID,
+					OutsideA: t.OutsideA, OutsideB: t.OutsideB,
+					Occupied: t.Occupied, OccupierID: t.OccupierID,
+				})
+			})
+		}
+		if m.Transport.Cargo != nil {
+			for _, cs := range m.Transport.Cargo.Stations {
+				data.CargoStations = append(data.CargoStations, CargoStationData{
+					ID: cs.ID, X: cs.X, Z: cs.Z, Name: cs.Name,
+					GoodsStored: cs.GoodsStored, Capacity: cs.Capacity,
+					Active: cs.Active, TrainSlot: cs.TrainSlot,
+				})
+			}
+			for _, tv := range m.Transport.Cargo.Trains {
+				data.CargoTrains = append(data.CargoTrains, TransportVehicleData{
+					ID: tv.ID, TransType: tv.TransType,
+					X: tv.X, Z: tv.Z, Speed: tv.Speed,
+					Forward: tv.Forward, Moving: tv.Moving,
+					TargetX: tv.TargetX, TargetZ: tv.TargetZ,
+				})
+			}
+		}
+		for _, cc := range m.Transport.CableConnections {
+			data.CableConnections = append(data.CableConnections, CableConnectionData{
+				ID: cc.ID, StopA: cc.StopA, StopB: cc.StopB,
+				StartX: cc.StartX, StartZ: cc.StartZ,
+				EndX: cc.EndX, EndZ: cc.EndZ,
+			})
+		}
+	}
+
+	if m.Parking != nil {
+		for i := 0; i < BusDepotPoolSize; i++ {
+			if m.Parking.BusDepots[i].Lifecycle == LifecycleAllocated {
+				d := &m.Parking.BusDepots[i]
+				data.BusDepots = append(data.BusDepots, DepotData{X: d.X, Z: d.Z, CellX: d.CellX, CellZ: d.CellZ})
+			}
+		}
+		for i := 0; i < TramDepotPoolSize; i++ {
+			if m.Parking.TramDepots[i].Lifecycle == LifecycleAllocated {
+				d := &m.Parking.TramDepots[i]
+				data.TramDepots = append(data.TramDepots, DepotData{X: d.X, Z: d.Z, CellX: d.CellX, CellZ: d.CellZ})
+			}
+		}
+		for i := 0; i < MetroDepotPoolSize; i++ {
+			if m.Parking.MetroDepots[i].Lifecycle == LifecycleAllocated {
+				d := &m.Parking.MetroDepots[i]
+				data.MetroDepots = append(data.MetroDepots, DepotData{X: d.X, Z: d.Z, CellX: d.CellX, CellZ: d.CellZ})
+			}
+		}
+		for i := 0; i < FerryDepotPoolSize; i++ {
+			if m.Parking.FerryDepots[i].Lifecycle == LifecycleAllocated {
+				d := &m.Parking.FerryDepots[i]
+				data.FerryDepots = append(data.FerryDepots, DepotData{X: d.X, Z: d.Z, CellX: d.CellX, CellZ: d.CellZ})
+			}
+		}
+		for i := 0; i < MonorailDepotPoolSize; i++ {
+			if m.Parking.MonorailDepots[i].Lifecycle == LifecycleAllocated {
+				d := &m.Parking.MonorailDepots[i]
+				data.MonorailDepots = append(data.MonorailDepots, DepotData{X: d.X, Z: d.Z, CellX: d.CellX, CellZ: d.CellZ})
+			}
+		}
+		for i := 0; i < CableCarDepotPoolSize; i++ {
+			if m.Parking.CableCarDepots[i].Lifecycle == LifecycleAllocated {
+				d := &m.Parking.CableCarDepots[i]
+				data.CableCarDepots = append(data.CableCarDepots, DepotData{X: d.X, Z: d.Z, CellX: d.CellX, CellZ: d.CellZ})
+			}
+		}
+		for i := 0; i < TaxiDepotPoolSize; i++ {
+			if m.Parking.TaxiDepots[i].Lifecycle == LifecycleAllocated {
+				d := &m.Parking.TaxiDepots[i]
+				data.TaxiDepots = append(data.TaxiDepots, DepotData{X: d.X, Z: d.Z, CellX: d.CellX, CellZ: d.CellZ})
+			}
+		}
+		for _, tv := range m.Parking.TaxiFleet {
+			data.TaxiFleet = append(data.TaxiFleet, TransportVehicleData{
+				X: tv.X, Z: tv.Z, Speed: tv.Speed,
+				Forward: tv.Forward, Moving: tv.Moving,
+				TargetX: tv.TargetX, TargetZ: tv.TargetZ,
+			})
+		}
+		for _, r := range m.Parking.TaxiRequests {
+			data.TaxiRequests = append(data.TaxiRequests, TaxiRequestData{
+				ID: r.ID, CitizenX: r.CitizenX, CitizenZ: r.CitizenZ,
+				DstX: r.DstX, DstZ: r.DstZ, Active: r.Active, Assigned: r.Assigned,
+			})
+		}
+	}
+
 	f, err := os.Create(filename)
 	if err != nil {
 		return fmt.Errorf("create save: %w", err)
@@ -931,6 +1106,246 @@ func LoadGame(filename string, m *SimulationManager) (money float32, timeOfDay i
 			lot.Spots = make([]int32, len(ld.SpotIndices))
 			copy(lot.Spots, ld.SpotIndices)
 			m.Parking.NextID++
+		}
+	}
+
+	if m.Transport != nil {
+		if m.Transport.Tracks != nil && len(data.MetroTracks) > 0 {
+			for i := range m.Transport.Tracks.Pool {
+				m.Transport.Tracks.Pool[i].Lifecycle = LifecycleUnallocated
+			}
+			m.Transport.Tracks.FreeList = make([]int32, MetroTrackPoolSize)
+			for i := 0; i < MetroTrackPoolSize; i++ {
+				m.Transport.Tracks.FreeList[i] = int32(MetroTrackPoolSize - 1 - i)
+			}
+			m.Transport.Tracks.Count = 0
+			m.Transport.Tracks.NextID = 0
+			for _, td := range data.MetroTracks {
+				slot := m.Transport.Tracks.AddTrack(td.StartX, td.StartZ, td.EndX, td.EndZ)
+				if slot >= 0 {
+					t := &m.Transport.Tracks.Pool[slot]
+					t.ID = td.ID
+					t.Length = td.Length
+					t.Elevated = td.Elevated
+					if td.ID >= m.Transport.Tracks.NextID {
+						m.Transport.Tracks.NextID = td.ID + 1
+					}
+				}
+			}
+		}
+		if m.Transport.Rails != nil && len(data.RailTracks) > 0 {
+			for i := range m.Transport.Rails.Pool {
+				m.Transport.Rails.Pool[i].Lifecycle = LifecycleUnallocated
+			}
+			m.Transport.Rails.FreeList = make([]int32, RailTrackPoolSize)
+			for i := 0; i < RailTrackPoolSize; i++ {
+				m.Transport.Rails.FreeList[i] = int32(RailTrackPoolSize - 1 - i)
+			}
+			m.Transport.Rails.Count = 0
+			m.Transport.Rails.NextID = 0
+			for _, td := range data.RailTracks {
+				slot := m.Transport.Rails.AddTrack(td.StartX, td.StartZ, td.EndX, td.EndZ)
+				if slot >= 0 {
+					t := &m.Transport.Rails.Pool[slot]
+					t.ID = td.ID
+					t.Length = td.Length
+					t.SignalA = td.SignalA
+					t.SignalB = td.SignalB
+					t.BlockID = td.BlockID
+					t.OutsideA = td.OutsideA
+					t.OutsideB = td.OutsideB
+					t.Occupied = td.Occupied
+					t.OccupierID = td.OccupierID
+					if td.ID >= m.Transport.Rails.NextID {
+						m.Transport.Rails.NextID = td.ID + 1
+					}
+				}
+			}
+		}
+		if m.Transport.Cargo != nil && len(data.CargoStations) > 0 {
+			m.Transport.Cargo.Stations = nil
+			m.Transport.Cargo.NextID = 0
+			for _, cd := range data.CargoStations {
+				cm := m.Transport.Cargo
+				cm.AddStation(cd.X, cd.Z)
+				if len(cm.Stations) > 0 {
+					s := &cm.Stations[len(cm.Stations)-1]
+					s.ID = cd.ID
+					s.Name = cd.Name
+					s.GoodsStored = cd.GoodsStored
+					s.Capacity = cd.Capacity
+					s.Active = cd.Active
+					s.TrainSlot = cd.TrainSlot
+					if cd.ID >= cm.NextID {
+						cm.NextID = cd.ID + 1
+					}
+				}
+			}
+		}
+		if m.Transport.Cargo != nil && len(data.CargoTrains) > 0 {
+			m.Transport.Cargo.Trains = nil
+			for _, vd := range data.CargoTrains {
+				m.Transport.Cargo.Trains = append(m.Transport.Cargo.Trains, TransportVehicle{
+					ID: vd.ID, TransType: vd.TransType,
+					X: vd.X, Z: vd.Z, Speed: vd.Speed,
+					Forward: vd.Forward, Moving: vd.Moving,
+					TargetX: vd.TargetX, TargetZ: vd.TargetZ,
+				})
+			}
+		}
+		if len(data.CableConnections) > 0 {
+			m.Transport.CableConnections = nil
+			for _, cd := range data.CableConnections {
+				m.Transport.CableConnections = append(m.Transport.CableConnections, CableConnection{
+					ID: cd.ID, StopA: cd.StopA, StopB: cd.StopB,
+					StartX: cd.StartX, StartZ: cd.StartZ,
+					EndX: cd.EndX, EndZ: cd.EndZ,
+				})
+				if cd.ID >= m.Transport.NextID {
+					m.Transport.NextID = cd.ID + 1
+				}
+			}
+		}
+	}
+
+	if m.Parking != nil {
+		if len(data.BusDepots) > 0 {
+			for i := range m.Parking.BusDepots {
+				m.Parking.BusDepots[i].Lifecycle = LifecycleUnallocated
+			}
+			m.Parking.DepotFreeList = make([]int32, BusDepotPoolSize)
+			for i := 0; i < BusDepotPoolSize; i++ {
+				m.Parking.DepotFreeList[i] = int32(BusDepotPoolSize - 1 - i)
+			}
+			m.Parking.DepotCount = 0
+			for _, dd := range data.BusDepots {
+				slot := m.Parking.PlaceBusDepot(dd.X, dd.Z)
+				if slot >= 0 {
+					m.Parking.BusDepots[slot].CellX = dd.CellX
+					m.Parking.BusDepots[slot].CellZ = dd.CellZ
+				}
+			}
+		}
+		if len(data.TramDepots) > 0 {
+			for i := range m.Parking.TramDepots {
+				m.Parking.TramDepots[i].Lifecycle = LifecycleUnallocated
+			}
+			m.Parking.TramDepotFreeList = make([]int32, TramDepotPoolSize)
+			for i := 0; i < TramDepotPoolSize; i++ {
+				m.Parking.TramDepotFreeList[i] = int32(TramDepotPoolSize - 1 - i)
+			}
+			m.Parking.TramDepotCount = 0
+			for _, dd := range data.TramDepots {
+				slot := m.Parking.PlaceTramDepot(dd.X, dd.Z)
+				if slot >= 0 {
+					m.Parking.TramDepots[slot].CellX = dd.CellX
+					m.Parking.TramDepots[slot].CellZ = dd.CellZ
+				}
+			}
+		}
+		if len(data.MetroDepots) > 0 {
+			for i := range m.Parking.MetroDepots {
+				m.Parking.MetroDepots[i].Lifecycle = LifecycleUnallocated
+			}
+			m.Parking.MetroDepotFreeList = make([]int32, MetroDepotPoolSize)
+			for i := 0; i < MetroDepotPoolSize; i++ {
+				m.Parking.MetroDepotFreeList[i] = int32(MetroDepotPoolSize - 1 - i)
+			}
+			m.Parking.MetroDepotCount = 0
+			for _, dd := range data.MetroDepots {
+				slot := m.Parking.PlaceMetroDepot(dd.X, dd.Z)
+				if slot >= 0 {
+					m.Parking.MetroDepots[slot].CellX = dd.CellX
+					m.Parking.MetroDepots[slot].CellZ = dd.CellZ
+				}
+			}
+		}
+		if len(data.FerryDepots) > 0 {
+			for i := range m.Parking.FerryDepots {
+				m.Parking.FerryDepots[i].Lifecycle = LifecycleUnallocated
+			}
+			m.Parking.FerryDepotFreeList = make([]int32, FerryDepotPoolSize)
+			for i := 0; i < FerryDepotPoolSize; i++ {
+				m.Parking.FerryDepotFreeList[i] = int32(FerryDepotPoolSize - 1 - i)
+			}
+			m.Parking.FerryDepotCount = 0
+			for _, dd := range data.FerryDepots {
+				slot := m.Parking.PlaceFerryDepot(dd.X, dd.Z)
+				if slot >= 0 {
+					m.Parking.FerryDepots[slot].CellX = dd.CellX
+					m.Parking.FerryDepots[slot].CellZ = dd.CellZ
+				}
+			}
+		}
+		if len(data.MonorailDepots) > 0 {
+			for i := range m.Parking.MonorailDepots {
+				m.Parking.MonorailDepots[i].Lifecycle = LifecycleUnallocated
+			}
+			m.Parking.MonorailDepotFreeList = make([]int32, MonorailDepotPoolSize)
+			for i := 0; i < MonorailDepotPoolSize; i++ {
+				m.Parking.MonorailDepotFreeList[i] = int32(MonorailDepotPoolSize - 1 - i)
+			}
+			m.Parking.MonorailDepotCount = 0
+			for _, dd := range data.MonorailDepots {
+				slot := m.Parking.PlaceMonorailDepot(dd.X, dd.Z)
+				if slot >= 0 {
+					m.Parking.MonorailDepots[slot].CellX = dd.CellX
+					m.Parking.MonorailDepots[slot].CellZ = dd.CellZ
+				}
+			}
+		}
+		if len(data.CableCarDepots) > 0 {
+			for i := range m.Parking.CableCarDepots {
+				m.Parking.CableCarDepots[i].Lifecycle = LifecycleUnallocated
+			}
+			m.Parking.CableCarDepotFreeList = make([]int32, CableCarDepotPoolSize)
+			for i := 0; i < CableCarDepotPoolSize; i++ {
+				m.Parking.CableCarDepotFreeList[i] = int32(CableCarDepotPoolSize - 1 - i)
+			}
+			m.Parking.CableCarDepotCount = 0
+			for _, dd := range data.CableCarDepots {
+				slot := m.Parking.PlaceCableCarDepot(dd.X, dd.Z)
+				if slot >= 0 {
+					m.Parking.CableCarDepots[slot].CellX = dd.CellX
+					m.Parking.CableCarDepots[slot].CellZ = dd.CellZ
+				}
+			}
+		}
+		if len(data.TaxiDepots) > 0 {
+			for i := range m.Parking.TaxiDepots {
+				m.Parking.TaxiDepots[i].Lifecycle = LifecycleUnallocated
+			}
+			m.Parking.TaxiDepotFreeList = make([]int32, TaxiDepotPoolSize)
+			for i := 0; i < TaxiDepotPoolSize; i++ {
+				m.Parking.TaxiDepotFreeList[i] = int32(TaxiDepotPoolSize - 1 - i)
+			}
+			m.Parking.TaxiDepotCount = 0
+			for _, dd := range data.TaxiDepots {
+				slot := m.Parking.PlaceTaxiDepot(dd.X, dd.Z)
+				if slot >= 0 {
+					m.Parking.TaxiDepots[slot].CellX = dd.CellX
+					m.Parking.TaxiDepots[slot].CellZ = dd.CellZ
+				}
+			}
+		}
+		if len(data.TaxiFleet) > 0 {
+			m.Parking.TaxiFleet = nil
+			for _, vd := range data.TaxiFleet {
+				m.Parking.TaxiFleet = append(m.Parking.TaxiFleet, TransportVehicle{
+					X: vd.X, Z: vd.Z, Speed: vd.Speed,
+					Forward: vd.Forward, Moving: vd.Moving,
+					TargetX: vd.TargetX, TargetZ: vd.TargetZ,
+				})
+			}
+		}
+		if len(data.TaxiRequests) > 0 {
+			m.Parking.TaxiRequests = nil
+			for _, rd := range data.TaxiRequests {
+				m.Parking.TaxiRequests = append(m.Parking.TaxiRequests, TaxiRequest{
+					ID: rd.ID, CitizenX: rd.CitizenX, CitizenZ: rd.CitizenZ,
+					DstX: rd.DstX, DstZ: rd.DstZ, Active: rd.Active, Assigned: rd.Assigned,
+				})
+			}
 		}
 	}
 

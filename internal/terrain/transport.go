@@ -134,6 +134,7 @@ type MetroTrack struct {
 	EndX, EndZ float32
 	Length     float32
 	Lifecycle  LifecycleState
+	Elevated   bool
 }
 
 type TrackManager struct {
@@ -159,6 +160,15 @@ type TransportManager struct {
 	Tracks  *TrackManager
 	Rails   *RailManager
 	Cargo   *CargoManager
+
+	CableConnections []CableConnection
+}
+
+type CableConnection struct {
+	ID         uint32
+	StopA, StopB uint32
+	StartX, StartZ float32
+	EndX, EndZ float32
 }
 
 func NewTransportManager() *TransportManager {
@@ -238,6 +248,14 @@ func (trk *TrackManager) freeTrack(slot int32) {
 }
 
 func (trk *TrackManager) AddTrack(startX, startZ, endX, endZ float32) int32 {
+	return trk.addTrackInternal(startX, startZ, endX, endZ, false)
+}
+
+func (trk *TrackManager) AddTrackElevated(startX, startZ, endX, endZ float32) int32 {
+	return trk.addTrackInternal(startX, startZ, endX, endZ, true)
+}
+
+func (trk *TrackManager) addTrackInternal(startX, startZ, endX, endZ float32, elevated bool) int32 {
 	slot := trk.allocTrack()
 	if slot < 0 {
 		return -1
@@ -252,6 +270,7 @@ func (trk *TrackManager) AddTrack(startX, startZ, endX, endZ float32) int32 {
 	dx := endX - startX
 	dz := endZ - startZ
 	t.Length = float32(math.Sqrt(float64(dx*dx + dz*dz)))
+	t.Elevated = elevated
 	return slot
 }
 
@@ -453,6 +472,31 @@ func (tm *TransportManager) AddLine(name string, tt TransportType, stopIDs []uin
 			}
 		}
 	}
+	if tt == TransMonorail && tm.Tracks != nil && len(stopIDs) >= 2 {
+		for i := 0; i < len(stopIDs)-1; i++ {
+			a := tm.StopByID(stopIDs[i])
+			b := tm.StopByID(stopIDs[i+1])
+			if a != nil && b != nil {
+				tm.Tracks.AddTrackElevated(a.X, a.Z, b.X, b.Z)
+			}
+		}
+	}
+	if tt == TransCableCar && len(stopIDs) >= 2 {
+		for i := 0; i < len(stopIDs)-1; i++ {
+			a := tm.StopByID(stopIDs[i])
+			b := tm.StopByID(stopIDs[i+1])
+			if a != nil && b != nil {
+				tm.CableConnections = append(tm.CableConnections, CableConnection{
+					ID:      tm.NextID,
+					StopA:   stopIDs[i],
+					StopB:   stopIDs[i+1],
+					StartX:  a.X, StartZ: a.Z,
+					EndX:    b.X, EndZ:   b.Z,
+				})
+				tm.NextID++
+			}
+		}
+	}
 	return id
 }
 
@@ -491,6 +535,27 @@ func (tm *TransportManager) AddStopToLine(lineID, stopID uint32) {
 				cur := tm.StopByID(stopID)
 				if prev != nil && cur != nil {
 					tm.Rails.AddTrack(prev.X, prev.Z, cur.X, cur.Z)
+				}
+			}
+			if tt == TransMonorail && tm.Tracks != nil && len(tm.Lines[i].Stops) >= 2 {
+				prev := tm.StopByID(tm.Lines[i].Stops[len(tm.Lines[i].Stops)-2])
+				cur := tm.StopByID(stopID)
+				if prev != nil && cur != nil {
+					tm.Tracks.AddTrackElevated(prev.X, prev.Z, cur.X, cur.Z)
+				}
+			}
+			if tt == TransCableCar && len(tm.Lines[i].Stops) >= 2 {
+				prev := tm.StopByID(tm.Lines[i].Stops[len(tm.Lines[i].Stops)-2])
+				cur := tm.StopByID(stopID)
+				if prev != nil && cur != nil {
+					tm.CableConnections = append(tm.CableConnections, CableConnection{
+						ID:      tm.NextID,
+						StopA:   tm.Lines[i].Stops[len(tm.Lines[i].Stops)-2],
+						StopB:   stopID,
+						StartX:  prev.X, StartZ: prev.Z,
+						EndX:    cur.X, EndZ:   cur.Z,
+					})
+					tm.NextID++
 				}
 			}
 			return
@@ -636,6 +701,34 @@ func (tm *TransportManager) SpawnVehicle(lineIdx int) {
 		if slot >= 0 {
 			spawnX = tm.Parking.MetroDepots[slot].X
 			spawnZ = tm.Parking.MetroDepots[slot].Z
+		}
+	}
+	if line.TransType == TransFerry && tm.Parking != nil {
+		slot, _ := tm.Parking.NearestFerryDepot(spawnX, spawnZ, 5000)
+		if slot >= 0 {
+			spawnX = tm.Parking.FerryDepots[slot].X
+			spawnZ = tm.Parking.FerryDepots[slot].Z
+		}
+	}
+	if line.TransType == TransMonorail && tm.Parking != nil {
+		slot, _ := tm.Parking.NearestMonorailDepot(spawnX, spawnZ, 5000)
+		if slot >= 0 {
+			spawnX = tm.Parking.MonorailDepots[slot].X
+			spawnZ = tm.Parking.MonorailDepots[slot].Z
+		}
+	}
+	if line.TransType == TransCableCar && tm.Parking != nil {
+		slot, _ := tm.Parking.NearestCableCarDepot(spawnX, spawnZ, 5000)
+		if slot >= 0 {
+			spawnX = tm.Parking.CableCarDepots[slot].X
+			spawnZ = tm.Parking.CableCarDepots[slot].Z
+		}
+	}
+	if line.TransType == TransTaxi && tm.Parking != nil {
+		slot, _ := tm.Parking.NearestTaxiDepot(spawnX, spawnZ, 5000)
+		if slot >= 0 {
+			spawnX = tm.Parking.TaxiDepots[slot].X
+			spawnZ = tm.Parking.TaxiDepots[slot].Z
 		}
 	}
 	cap := cfg.Capacity
@@ -826,7 +919,7 @@ func (tm *TransportManager) moveVehicle(v *TransportVehicle, rm *RoadManager, h 
 			tm.moveBusOnRoad(v, rm, h, nextStop, currentStop, line, nextIdx)
 		} else if v.TransType == TransTram && rm != nil && len(rm.Segments) > 0 {
 			tm.moveTramOnTracks(v, rm, h, nextStop, currentStop, line, nextIdx)
-		} else if v.TransType == TransMetro && tm.Tracks != nil && tm.Tracks.Count > 0 {
+		} else if (v.TransType == TransMetro || v.TransType == TransMonorail) && tm.Tracks != nil && tm.Tracks.Count > 0 {
 			tm.moveMetroOnTracks(v, h, nextStop, currentStop, line, nextIdx)
 		} else if v.TransType == TransTrain && tm.Rails != nil && tm.Rails.Count > 0 {
 			tm.moveTrainOnRails(v, h, nextStop, currentStop, line, nextIdx)
@@ -1256,7 +1349,14 @@ func transportTypeName(tt TransportType) string {
 func (tm *TransportManager) Draw(h *Heightmap) {
 	if tm.Tracks != nil {
 		tm.Tracks.ForEachTrack(func(t *MetroTrack, slot int32) {
-			rl.DrawLine3D(rl.NewVector3(t.StartX, 0.2, t.StartZ), rl.NewVector3(t.EndX, 0.2, t.EndZ), rl.NewColor(80, 80, 200, 100))
+			y := float32(0.2)
+			if t.Elevated {
+				hy1 := h.WorldHeight(t.StartX, t.StartZ) + 2
+				hy2 := h.WorldHeight(t.EndX, t.EndZ) + 2
+				rl.DrawLine3D(rl.NewVector3(t.StartX, hy1, t.StartZ), rl.NewVector3(t.EndX, hy2, t.EndZ), rl.NewColor(100, 200, 200, 100))
+				return
+			}
+			rl.DrawLine3D(rl.NewVector3(t.StartX, y, t.StartZ), rl.NewVector3(t.EndX, y, t.EndZ), rl.NewColor(80, 80, 200, 100))
 		})
 	}
 	if tm.Rails != nil {
@@ -1264,6 +1364,11 @@ func (tm *TransportManager) Draw(h *Heightmap) {
 	}
 	if tm.Cargo != nil {
 		tm.Cargo.Draw(h)
+	}
+	for _, cc := range tm.CableConnections {
+		hy1 := h.WorldHeight(cc.StartX, cc.StartZ) + 3
+		hy2 := h.WorldHeight(cc.EndX, cc.EndZ) + 3
+		rl.DrawLine3D(rl.NewVector3(cc.StartX, hy1, cc.StartZ), rl.NewVector3(cc.EndX, hy2, cc.EndZ), rl.NewColor(200, 200, 100, 120))
 	}
 
 	for _, s := range tm.Stops {
