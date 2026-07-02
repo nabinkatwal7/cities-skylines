@@ -1639,6 +1639,9 @@ func transportTypeName(tt TransportType) string {
 	}
 }
 
+// TypeName returns the display name for a transport mode.
+func TypeName(tt TransportType) string { return transportTypeName(tt) }
+
 func (tm *TransportManager) Draw(h *terrain.Heightmap) {
 	if tm.Tracks != nil {
 		tm.Tracks.ForEachTrack(func(t *MetroTrack, slot int32) {

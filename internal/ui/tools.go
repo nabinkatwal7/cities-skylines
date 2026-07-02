@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/katwate/js-skylines/internal/road"
 	"github.com/katwate/js-skylines/internal/transport"
@@ -19,6 +20,10 @@ const (
 	ToolZone
 	ToolRemove
 	ToolUpgrade
+	ToolInspect
+	ToolMeasure
+	ToolMove
+	ToolReplace
 )
 
 type ToolbarItem struct {
@@ -30,8 +35,9 @@ type ToolbarItem struct {
 	OptIndex int
 }
 
-// ToolSystem tracks the active build tool and its mode options.
+// ToolSystem tracks the active build tool and its mode options (24.5).
 type ToolSystem struct {
+	Mode              ToolMode
 	Selected          GameTool
 	RoadType          road.RoadType
 	ZoneType          int
@@ -48,13 +54,40 @@ type ToolSystem struct {
 	CargoMode         bool
 	TransportType     transport.TransportType
 	HelpText          string
+	measureASet       bool
+	measureAX           float32
+	measureAZ           float32
+	measureDist         float32
 }
 
 func NewToolSystem() *ToolSystem {
 	return &ToolSystem{
 		Selected: ToolPointer,
+		Mode:     ModeInspect,
 		RoadType: road.RoadTwoLane,
 	}
+}
+
+// Activate selects exactly one tool and its mode (24.5).
+func (ts *ToolSystem) Activate(tool GameTool) {
+	ts.Selected = tool
+	ts.Mode = modeForTool(tool)
+	if tool != ToolMeasure {
+		ts.measureASet = false
+	}
+}
+
+func (ts *ToolSystem) MeasureClick(x, z float32) {
+	if !ts.measureASet {
+		ts.measureAX, ts.measureAZ = x, z
+		ts.measureASet = true
+		ts.measureDist = 0
+		return
+	}
+	dx := x - ts.measureAX
+	dz := z - ts.measureAZ
+	ts.measureDist = float32(math.Sqrt(float64(dx*dx + dz*dz)))
+	ts.measureASet = false
 }
 
 var ToolbarItems = []ToolbarItem{
@@ -90,12 +123,6 @@ func (ts *ToolSystem) HasOptionsBar() bool {
 }
 
 func (ts *ToolSystem) HandleKeyboard() GameTool {
-	for _, item := range ToolbarItems {
-		if rl.IsKeyPressed(item.Key) {
-			ts.Selected = item.Tool
-			return item.Tool
-		}
-	}
 	if ts.Selected == ToolRoad && rl.IsKeyPressed(rl.KeyR) {
 		item := &ToolbarItems[1]
 		item.OptIndex = (item.OptIndex + 1) % len(item.Options)
@@ -122,34 +149,98 @@ func (ts *ToolSystem) HandleKeyboard() GameTool {
 		ts.ZoneType = item.OptIndex
 	}
 	if rl.IsKeyPressed(rl.KeyEscape) {
-		ts.Selected = ToolPointer
+		ts.Activate(ToolPointer)
 	}
 	return ts.Selected
 }
 
 func (ts *ToolSystem) DrawHelp() {
 	helpY := int32(ToolbarY + ToolbarH + 5)
-	switch ts.Selected {
-	case ToolPointer:
-		DrawUIText("1-7 tools | F1-F3 speed | Space pause | WASD pan | R-drag orbit | Scroll zoom", 10, helpY, 14, rl.White)
-	case ToolRoad:
-		DrawUIText(fmt.Sprintf("L-click place | R cycle type | PgUp/PgDn elevation | Current: %s", ToolbarItems[1].Options[ToolbarItems[1].OptIndex]), 10, helpY, 14, rl.White)
-	case ToolParking:
-		DrawUIText(fmt.Sprintf("L-click place %s | R cycle type", ToolbarItems[2].Options[ToolbarItems[2].OptIndex]), 10, helpY, 14, rl.White)
-	case ToolTransport:
-		if ts.CargoMode {
-			DrawUIText("L-click place Cargo Station | R cycle type", 10, helpY, 14, rl.White)
-		} else {
-			DrawUIText(fmt.Sprintf("L-click place %s stop | R cycle type", ToolbarItems[3].Options[ToolbarItems[3].OptIndex]), 10, helpY, 14, rl.White)
+	switch ts.Mode {
+	case ModeInspect:
+		DrawUIText("Click to inspect | I inspect | M measure | 1=Pointer 6=Bulldoze 7=Upgrade", 10, helpY, 14, rl.White)
+	case ModeMeasure:
+		hint := "Click two points to measure distance"
+		if ts.measureDist > 0 {
+			hint = fmt.Sprintf("Distance: %.1fm", ts.measureDist)
+		} else if ts.measureASet {
+			hint = "Click second point"
 		}
-	case ToolZone:
-		DrawUIText(fmt.Sprintf("L-click paint %s | R cycle type", ToolbarItems[4].Options[ToolbarItems[4].OptIndex]), 10, helpY, 14, rl.White)
-	case ToolRemove:
-		DrawUIText("L-click stop, line, or road segment to remove | Esc deselect", 10, helpY, 14, rl.White)
-	case ToolUpgrade:
+		DrawUIText(hint, 10, helpY, 14, rl.White)
+	case ModeMove:
+		DrawUIText("Move tool: select object then click destination (coming soon)", 10, helpY, 14, rl.White)
+	case ModeReplace:
+		DrawUIText("Replace tool: click asset to swap (coming soon)", 10, helpY, 14, rl.White)
+	case ModeBulldoze:
+		DrawUIText("L-click to bulldoze | Esc cancel", 10, helpY, 14, rl.White)
+	case ModeUpgrade:
 		DrawUIText(fmt.Sprintf("L-click road to upgrade to %s | R change type", ToolbarItems[1].Options[ToolbarItems[1].OptIndex]), 10, helpY, 14, rl.White)
+	case ModePaint:
+		DrawUIText(fmt.Sprintf("L-click paint %s | R cycle type", ToolbarItems[4].Options[ToolbarItems[4].OptIndex]), 10, helpY, 14, rl.White)
+	case ModePlace:
+		switch ts.Selected {
+		case ToolRoad:
+			DrawUIText(fmt.Sprintf("L-click place | R cycle type | PgUp/PgDn elevation | Current: %s", ToolbarItems[1].Options[ToolbarItems[1].OptIndex]), 10, helpY, 14, rl.White)
+		case ToolParking:
+			DrawUIText(fmt.Sprintf("L-click place %s | R cycle type", ToolbarItems[2].Options[ToolbarItems[2].OptIndex]), 10, helpY, 14, rl.White)
+		case ToolTransport:
+			if ts.CargoMode {
+				DrawUIText("L-click place Cargo Station | R cycle type", 10, helpY, 14, rl.White)
+			} else {
+				DrawUIText(fmt.Sprintf("L-click place %s stop | R cycle type", ToolbarItems[3].Options[ToolbarItems[3].OptIndex]), 10, helpY, 14, rl.White)
+			}
+		}
 	}
 	if ts.HelpText != "" {
 		DrawUIText(ts.HelpText, 10, helpY+18, 14, rl.NewColor(255, 180, 80, 255))
+	}
+}
+
+// ApplyAsset configures the tool system from a build-menu selection.
+func (ts *ToolSystem) ApplyAsset(a BuildAsset) {
+	switch a.Category {
+	case CatRoads:
+		ts.Activate(ToolRoad)
+		for i, name := range roadOptions().Options {
+			if name == a.Name {
+				roadOptions().OptIndex = i
+				ts.RoadType = road.RoadType(i)
+				return
+			}
+		}
+	case CatZoning:
+		ts.Activate(ToolZone)
+		for i, name := range zoneOptions().Options {
+			if name == a.Name {
+				zoneOptions().OptIndex = i
+				ts.ZoneType = i
+				return
+			}
+		}
+	case CatPublicTransport:
+		for i, name := range transportOptions().Options {
+			if name == a.Name {
+				transportOptions().OptIndex = i
+				if i >= int(transport.TransportModeCount) {
+					ts.CargoMode = true
+					ts.Activate(ToolTransport)
+				} else {
+					ts.CargoMode = false
+					ts.TransportType = transport.TransportType(i)
+					ts.Activate(ToolTransport)
+				}
+				return
+			}
+		}
+		for i, name := range parkingOptions().Options {
+			if name == a.Name {
+				parkingOptions().OptIndex = i
+				ts.setParkingMode(i)
+				ts.Activate(ToolParking)
+				return
+			}
+		}
+	default:
+		ts.HelpText = a.Name + ": placement coming soon"
 	}
 }

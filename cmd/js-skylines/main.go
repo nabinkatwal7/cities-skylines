@@ -153,6 +153,12 @@ func main() {
 			target.Y += speed
 		}
 
+		if fx, fz, ok := gameUI.FollowTarget(); ok {
+			target.X += (fx - target.X) * 0.08
+			target.Z += (fz - target.Z) * 0.08
+			gameUI.Search.ClearCamera()
+		}
+
 		cam.Target = target
 		cam.Position.X = target.X + dist*float32(math.Cos(float64(pitch)))*float32(math.Sin(float64(yaw)))
 		cam.Position.Y = target.Y + dist*float32(math.Sin(float64(pitch)))
@@ -210,13 +216,7 @@ func main() {
 		worldX, worldZ, mouseOnTerrain = sim.Heightmap.PickXZ(ray)
 
 		// Update UI state (presentation only)
-		gameUI.SyncView(ui.ViewState{
-			Money:         sim.Money,
-			TimeStr:       timeStr(sim),
-			MouseWorldX:   worldX,
-			MouseWorldZ:   worldZ,
-			MouseOnGround: mouseOnTerrain,
-		})
+		gameUI.SyncView(ui.ViewStateFromSim(sim, worldX, worldZ, mouseOnTerrain))
 
 		// Snap to outside connection for preview
 		previewX, previewZ := worldX, worldZ
@@ -240,6 +240,20 @@ func main() {
 			}
 		}
 
+		gameUI.UpdateWorld(ui.WorldContext{
+			Sim:                sim,
+			WorldX:             worldX,
+			WorldZ:             worldZ,
+			PreviewX:           previewX,
+			PreviewZ:           previewZ,
+			OnGround:           mouseOnTerrain,
+			RoadActive:         roadActive,
+			RoadStartNode:      roadStartNode,
+			RoadElevation:      roadElevation,
+			TransportActive:    transportActive,
+			TransportStartStop: transportStartStopID,
+		})
+
 		// Handle keyboard tool selection
 		gameUI.HandleInput()
 
@@ -247,12 +261,13 @@ func main() {
 		if rl.IsMouseButtonPressed(rl.MouseButtonLeft) {
 			mPos := rl.GetMousePosition()
 			my := int32(mPos.Y)
-			if my >= ui.ToolbarY {
+			if my >= gameUI.ChromeTopY() {
 				gameUI.HandleClick()
 				roadActive = false
-			} else if my >= ui.ToolbarY-ui.OptionsBarH && gameUI.HasOptionsBar() {
-				// option bar handles its own clicks during Draw()
 			} else if mouseOnTerrain {
+				if gameUI.HandleWorldClick(sim, worldX, worldZ) {
+					// inspect / measure consumed click
+				} else {
 				switch gameUI.Selected {
 				case ui.ToolRoad:
 					px := clamp(previewX, -240, 240)
@@ -386,6 +401,7 @@ func main() {
 						}
 					}
 				}
+				}
 			}
 		}
 
@@ -400,118 +416,11 @@ func main() {
 		rl.ClearBackground(skyColor(sim.Night))
 		rl.BeginMode3D(cam)
 		t.Draw(cam.Position.X, cam.Position.Z)
+		gameUI.DrawWorldOverlays(sim)
 
-		// Draw previews
+		// Draw placement preview (24.6)
 		if mouseOnTerrain {
-			h := sim.Heightmap.WorldHeight(worldX, worldZ)
-
-			switch gameUI.Selected {
-			case ui.ToolRoad:
-				rl.DrawSphere(rl.NewVector3(previewX, h+0.5, previewZ), 0.8, rl.Green)
-				if roadActive {
-					sn := &sim.Roads.Nodes[roadStartNode]
-					sh := sim.Heightmap.WorldHeight(sn.X, sn.Z)
-					rl.DrawLine3D(rl.NewVector3(sn.X, sh+0.2, sn.Z), rl.NewVector3(previewX, h+0.2, previewZ), rl.Green)
-				}
-			case ui.ToolParking:
-				if gameUI.AirportMode {
-					rl.DrawCube(rl.NewVector3(worldX, h+0.3, worldZ), 12, 0.3, 8, rl.NewColor(180, 180, 180, 120))
-					rl.DrawCubeWires(rl.NewVector3(worldX, h+0.3, worldZ), 12, 0.3, 8, rl.NewColor(180, 180, 180, 200))
-					rl.DrawCube(rl.NewVector3(worldX+4, h+1.5, worldZ), 4, 3, 3, rl.NewColor(200, 200, 220, 120))
-					rl.DrawCube(rl.NewVector3(worldX-5, h+0.2, worldZ), 20, 0.1, 2, rl.NewColor(160, 160, 160, 150))
-					rl.DrawCube(rl.NewVector3(worldX-5, h+0.2, worldZ+3), 20, 0.1, 2, rl.NewColor(160, 160, 160, 150))
-				} else if gameUI.PortMode {
-					rl.DrawCube(rl.NewVector3(worldX, h+0.3, worldZ), 8, 0.5, 10, rl.NewColor(139, 90, 43, 120))
-					rl.DrawCubeWires(rl.NewVector3(worldX, h+0.3, worldZ), 8, 0.5, 10, rl.NewColor(139, 90, 43, 200))
-					rl.DrawCube(rl.NewVector3(worldX, h+0.5, worldZ+5), 6, 0.3, 4, rl.NewColor(100, 100, 100, 120))
-				} else if gameUI.FerryDepotMode {
-					rl.DrawCube(rl.NewVector3(worldX, h+0.3, worldZ), 5, 0.5, 5, rl.NewColor(50, 150, 200, 120))
-					rl.DrawCubeWires(rl.NewVector3(worldX, h+0.3, worldZ), 5, 0.5, 5, rl.NewColor(50, 150, 200, 200))
-				} else if gameUI.MonorailDepotMode {
-					rl.DrawCube(rl.NewVector3(worldX, h+2, worldZ), 8, 2, 4, rl.NewColor(100, 200, 200, 120))
-					rl.DrawCubeWires(rl.NewVector3(worldX, h+2, worldZ), 8, 2, 4, rl.NewColor(100, 200, 200, 200))
-				} else if gameUI.CableCarDepotMode {
-					rl.DrawCube(rl.NewVector3(worldX, h+2, worldZ), 4, 3, 4, rl.NewColor(200, 200, 100, 120))
-					rl.DrawCubeWires(rl.NewVector3(worldX, h+2, worldZ), 4, 3, 4, rl.NewColor(200, 200, 100, 200))
-				} else if gameUI.TaxiDepotMode {
-					rl.DrawCube(rl.NewVector3(worldX, h+0.5, worldZ), 5, 1, 4, rl.NewColor(200, 200, 50, 120))
-					rl.DrawCubeWires(rl.NewVector3(worldX, h+0.5, worldZ), 5, 1, 4, rl.NewColor(200, 200, 50, 200))
-				} else if gameUI.MetroDepotMode {
-					rl.DrawCube(rl.NewVector3(worldX, h+0.5, worldZ), 6, 1, 4, rl.NewColor(80, 80, 200, 120))
-					rl.DrawCubeWires(rl.NewVector3(worldX, h+0.5, worldZ), 6, 1, 4, rl.NewColor(80, 80, 200, 200))
-				} else if gameUI.TramDepotMode {
-					rl.DrawCube(rl.NewVector3(worldX, h+0.5, worldZ), 6, 1, 4, rl.NewColor(180, 50, 180, 120))
-					rl.DrawCubeWires(rl.NewVector3(worldX, h+0.5, worldZ), 6, 1, 4, rl.NewColor(180, 50, 180, 200))
-				} else if gameUI.BusDepotMode {
-					rl.DrawCube(rl.NewVector3(worldX, h+0.5, worldZ), 6, 1, 4, rl.NewColor(200, 180, 50, 120))
-					rl.DrawCubeWires(rl.NewVector3(worldX, h+0.5, worldZ), 6, 1, 4, rl.NewColor(200, 180, 50, 200))
-				} else {
-					col := rl.NewColor(80, 80, 200, 100)
-					if !gameUI.ParkingGarage {
-						col = rl.NewColor(80, 160, 80, 80)
-					}
-					rl.DrawCube(rl.NewVector3(worldX, h+0.3, worldZ), 20, 0.3, 15, col)
-					rl.DrawCubeWires(rl.NewVector3(worldX, h+0.3, worldZ), 20, 0.3, 15, rl.NewColor(60, 60, 100, 150))
-				}
-			case ui.ToolTransport:
-				if gameUI.CargoMode {
-					rl.DrawCube(rl.NewVector3(worldX, h+1, worldZ), 5, 2, 5, rl.NewColor(200, 150, 50, 120))
-					rl.DrawCubeWires(rl.NewVector3(worldX, h+1, worldZ), 5, 2, 5, rl.NewColor(200, 200, 100, 200))
-					break
-				}
-				stopCol := transport.TransportStopColor(gameUI.TransportType)
-				if transportActive {
-					if sn := sim.Transport.StopByID(transportStartStopID); sn != nil {
-						sh := sim.Heightmap.WorldHeight(sn.X, sn.Z)
-						rl.DrawLine3D(rl.NewVector3(sn.X, sh+0.5, sn.Z), rl.NewVector3(previewX, h+0.5, previewZ), stopCol)
-					}
-				}
-				rl.DrawSphere(rl.NewVector3(previewX, h+0.5, previewZ), 0.6, stopCol)
-			case ui.ToolRemove:
-				if sim.Transport != nil {
-					stop := sim.Transport.NearestStop(worldX, worldZ, 8)
-					if stop != nil {
-						sh := sim.Heightmap.WorldHeight(stop.X, stop.Z) + 0.5
-						rl.DrawCube(rl.NewVector3(stop.X, sh, stop.Z), 2, 2, 2, rl.NewColor(200, 50, 50, 80))
-						rl.DrawCubeWires(rl.NewVector3(stop.X, sh, stop.Z), 2, 2, 2, rl.Red)
-						break
-					}
-					line := sim.Transport.NearestLine(worldX, worldZ, 12)
-					if line != nil {
-						col := transport.TransportStopColor(line.TransType)
-						for _, sid := range line.Stops {
-							s := sim.Transport.StopByID(sid)
-							if s == nil {
-								continue
-							}
-							sh := sim.Heightmap.WorldHeight(s.X, s.Z) + 0.5
-							rl.DrawCubeWires(rl.NewVector3(s.X, sh, s.Z), 1.5, 1.5, 1.5, col)
-						}
-						break
-					}
-				}
-				idx := sim.Roads.NearestSegment(worldX, worldZ)
-				if idx >= 0 {
-					seg := sim.Roads.Segments[idx]
-					na := &sim.Roads.Nodes[seg.NodeA]
-					nb := &sim.Roads.Nodes[seg.NodeB]
-					ha := sim.Heightmap.WorldHeight(na.X, na.Z) + 0.5
-					hb := sim.Heightmap.WorldHeight(nb.X, nb.Z) + 0.5
-					rl.DrawLine3D(rl.NewVector3(na.X, ha, na.Z), rl.NewVector3(nb.X, hb, nb.Z), rl.Red)
-				}
-			case ui.ToolUpgrade:
-				idx := sim.Roads.NearestSegment(worldX, worldZ)
-				if idx >= 0 {
-					seg := sim.Roads.Segments[idx]
-					na := &sim.Roads.Nodes[seg.NodeA]
-					nb := &sim.Roads.Nodes[seg.NodeB]
-					ha := sim.Heightmap.WorldHeight(na.X, na.Z) + 0.5
-					hb := sim.Heightmap.WorldHeight(nb.X, nb.Z) + 0.5
-					rl.DrawLine3D(rl.NewVector3(na.X, ha, na.Z), rl.NewVector3(nb.X, hb, nb.Z), rl.Yellow)
-				}
-			}
-
-			rl.DrawSphere(rl.NewVector3(worldX, h+0.3, worldZ), 0.4, rl.Red)
+			gameUI.DrawWorldPreview()
 		}
 		rl.DrawGrid(100, 4.0)
 		rl.EndMode3D()
@@ -533,14 +442,4 @@ func clamp(v, min, max float32) float32 {
 		return max
 	}
 	return v
-}
-
-func timeStr(sim *simpkg.SimulationManager) string {
-	s := sim.Time.TimeString()
-	if sim.Time.IsPaused {
-		s += " ⏸"
-	} else if sim.Time.Speed > 1 {
-		s += fmt.Sprintf(" ⏩x%.0f", sim.Time.Speed)
-	}
-	return s
 }

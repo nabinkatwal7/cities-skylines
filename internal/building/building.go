@@ -303,6 +303,41 @@ func (m *Manager) Residents() int {
 	return n
 }
 
+// NearestAt returns the building index within maxDist of world x/z, or -1.
+func (m *Manager) NearestAt(x, z float32, maxDist float32) int {
+	if m == nil {
+		return -1
+	}
+	maxD := maxDist * maxDist
+	best := -1
+	for i := range m.Buildings {
+		b := &m.Buildings[i]
+		dx := b.WorldX - x
+		dz := b.WorldZ - z
+		if d := dx*dx + dz*dz; d < maxD {
+			maxD = d
+			best = i
+		}
+	}
+	return best
+}
+
+// LandValueGrid returns the cached land-value grid and its size (read-only).
+func (m *Manager) LandValueGrid() ([][]float32, int, int) {
+	if m == nil {
+		return nil, 0, 0
+	}
+	return m.landValue, m.width, m.height
+}
+
+// BuildingAt returns a building by index or nil.
+func (m *Manager) BuildingAt(idx int) *Building {
+	if m == nil || idx < 0 || idx >= len(m.Buildings) {
+		return nil
+	}
+	return &m.Buildings[idx]
+}
+
 func levelCapacity(b *Building) int {
 	base := 4
 	if b.Type == zoning.ZoneResidentialHigh || b.Type == zoning.ZoneCommercialHigh {

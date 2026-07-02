@@ -292,7 +292,9 @@ func (sm *SimulationManager) collectTax(dt float64) {
 		}
 		if sm.Transport != nil {
 			sm.Money -= sm.Transport.TotalMaintenance()
-			sm.Money += sm.Transport.TotalIncome() * 0.1
+			income := sm.Transport.TotalIncome() * 0.1
+			sm.Money += income
+			sm.EventBus.Emit(string(core.EventTaxCollected), income)
 		}
 		sm.TaxTimer = 0
 	}

@@ -18,17 +18,24 @@ const (
 	ScreenH     = 720
 	ToolbarY    = 660
 	ToolbarH    = 60
-	ToolbarBtnW = 90
+	ToolbarBtnW = 72
 	ToolbarBtnH = 48
-	ToolbarPad  = 6
+	ToolbarPad  = 4
 	OptionsBarH = 40
-	TopBarH     = 40
+	BuildMenuH  = 128
+	TopBarH     = 52
 )
 
 // ViewState carries read-only presentation data from the simulation layer.
 type ViewState struct {
 	Money         float32
+	WeeklyIncome  float32
+	Population    int
+	Happiness     float32 // 0..1
+	DateStr       string
 	TimeStr       string
+	SpeedStr      string
+	Milestone     string
 	MouseWorldX   float32
 	MouseWorldZ   float32
 	MouseOnGround bool

@@ -3902,3 +3902,99 @@ UIManager
 UI components subscribe to simulation events rather than polling continuously.
 
 Implementation: `internal/ui/manager.go` with subsystem packages; `UIManager.Attach(EventBus)` wires HUD and notifications to simulation events; `SyncView` supplies read-only presentation state from the game loop.
+
+---
+
+## 24.2 HUD ✅
+
+The Heads-Up Display continuously presents critical city information: treasury, weekly income, population, happiness, date, time, simulation speed, active milestone, and latest notification. Updates on simulation events via `HUD.Subscribe` and `ViewStateFromSim`.
+
+---
+
+## 24.3 Main Toolbar ✅
+
+Seventeen build categories with population-gated unlocks (`UnlockRegistry`). Utility strip: Pointer, Remove, Upgrade. Categories map to tools or build menus. Hidden until unlocked.
+
+---
+
+## 24.4 Build Menus ✅
+
+Per-category asset browser with search, favorites/recent filters, asset grid, and preview panel showing cost, maintenance, size, requirements, and unlock conditions. Asset selection configures `ToolSystem` for roads, zones, and transit.
+
+---
+
+## 24.5 Tool System ✅
+
+Eight interaction modes via `ToolMode`: Place, Bulldoze, Upgrade, Move, Replace, Paint, Measure, Inspect. `ToolSystem.Activate` ensures only one tool is active. Utility toolbar: Ptr, Insp, Meas, Del, Upg with hotkeys I/M/6/7.
+
+---
+
+## 24.6 Placement Preview ✅
+
+`EvalPlacement` + `DrawPreview3D` show footprint, cost, elevation, terrain/road/utility/collision warnings with green/red feedback. HUD overlay via `DrawPreviewHUD`.
+
+---
+
+## 24.7 Inspector Panels ✅
+
+`InspectorPanel.Pick` opens read-only panels for buildings, roads, vehicles, zones/industry, and transport stops/lines. Citizen/utility/park inspectors stubbed until those entities exist.
+
+---
+
+## 24.8 Building Information Panel ✅
+
+Full building inspector: name, level, occupancy, workers, visitors, maintenance, electricity, water, service coverage, warnings, and statistics. Actions: Upgrade, View Citizen, Bulldoze.
+
+---
+
+## 24.9 Citizen Information Panel ✅
+
+Representative citizen view from residential households (ponytail: aggregated until individual citizen sim). Shows age, education, home, workplace, happiness, health, activity, vehicle, lifetime stats. Follow action tracks camera.
+
+---
+
+## 24.10 Vehicle Information Panel ✅
+
+Vehicle inspector: type, speed, destination, route, passengers, cargo, owner, state. Follow action for traffic diagnosis.
+
+---
+
+## 24.11 Information Views ✅
+
+Nineteen overlay modes (electricity, water, sewage, heating, garbage, healthcare, fire, crime, education, happiness, land value, pollution, noise, traffic, transit, wind, resources, districts). F4 cycles, F5 clears. Single active view. `DrawWorld` heat-map on terrain grid.
+
+---
+
+## 24.12 Overlay System ✅
+
+`OverlayManager` layers heatmap (via `InfoViews`), transit icons, building labels, and selection highlight above world geometry. Layers toggle independently; heatmaps are presentation-only.
+
+---
+
+## 24.13 Notifications ✅
+
+`Notifications` raises persistent alerts (no power/water, crime, traffic, abandonment, budget, milestones, flood) from live sim data and event bus. Resolve when conditions clear; dismiss via × click.
+
+---
+
+## 24.14 Advisor System ✅
+
+`Advisors` generates contextual tips across Economy, Transport, Utilities, Health, Education, Industry, and Environment from simulation metrics. F6 toggles the advisor panel.
+
+---
+
+## 24.15 Statistics Window ✅
+
+`StatisticsPanel` reports population, economy, traffic, industry, transit, and environment tabs with bar charts and a rolling population history graph. Opened from the Statistics toolbar category.
+
+---
+
+## 24.16 Search System ✅
+
+`SearchSystem` (`/` toggle) queries buildings, roads, transit lines/stops, districts, citizens, and services. Enter centers the camera on the selected result.
+
+---
+
+## 24.17 Selection System ✅
+
+`SelectionSystem` unifies building, road, citizen, vehicle, district, tree, and prop selection with world-space highlight wireframes. Synced from inspector picks and contextual actions.

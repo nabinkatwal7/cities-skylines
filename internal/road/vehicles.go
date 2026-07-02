@@ -21,6 +21,27 @@ const (
 	VehicleTram
 )
 
+func VehicleTypeName(vt VehicleType) string {
+	switch vt {
+	case VehicleCar:
+		return "Car"
+	case VehicleBus:
+		return "Bus"
+	case VehicleTruck:
+		return "Truck"
+	case VehicleEmergency:
+		return "Emergency"
+	case VehicleBike:
+		return "Bicycle"
+	case VehiclePedestrian:
+		return "Pedestrian"
+	case VehicleTram:
+		return "Tram"
+	default:
+		return "Unknown"
+	}
+}
+
 type Vehicle struct {
 	core.Entity
 	Type        VehicleType
