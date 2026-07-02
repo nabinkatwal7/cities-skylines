@@ -2827,3 +2827,61 @@ Unlike buses:
 Passengers board only at tram stops.
 
 ---
+
+## 4.8 Metro System
+
+Metro networks operate underground or elevated.
+
+Components:
+
+```text
+Station
+
+↓
+
+Track
+
+↓
+
+Tunnel
+
+↓
+
+Depot
+
+↓
+
+Train
+```
+
+Metro trains ignore road traffic.
+
+Stations connect directly to pedestrian networks.
+
+---
+
+## 4.9 Train Network
+
+The rail network supports:
+
+- Passenger Rail
+- Cargo Rail
+
+Passenger trains transport:
+
+- Citizens
+- Tourists
+
+Cargo trains transport:
+
+- Goods
+- Raw Materials
+- Mail (if enabled)
+
+Railways support:
+
+- Junctions
+- Signals
+- Outside Connections
+
+---

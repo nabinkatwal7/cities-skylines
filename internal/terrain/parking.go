@@ -36,6 +36,7 @@ type ParkingLot struct {
 const ParkingLotPoolSize = 500
 const BusDepotPoolSize = 100
 const TramDepotPoolSize = 100
+const MetroDepotPoolSize = 100
 
 type BusDepot struct {
 	Entity
@@ -44,6 +45,12 @@ type BusDepot struct {
 }
 
 type TramDepot struct {
+	Entity
+	X, Z   float32
+	CellX, CellZ int
+}
+
+type MetroDepot struct {
 	Entity
 	X, Z   float32
 	CellX, CellZ int
@@ -64,6 +71,10 @@ type ParkingManager struct {
 	TramDepots   [TramDepotPoolSize]TramDepot
 	TramDepotFreeList []int32
 	TramDepotCount  int32
+
+	MetroDepots   [MetroDepotPoolSize]MetroDepot
+	MetroDepotFreeList []int32
+	MetroDepotCount  int32
 }
 
 func NewParkingManager() *ParkingManager {
@@ -71,6 +82,7 @@ func NewParkingManager() *ParkingManager {
 		LotFreeList:  make([]int32, ParkingLotPoolSize),
 		DepotFreeList: make([]int32, BusDepotPoolSize),
 		TramDepotFreeList: make([]int32, TramDepotPoolSize),
+		MetroDepotFreeList: make([]int32, MetroDepotPoolSize),
 	}
 	for i := 0; i < ParkingLotPoolSize; i++ {
 		pm.Lots[i].Lifecycle = LifecycleUnallocated
@@ -83,6 +95,10 @@ func NewParkingManager() *ParkingManager {
 	for i := 0; i < TramDepotPoolSize; i++ {
 		pm.TramDepots[i].Lifecycle = LifecycleUnallocated
 		pm.TramDepotFreeList[i] = int32(TramDepotPoolSize - 1 - i)
+	}
+	for i := 0; i < MetroDepotPoolSize; i++ {
+		pm.MetroDepots[i].Lifecycle = LifecycleUnallocated
+		pm.MetroDepotFreeList[i] = int32(MetroDepotPoolSize - 1 - i)
 	}
 	return pm
 }
@@ -185,19 +201,6 @@ func (pm *ParkingManager) freeTramDepot(slot int32) {
 	pm.TramDepotCount--
 }
 
-func (pm *ParkingManager) PlaceTramDepot(x, z float32) int32 {
-	slot := pm.allocTramDepot()
-	if slot < 0 {
-		return -1
-	}
-	d := &pm.TramDepots[slot]
-	d.X = x
-	d.Z = z
-	d.CellX = int(x) / 8
-	d.CellZ = int(z) / 8
-	return slot
-}
-
 func (pm *ParkingManager) NearestTramDepot(x, z float32, maxDist float32) (int32, float32) {
 	best := maxDist
 	bestIdx := int32(-1)
@@ -206,6 +209,59 @@ func (pm *ParkingManager) NearestTramDepot(x, z float32, maxDist float32) (int32
 			continue
 		}
 		d := &pm.TramDepots[i]
+		dx := d.X - x
+		dz := d.Z - z
+		dist := dx*dx + dz*dz
+		if dist < best {
+			best = dist
+			bestIdx = int32(i)
+		}
+	}
+	return bestIdx, best
+}
+
+func (pm *ParkingManager) allocMetroDepot() int32 {
+	if len(pm.MetroDepotFreeList) == 0 {
+		return -1
+	}
+	idx := pm.MetroDepotFreeList[len(pm.MetroDepotFreeList)-1]
+	pm.MetroDepotFreeList = pm.MetroDepotFreeList[:len(pm.MetroDepotFreeList)-1]
+	pm.MetroDepots[idx] = MetroDepot{}
+	pm.MetroDepots[idx].Lifecycle = LifecycleAllocated
+	pm.MetroDepotCount++
+	return int32(idx)
+}
+
+func (pm *ParkingManager) freeMetroDepot(slot int32) {
+	if slot < 0 || int(slot) >= MetroDepotPoolSize {
+		return
+	}
+	pm.MetroDepots[slot].Lifecycle = LifecycleReturnedToPool
+	pm.MetroDepotFreeList = append(pm.MetroDepotFreeList, slot)
+	pm.MetroDepotCount--
+}
+
+func (pm *ParkingManager) PlaceMetroDepot(x, z float32) int32 {
+	slot := pm.allocMetroDepot()
+	if slot < 0 {
+		return -1
+	}
+	d := &pm.MetroDepots[slot]
+	d.X = x
+	d.Z = z
+	d.CellX = int(x) / 8
+	d.CellZ = int(z) / 8
+	return slot
+}
+
+func (pm *ParkingManager) NearestMetroDepot(x, z float32, maxDist float32) (int32, float32) {
+	best := maxDist
+	bestIdx := int32(-1)
+	for i := 0; i < MetroDepotPoolSize; i++ {
+		if pm.MetroDepots[i].Lifecycle != LifecycleAllocated {
+			continue
+		}
+		d := &pm.MetroDepots[i]
 		dx := d.X - x
 		dz := d.Z - z
 		dist := dx*dx + dz*dz
@@ -472,6 +528,17 @@ func (pm *ParkingManager) Draw(h *Heightmap) {
 		rl.DrawCube(rl.NewVector3(d.X, hy, d.Z), 6, 1, 4, rl.NewColor(180, 50, 180, 180))
 		rl.DrawCubeWires(rl.NewVector3(d.X, hy, d.Z), 6, 1, 4, rl.NewColor(180, 50, 180, 255))
 		rl.DrawCube(rl.NewVector3(d.X, hy+0.6, d.Z), 2, 0.3, 1, rl.NewColor(255, 100, 255, 200))
+	}
+
+	for i := 0; i < MetroDepotPoolSize; i++ {
+		d := &pm.MetroDepots[i]
+		if d.Lifecycle != LifecycleAllocated {
+			continue
+		}
+		hy := h.WorldHeight(d.X, d.Z) + 0.5
+		rl.DrawCube(rl.NewVector3(d.X, hy, d.Z), 6, 1, 4, rl.NewColor(80, 80, 200, 180))
+		rl.DrawCubeWires(rl.NewVector3(d.X, hy, d.Z), 6, 1, 4, rl.NewColor(80, 80, 200, 255))
+		rl.DrawCube(rl.NewVector3(d.X, hy+0.6, d.Z), 2, 0.3, 1, rl.NewColor(150, 150, 255, 200))
 	}
 }
 

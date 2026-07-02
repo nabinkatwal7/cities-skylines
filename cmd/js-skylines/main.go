@@ -306,7 +306,7 @@ func main() {
 				if ui.ParkingGarage {
 					cost = 3000
 				}
-				if ui.BusDepotMode || ui.TramDepotMode {
+				if ui.BusDepotMode || ui.TramDepotMode || ui.MetroDepotMode {
 					cost = 5000
 				}
 				if sim.Money >= cost && !sim.Heightmap.IsUnderwater(worldX, worldZ) {
@@ -314,11 +314,23 @@ func main() {
 						sim.PlaceBusDepot(worldX, worldZ)
 					} else if ui.TramDepotMode {
 						sim.PlaceTramDepot(worldX, worldZ)
+					} else if ui.MetroDepotMode {
+						sim.PlaceMetroDepot(worldX, worldZ)
 					} else {
 						sim.PlaceParkingLot(worldX, worldZ, ui.ParkingGarage)
 					}
 				}
 			case terrain.ToolTransport:
+				if ui.CargoMode {
+					if sim.Money >= 5000 {
+						cost := float32(5000)
+						if sim.Money >= cost {
+							sim.Money -= cost
+							sim.Transport.Cargo.AddStation(previewX, previewZ)
+						}
+					}
+					break
+				}
 				if !sim.Heightmap.IsUnderwater(worldX, worldZ) {
 					if !transportActive {
 						stopID := sim.Transport.AddStop(previewX, previewZ, ui.TransportType)
@@ -393,7 +405,10 @@ func main() {
 			case terrain.ToolPark:
 				rl.DrawCube(rl.NewVector3(worldX, h+0.3, worldZ), 3, 0.2, 3, rl.NewColor(80, 200, 80, 120))
 			case terrain.ToolParking:
-				if ui.TramDepotMode {
+				if ui.MetroDepotMode {
+					rl.DrawCube(rl.NewVector3(worldX, h+0.5, worldZ), 6, 1, 4, rl.NewColor(80, 80, 200, 120))
+					rl.DrawCubeWires(rl.NewVector3(worldX, h+0.5, worldZ), 6, 1, 4, rl.NewColor(80, 80, 200, 200))
+				} else if ui.TramDepotMode {
 					rl.DrawCube(rl.NewVector3(worldX, h+0.5, worldZ), 6, 1, 4, rl.NewColor(180, 50, 180, 120))
 					rl.DrawCubeWires(rl.NewVector3(worldX, h+0.5, worldZ), 6, 1, 4, rl.NewColor(180, 50, 180, 200))
 				} else if ui.BusDepotMode {
@@ -408,6 +423,11 @@ func main() {
 					rl.DrawCubeWires(rl.NewVector3(worldX, h+0.3, worldZ), 20, 0.3, 15, rl.NewColor(60, 60, 100, 150))
 				}
 			case terrain.ToolTransport:
+				if ui.CargoMode {
+					rl.DrawCube(rl.NewVector3(worldX, h+1, worldZ), 5, 2, 5, rl.NewColor(200, 150, 50, 120))
+					rl.DrawCubeWires(rl.NewVector3(worldX, h+1, worldZ), 5, 2, 5, rl.NewColor(200, 200, 100, 200))
+					break
+				}
 				stopCol := terrain.TransportStopColor(ui.TransportType)
 				if transportActive {
 					sn := &sim.Transport.Stops[transportStartStopID]

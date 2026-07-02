@@ -126,6 +126,22 @@ type TransportNetwork struct {
 }
 
 const TransportVehiclePoolSize = 200
+const MetroTrackPoolSize = 500
+
+type MetroTrack struct {
+	ID         uint32
+	StartX, StartZ float32
+	EndX, EndZ float32
+	Length     float32
+	Lifecycle  LifecycleState
+}
+
+type TrackManager struct {
+	Pool     [MetroTrackPoolSize]MetroTrack
+	FreeList []int32
+	Count    int32
+	NextID   uint32
+}
 
 type TransportManager struct {
 	Stops    []TransportStop
@@ -140,11 +156,17 @@ type TransportManager struct {
 	PoolNext uint32
 
 	Parking *ParkingManager
+	Tracks  *TrackManager
+	Rails   *RailManager
+	Cargo   *CargoManager
 }
 
 func NewTransportManager() *TransportManager {
 	tm := &TransportManager{
 		FreeList: make([]int32, TransportVehiclePoolSize),
+		Tracks:   NewTrackManager(),
+		Rails:    NewRailManager(),
+		Cargo:    NewCargoManager(),
 	}
 	for i := 0; i < TransportVehiclePoolSize; i++ {
 		tm.Pool[i].ID = math.MaxUint32
@@ -181,6 +203,196 @@ func (tm *TransportManager) forEachVehicle(fn func(*TransportVehicle, int32)) {
 			fn(&tm.Pool[i], int32(i))
 		}
 	}
+}
+
+func NewTrackManager() *TrackManager {
+	tm := &TrackManager{
+		FreeList: make([]int32, MetroTrackPoolSize),
+	}
+	for i := 0; i < MetroTrackPoolSize; i++ {
+		tm.Pool[i].Lifecycle = LifecycleUnallocated
+		tm.FreeList[i] = int32(MetroTrackPoolSize - 1 - i)
+	}
+	return tm
+}
+
+func (trk *TrackManager) allocTrack() int32 {
+	if len(trk.FreeList) == 0 {
+		return -1
+	}
+	idx := trk.FreeList[len(trk.FreeList)-1]
+	trk.FreeList = trk.FreeList[:len(trk.FreeList)-1]
+	trk.Pool[idx] = MetroTrack{}
+	trk.Pool[idx].Lifecycle = LifecycleAllocated
+	trk.Count++
+	return int32(idx)
+}
+
+func (trk *TrackManager) freeTrack(slot int32) {
+	if slot < 0 || int(slot) >= MetroTrackPoolSize {
+		return
+	}
+	trk.Pool[slot].Lifecycle = LifecycleReturnedToPool
+	trk.FreeList = append(trk.FreeList, slot)
+	trk.Count--
+}
+
+func (trk *TrackManager) AddTrack(startX, startZ, endX, endZ float32) int32 {
+	slot := trk.allocTrack()
+	if slot < 0 {
+		return -1
+	}
+	t := &trk.Pool[slot]
+	t.ID = trk.NextID
+	trk.NextID++
+	t.StartX = startX
+	t.StartZ = startZ
+	t.EndX = endX
+	t.EndZ = endZ
+	dx := endX - startX
+	dz := endZ - startZ
+	t.Length = float32(math.Sqrt(float64(dx*dx + dz*dz)))
+	return slot
+}
+
+func (trk *TrackManager) ForEachTrack(fn func(*MetroTrack, int32)) {
+	for i := 0; i < MetroTrackPoolSize; i++ {
+		if trk.Pool[i].Lifecycle == LifecycleAllocated {
+			fn(&trk.Pool[i], int32(i))
+		}
+	}
+}
+
+func (trk *TrackManager) FindTrackPath(startX, startZ, endX, endZ float32) []int32 {
+	type trackDist struct {
+		prev    int32
+		dist    float32
+		visited bool
+	}
+	count := trk.Count
+	if count == 0 {
+		return nil
+	}
+	nodes := make([]trackDist, MetroTrackPoolSize)
+	for i := range nodes {
+		nodes[i].prev = -1
+		nodes[i].dist = math.MaxFloat32
+	}
+
+	bestStart := int32(-1)
+	bestEnd := int32(-1)
+	for i := 0; i < MetroTrackPoolSize; i++ {
+		t := &trk.Pool[i]
+		if t.Lifecycle != LifecycleAllocated {
+			continue
+		}
+		dx1 := t.StartX - startX
+		dz1 := t.StartZ - startZ
+		d1 := dx1*dx1 + dz1*dz1
+		dx2 := t.EndX - startX
+		dz2 := t.EndZ - startZ
+		d2 := dx2*dx2 + dz2*dz2
+		if d1 < d2 && d1 < 2500 {
+			if bestStart < 0 || d1 < nodes[bestStart].dist {
+				bestStart = int32(i)
+				nodes[i].dist = d1
+			}
+		} else if d2 < 2500 {
+			if bestStart < 0 || d2 < nodes[bestStart].dist {
+				bestStart = int32(i)
+				nodes[i].dist = d2
+			}
+		}
+		dx1 = t.StartX - endX
+		dz1 = t.StartZ - endZ
+		d1 = dx1*dx1 + dz1*dz1
+		dx2 = t.EndX - endX
+		dz2 = t.EndZ - endZ
+		d2 = dx2*dx2 + dz2*dz2
+		if d1 < d2 && d1 < 2500 {
+			if bestEnd < 0 || d1 < nodes[bestEnd].dist {
+				bestEnd = int32(i)
+			}
+		} else if d2 < 2500 {
+			if bestEnd < 0 || d2 < nodes[bestEnd].dist {
+				bestEnd = int32(i)
+			}
+		}
+	}
+	if bestStart < 0 || bestEnd < 0 {
+		return nil
+	}
+
+	for {
+		best := -1
+		bestD := float32(math.MaxFloat32)
+		for i := 0; i < MetroTrackPoolSize; i++ {
+			if trk.Pool[i].Lifecycle != LifecycleAllocated {
+				continue
+			}
+			if !nodes[i].visited && nodes[i].dist < bestD {
+				best = i
+				bestD = nodes[i].dist
+			}
+		}
+		if best < 0 || int32(best) == bestEnd {
+			break
+		}
+		nodes[best].visited = true
+		t := &trk.Pool[best]
+
+		for j := 0; j < MetroTrackPoolSize; j++ {
+			if trk.Pool[j].Lifecycle != LifecycleAllocated || j == best {
+				continue
+			}
+			other := &trk.Pool[j]
+			shared := false
+			if (t.StartX == other.StartX && t.StartZ == other.StartZ) ||
+				(t.StartX == other.EndX && t.StartZ == other.EndZ) ||
+				(t.EndX == other.StartX && t.EndZ == other.StartZ) ||
+				(t.EndX == other.EndX && t.EndZ == other.EndZ) {
+				shared = true
+			} else {
+				dx := t.EndX - t.StartX
+				dz := t.EndZ - t.StartZ
+				ox := other.StartX - t.StartX
+				oz := other.StartZ - t.StartZ
+				if dx*oz-dz*ox < 1 && dx*oz-dz*ox > -1 {
+					dot := dx*ox + dz*oz
+					len2 := dx*dx + dz*dz
+					if dot > 0 && dot < len2 {
+						shared = true
+					}
+				}
+			}
+			if shared {
+				cost := other.Length
+				nd := nodes[best].dist + cost
+				if nd < nodes[j].dist {
+					nodes[j].dist = nd
+					nodes[j].prev = int32(best)
+				}
+			}
+		}
+	}
+
+	if nodes[bestEnd].prev < 0 {
+		return nil
+	}
+
+	path := make([]int32, 0)
+	cur := bestEnd
+	for cur >= 0 {
+		path = append(path, cur)
+		if cur == bestStart {
+			break
+		}
+		cur = nodes[cur].prev
+	}
+	for i, j := 0, len(path)-1; i < j; i, j = i+1, j-1 {
+		path[i], path[j] = path[j], path[i]
+	}
+	return path
 }
 
 func (tm *TransportManager) AddStop(x, z float32, tt TransportType) uint32 {
@@ -223,6 +435,24 @@ func (tm *TransportManager) AddLine(name string, tt TransportType, stopIDs []uin
 	if int(tt) < len(tm.Networks) {
 		tm.Networks[tt].RouteCount++
 	}
+	if tt == TransMetro && tm.Tracks != nil && len(stopIDs) >= 2 {
+		for i := 0; i < len(stopIDs)-1; i++ {
+			a := tm.StopByID(stopIDs[i])
+			b := tm.StopByID(stopIDs[i+1])
+			if a != nil && b != nil {
+				tm.Tracks.AddTrack(a.X, a.Z, b.X, b.Z)
+			}
+		}
+	}
+	if tt == TransTrain && tm.Rails != nil && len(stopIDs) >= 2 {
+		for i := 0; i < len(stopIDs)-1; i++ {
+			a := tm.StopByID(stopIDs[i])
+			b := tm.StopByID(stopIDs[i+1])
+			if a != nil && b != nil {
+				tm.Rails.AddTrack(a.X, a.Z, b.X, b.Z)
+			}
+		}
+	}
 	return id
 }
 
@@ -248,6 +478,21 @@ func (tm *TransportManager) AddStopToLine(lineID, stopID uint32) {
 		if tm.Lines[i].ID == lineID {
 			tm.Lines[i].Stops = append(tm.Lines[i].Stops, stopID)
 			tm.Lines[i].Active = len(tm.Lines[i].Stops) >= 2
+			tt := tm.Lines[i].TransType
+			if tt == TransMetro && tm.Tracks != nil && len(tm.Lines[i].Stops) >= 2 {
+				prev := tm.StopByID(tm.Lines[i].Stops[len(tm.Lines[i].Stops)-2])
+				cur := tm.StopByID(stopID)
+				if prev != nil && cur != nil {
+					tm.Tracks.AddTrack(prev.X, prev.Z, cur.X, cur.Z)
+				}
+			}
+			if tt == TransTrain && tm.Rails != nil && len(tm.Lines[i].Stops) >= 2 {
+				prev := tm.StopByID(tm.Lines[i].Stops[len(tm.Lines[i].Stops)-2])
+				cur := tm.StopByID(stopID)
+				if prev != nil && cur != nil {
+					tm.Rails.AddTrack(prev.X, prev.Z, cur.X, cur.Z)
+				}
+			}
 			return
 		}
 	}
@@ -379,6 +624,20 @@ func (tm *TransportManager) SpawnVehicle(lineIdx int) {
 			spawnZ = tm.Parking.BusDepots[slot].Z
 		}
 	}
+	if line.TransType == TransTram && tm.Parking != nil {
+		slot, _ := tm.Parking.NearestTramDepot(spawnX, spawnZ, 5000)
+		if slot >= 0 {
+			spawnX = tm.Parking.TramDepots[slot].X
+			spawnZ = tm.Parking.TramDepots[slot].Z
+		}
+	}
+	if line.TransType == TransMetro && tm.Parking != nil {
+		slot, _ := tm.Parking.NearestMetroDepot(spawnX, spawnZ, 5000)
+		if slot >= 0 {
+			spawnX = tm.Parking.MetroDepots[slot].X
+			spawnZ = tm.Parking.MetroDepots[slot].Z
+		}
+	}
 	cap := cfg.Capacity
 	spd := cfg.Speed
 
@@ -499,6 +758,9 @@ func (tm *TransportManager) Update(rm *RoadManager, dm *DistrictManager, h *Heig
 				}
 			}
 		}
+		if s.IsStation && s.Underground {
+			s.Accessibility += 0.3
+		}
 		if s.DistrictID >= 0 {
 			s.Accessibility += 0.2
 		}
@@ -564,6 +826,10 @@ func (tm *TransportManager) moveVehicle(v *TransportVehicle, rm *RoadManager, h 
 			tm.moveBusOnRoad(v, rm, h, nextStop, currentStop, line, nextIdx)
 		} else if v.TransType == TransTram && rm != nil && len(rm.Segments) > 0 {
 			tm.moveTramOnTracks(v, rm, h, nextStop, currentStop, line, nextIdx)
+		} else if v.TransType == TransMetro && tm.Tracks != nil && tm.Tracks.Count > 0 {
+			tm.moveMetroOnTracks(v, h, nextStop, currentStop, line, nextIdx)
+		} else if v.TransType == TransTrain && tm.Rails != nil && tm.Rails.Count > 0 {
+			tm.moveTrainOnRails(v, h, nextStop, currentStop, line, nextIdx)
 		} else {
 			tm.moveDirect(v, rm, h, nextStop, currentStop, line, nextIdx)
 		}
@@ -700,6 +966,200 @@ func (tm *TransportManager) moveBusOnRoad(v *TransportVehicle, rm *RoadManager, 
 	v.Path = nil
 }
 
+func (tm *TransportManager) moveTramOnTracks(v *TransportVehicle, rm *RoadManager, h *Heightmap, nextStop, currentStop *TransportStop, line *TransportLine, nextIdx int) {
+	if len(v.Path) == 0 {
+		startNode, startOK := rm.NearestNode(v.X, v.Z)
+		endNode, endOK := rm.NearestNode(nextStop.X, nextStop.Z)
+		if !startOK || !endOK {
+			tm.moveDirect(v, rm, h, nextStop, currentStop, line, nextIdx)
+			return
+		}
+		v.Path = rm.FindPath(startNode, endNode, int(VehicleTram))
+		v.PathIdx = 0
+		if len(v.Path) == 0 {
+			v.Path = append(v.Path, startNode, endNode)
+		}
+	}
+
+	for v.PathIdx < len(v.Path)-1 {
+		nodeIdx := v.Path[v.PathIdx]
+		nextNodeIdx := v.Path[v.PathIdx+1]
+		if int(nodeIdx) >= len(rm.Nodes) || int(nextNodeIdx) >= len(rm.Nodes) {
+			v.Path = nil
+			return
+		}
+		node := &rm.Nodes[nodeIdx]
+		nextNode := &rm.Nodes[nextNodeIdx]
+
+		dx := nextNode.X - v.X
+		dz := nextNode.Z - v.Z
+		targetDist := float32(math.Sqrt(float64(dx*dx + dz*dz)))
+
+		if targetDist < 2 {
+			v.PathIdx++
+			v.Maintenance -= 0.002
+			if v.Maintenance < 0 {
+				v.Maintenance = 0
+			}
+			if node.TrafficLight != TrafficLightNone && int(nodeIdx) < len(rm.Nodes) {
+				if node.TrafficLight == TrafficLightRed || node.TrafficLight == TrafficLightYellow {
+					v.Delay++
+					return
+				}
+			}
+			continue
+		}
+
+		spd := v.Speed
+		v.Delay += int32(spd / v.Speed * 10)
+
+		v.X += (dx / targetDist) * spd * 0.02
+		v.Z += (dz / targetDist) * spd * 0.02
+
+		netIdx := int(v.TransType)
+		if netIdx < len(tm.Networks) && netIdx < len(transportModeConfigs) {
+			tm.Networks[netIdx].Pollution += transportModeConfigs[v.TransType].Pollution * 0.001
+			tm.Networks[netIdx].Noise += transportModeConfigs[v.TransType].Noise * 0.001
+		}
+		return
+	}
+
+	v.Path = nil
+	tm.arriveAtStop(v, currentStop, nextStop, line, nextIdx)
+	v.Path = nil
+}
+
+func (tm *TransportManager) moveMetroOnTracks(v *TransportVehicle, h *Heightmap, nextStop, currentStop *TransportStop, line *TransportLine, nextIdx int) {
+	if len(v.Path) == 0 {
+		path := tm.Tracks.FindTrackPath(v.X, v.Z, nextStop.X, nextStop.Z)
+		v.Path = make([]uint32, len(path))
+		for i, idx := range path {
+			v.Path[i] = uint32(idx)
+		}
+		v.PathIdx = 0
+	}
+
+	for v.PathIdx < len(v.Path)-1 {
+		trackIdx := int(v.Path[v.PathIdx])
+		nextTrackIdx := int(v.Path[v.PathIdx+1])
+		if trackIdx >= MetroTrackPoolSize || nextTrackIdx >= MetroTrackPoolSize {
+			v.Path = nil
+			return
+		}
+		track := &tm.Tracks.Pool[trackIdx]
+		nextTrack := &tm.Tracks.Pool[nextTrackIdx]
+
+		tx, tz := track.EndX, track.EndZ
+		dx := nextTrack.StartX - track.EndX
+		dz := nextTrack.StartZ - track.EndZ
+		if dx*dx+dz*dz > nextTrack.StartX-track.StartX*(nextTrack.StartZ-track.StartZ) {
+			tx, tz = track.StartX, track.StartZ
+		}
+
+		dx = tx - v.X
+		dz = tz - v.Z
+		targetDist := float32(math.Sqrt(float64(dx*dx + dz*dz)))
+
+		if targetDist < 2 {
+			v.PathIdx++
+			v.Maintenance -= 0.001
+			if v.Maintenance < 0 {
+				v.Maintenance = 0
+			}
+			continue
+		}
+
+		v.X += (dx / targetDist) * v.Speed * 0.02
+		v.Z += (dz / targetDist) * v.Speed * 0.02
+
+		netIdx := int(v.TransType)
+		if netIdx < len(tm.Networks) && netIdx < len(transportModeConfigs) {
+			tm.Networks[netIdx].Pollution += transportModeConfigs[v.TransType].Pollution * 0.001
+			tm.Networks[netIdx].Noise += transportModeConfigs[v.TransType].Noise * 0.001
+		}
+		return
+	}
+
+	v.Path = nil
+	tm.arriveAtStop(v, currentStop, nextStop, line, nextIdx)
+	v.Path = nil
+}
+
+func (tm *TransportManager) moveTrainOnRails(v *TransportVehicle, h *Heightmap, nextStop, currentStop *TransportStop, line *TransportLine, nextIdx int) {
+	if len(v.Path) == 0 {
+		path := tm.Rails.FindTrackPath(v.X, v.Z, nextStop.X, nextStop.Z)
+		v.Path = make([]uint32, len(path))
+		for i, idx := range path {
+			v.Path[i] = uint32(idx)
+		}
+		v.PathIdx = 0
+	}
+
+	for v.PathIdx < len(v.Path)-1 {
+		trackIdx := int(v.Path[v.PathIdx])
+		nextTrackIdx := int(v.Path[v.PathIdx+1])
+		if trackIdx >= RailTrackPoolSize || nextTrackIdx >= RailTrackPoolSize {
+			v.Path = nil
+			return
+		}
+		track := &tm.Rails.Pool[trackIdx]
+		nextTrack := &tm.Rails.Pool[nextTrackIdx]
+
+		tx, tz := track.EndX, track.EndZ
+		dx := nextTrack.StartX - track.EndX
+		dz := nextTrack.StartZ - track.EndZ
+		if dx*dx+dz*dz > nextTrack.StartX-track.StartX*(nextTrack.StartZ-track.StartZ) {
+			tx, tz = track.StartX, track.StartZ
+		}
+
+		if track.Occupied && track.OccupierID != v.ID {
+			if track.SignalA == SignalRed || track.SignalB == SignalRed {
+				v.Delay++
+				return
+			}
+		}
+		if !track.Occupied {
+			track.Occupied = true
+			track.OccupierID = v.ID
+		}
+
+		dx = tx - v.X
+		dz = tz - v.Z
+		targetDist := float32(math.Sqrt(float64(dx*dx + dz*dz)))
+
+		if targetDist < 2 {
+			track.Occupied = false
+			track.OccupierID = 0
+			v.PathIdx++
+			v.Maintenance -= 0.002
+			if v.Maintenance < 0 {
+				v.Maintenance = 0
+			}
+			continue
+		}
+
+		v.X += (dx / targetDist) * v.Speed * 0.02
+		v.Z += (dz / targetDist) * v.Speed * 0.02
+
+		netIdx := int(v.TransType)
+		if netIdx < len(tm.Networks) && netIdx < len(transportModeConfigs) {
+			tm.Networks[netIdx].Pollution += transportModeConfigs[v.TransType].Pollution * 0.001
+			tm.Networks[netIdx].Noise += transportModeConfigs[v.TransType].Noise * 0.001
+		}
+		return
+	}
+
+	for _, idx := range v.Path {
+		if int(idx) < RailTrackPoolSize {
+			tm.Rails.Pool[idx].Occupied = false
+			tm.Rails.Pool[idx].OccupierID = 0
+		}
+	}
+	v.Path = nil
+	tm.arriveAtStop(v, currentStop, nextStop, line, nextIdx)
+	v.Path = nil
+}
+
 func (tm *TransportManager) applyCongestion(rm *RoadManager, fromNode, toNode int, baseSpeed float32) float32 {
 	for _, sid := range rm.Nodes[fromNode].Connected {
 		seg := rm.Segments[sid]
@@ -794,6 +1254,18 @@ func transportTypeName(tt TransportType) string {
 }
 
 func (tm *TransportManager) Draw(h *Heightmap) {
+	if tm.Tracks != nil {
+		tm.Tracks.ForEachTrack(func(t *MetroTrack, slot int32) {
+			rl.DrawLine3D(rl.NewVector3(t.StartX, 0.2, t.StartZ), rl.NewVector3(t.EndX, 0.2, t.EndZ), rl.NewColor(80, 80, 200, 100))
+		})
+	}
+	if tm.Rails != nil {
+		tm.Rails.Draw(h)
+	}
+	if tm.Cargo != nil {
+		tm.Cargo.Draw(h)
+	}
+
 	for _, s := range tm.Stops {
 		hy := h.WorldHeight(s.X, s.Z) + 0.5
 		col := TransportStopColor(s.TransType)

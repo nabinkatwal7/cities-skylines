@@ -36,6 +36,8 @@ type GameUI struct {
 	ParkingGarage  bool
 	BusDepotMode   bool
 	TramDepotMode  bool
+	MetroDepotMode bool
+	CargoMode      bool
 	TransportType  TransportType
 	Money          float32
 	Population    int32
@@ -63,8 +65,8 @@ var ToolbarItems = []ToolbarItem{
 	{ToolRoad, "Roads", rl.KeyTwo, rl.NewColor(180, 160, 120, 255), []string{"2-Lane", "1-Way", "4-Lane", "Gravel", "Highway", "6-Lane", "Avenue", "Bus Rd", "Tram Rd", "Bike Rd", "Tree Rd", "Asym Rd", "Pedestrian", "Quay"}, 0},
 	{ToolZone, "Zones", rl.KeyThree, rl.NewColor(100, 200, 100, 255), []string{"Res Low", "Res High", "Com Low", "Com High", "Industrial", "Office"}, 0},
 	{ToolPark, "Parks", rl.KeyFour, rl.NewColor(80, 200, 80, 255), nil, 0},
-	{ToolParking, "Parking", rl.KeyFive, rl.NewColor(100, 100, 200, 255), []string{"Lot", "Garage", "Bus Depot", "Tram Depot"}, 0},
-	{ToolTransport, "Transport", rl.KeySix, rl.NewColor(50, 150, 200, 255), []string{"Bus", "Tram", "Metro", "Train", "Ferry", "Monorail", "Cable Car", "Taxi", "Air", "Ship", "Walk", "Bicycle", "Car", "Blimp"}, 0},
+	{ToolParking, "Parking", rl.KeyFive, rl.NewColor(100, 100, 200, 255), []string{"Lot", "Garage", "Bus Depot", "Tram Depot", "Metro Depot"}, 0},
+	{ToolTransport, "Transport", rl.KeySix, rl.NewColor(50, 150, 200, 255), []string{"Bus", "Tram", "Metro", "Train", "Ferry", "Monorail", "Cable Car", "Taxi", "Air", "Ship", "Walk", "Bicycle", "Car", "Blimp", "Cargo Stn"}, 0},
 	{ToolRemove, "Remove", rl.KeySeven, rl.NewColor(200, 80, 80, 255), nil, 0},
 	{ToolUpgrade, "Upgrade", rl.KeyEight, rl.NewColor(200, 200, 80, 255), nil, 0},
 }
@@ -102,11 +104,17 @@ func (ui *GameUI) HandleInput() GameTool {
 		ui.ParkingGarage = item.OptIndex == 1
 		ui.BusDepotMode = item.OptIndex == 2
 		ui.TramDepotMode = item.OptIndex == 3
+		ui.MetroDepotMode = item.OptIndex == 4
 	}
 	if ui.Selected == ToolTransport && rl.IsKeyPressed(rl.KeyR) {
 		item := &ToolbarItems[5]
 		item.OptIndex = (item.OptIndex + 1) % len(item.Options)
-		ui.TransportType = TransportType(item.OptIndex)
+		if item.OptIndex >= int(TransportModeCount) {
+			ui.CargoMode = true
+		} else {
+			ui.CargoMode = false
+			ui.TransportType = TransportType(item.OptIndex)
+		}
 	}
 	if rl.IsKeyPressed(rl.KeyEscape) {
 		ui.Selected = ToolPointer
@@ -267,6 +275,7 @@ func (ui *GameUI) drawOptions() {
 				ui.ParkingGarage = oi == 1
 				ui.BusDepotMode = oi == 2
 				ui.TramDepotMode = oi == 3
+				ui.MetroDepotMode = oi == 4
 			}
 		}
 	case ToolTransport:
@@ -278,12 +287,20 @@ func (ui *GameUI) drawOptions() {
 			bx := int32(sx + oi*(int(optW)+int(ToolbarPad)))
 			by := int32(ToolbarY - OptionsBarH + 4)
 			sel := oi == item.OptIndex
-			col := TransportStopColor(TransportType(oi))
-			col.A = 200
+			col := rl.NewColor(200, 150, 50, 200)
+			if oi < int(TransportModeCount) {
+				col = TransportStopColor(TransportType(oi))
+				col.A = 200
+			}
 			uiBtn(bx, by, optW, OptionsBarH-8, opt, col, rl.White, sel)
 			if rl.IsMouseButtonPressed(rl.MouseButtonLeft) && mx >= bx && mx < bx+optW && my >= by && my < by+OptionsBarH-8 {
 				item.OptIndex = oi
-				ui.TransportType = TransportType(oi)
+				if oi >= int(TransportModeCount) {
+					ui.CargoMode = true
+				} else {
+					ui.CargoMode = false
+					ui.TransportType = TransportType(oi)
+				}
 			}
 		}
 	}
@@ -311,9 +328,15 @@ func (ui *GameUI) drawHelpText() {
 			rl.DrawText("Bus Depot ($5000) — spawns buses for bus lines", 10, helpY+18, 14, rl.White)
 		case 3:
 			rl.DrawText("Tram Depot ($5000) — spawns trams for tram lines", 10, helpY+18, 14, rl.White)
+		case 4:
+			rl.DrawText("Metro Depot ($5000) — spawns metro trains for metro lines", 10, helpY+18, 14, rl.White)
 		}
 	case ToolTransport:
-		rl.DrawText(fmt.Sprintf("L-click to place %s stop | R=cycle type | Esc=deselect | Current: %s", ToolbarItems[5].Options[ToolbarItems[5].OptIndex], ToolbarItems[5].Options[ToolbarItems[5].OptIndex]), 10, helpY, 14, rl.White)
+		if ui.CargoMode {
+			rl.DrawText("L-click to place Cargo Station | R=cycle type | Esc=deselect", 10, helpY, 14, rl.White)
+		} else {
+			rl.DrawText(fmt.Sprintf("L-click to place %s stop | R=cycle type | Esc=deselect | Current: %s", ToolbarItems[5].Options[ToolbarItems[5].OptIndex], ToolbarItems[5].Options[ToolbarItems[5].OptIndex]), 10, helpY, 14, rl.White)
+		}
 	case ToolRemove:
 		rl.DrawText("L-click on stop to remove, near line to remove route, or road segment | Esc=deselect", 10, helpY, 14, rl.White)
 	case ToolUpgrade:

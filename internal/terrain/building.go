@@ -477,11 +477,60 @@ func (bm *BuildingManager) updateBuildings(zm *ZoneManager, h *Heightmap, roads 
 			if b.Business != nil {
 				bm.Stats.TotalPowerUsed += b.Consumption.Power
 				bm.Stats.TotalWaterUsed += b.Consumption.Water
-				if b.Business.GoodsStored < 50 {
-					b.Business.GoodsStored++
-				}
-				if b.Business.Profitability < 60 {
-					b.Business.Profitability++
+				if b.Type == ZoneCommercialLow || b.Type == ZoneCommercialHigh {
+					if b.Business.GoodsStored > 0 && transportForBuildings != nil && transportForBuildings.Cargo != nil {
+						cs := transportForBuildings.Cargo.NearestStation(b.Position.X, b.Position.Z, 5000)
+						if cs != nil && cs.GoodsStored > 0 {
+							if b.Business.GoodsStored < 50 {
+								b.Business.GoodsStored += 2
+							}
+							if b.Business.Profitability < 80 {
+								b.Business.Profitability += 2
+							}
+						} else {
+							if b.Business.GoodsStored > 0 {
+								b.Business.GoodsStored--
+							}
+							if b.Business.Profitability > 20 {
+								b.Business.Profitability--
+							}
+						}
+					} else {
+						if b.Business.GoodsStored < 50 {
+							b.Business.GoodsStored++
+						}
+						if b.Business.Profitability < 60 {
+							b.Business.Profitability++
+						}
+					}
+				} else if b.Type == ZoneIndustrial {
+					if b.Business.GoodsStored < 100 {
+						b.Business.GoodsStored++
+					}
+					if b.Business.Profitability < 60 {
+						b.Business.Profitability++
+					}
+					if transportForBuildings != nil && transportForBuildings.Cargo != nil {
+						cs := transportForBuildings.Cargo.NearestStation(b.Position.X, b.Position.Z, 5000)
+						if cs != nil && cs.GoodsStored < cs.Capacity-10 {
+							transfer := int32(5)
+							if b.Business.GoodsStored < transfer {
+								transfer = b.Business.GoodsStored
+							}
+							if cs.Capacity-cs.GoodsStored < transfer {
+								transfer = cs.Capacity - cs.GoodsStored
+							}
+							b.Business.GoodsStored -= transfer
+							cs.GoodsStored += transfer
+						}
+					}
+				} else {
+					if b.Business.GoodsStored < 50 {
+						b.Business.GoodsStored++
+					}
+					if b.Business.Profitability < 60 {
+						b.Business.Profitability++
+					}
 				}
 				if b.Type == ZoneIndustrial && resourceForBuildings != nil {
 					rx := int((b.Position.X/WorldSize + 0.5) * float32(HeightmapSize-1))
@@ -803,6 +852,12 @@ var roadsForBuildings *RoadManager
 
 func SetRoadsForBuildings(rm *RoadManager) {
 	roadsForBuildings = rm
+}
+
+var transportForBuildings *TransportManager
+
+func SetTransportForBuildings(tm *TransportManager) {
+	transportForBuildings = tm
 }
 
 func (bm *BuildingManager) Unload() {

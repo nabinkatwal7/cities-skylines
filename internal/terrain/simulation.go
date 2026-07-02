@@ -96,6 +96,7 @@ func NewSimulationManager(seed int64) *SimulationManager {
 		Jobs:        NewJobQueue(),
 	}
 	sm.Transport.Parking = parking
+	sm.Transport.Rails.InitOutsideConnections(conn)
 
 	sm.initScheduler()
 	sm.initEventListeners()
@@ -108,6 +109,7 @@ func NewSimulationManager(seed int64) *SimulationManager {
 	SetZoneBuildabilityCheck(sm.Buildability)
 	SetLandValueTrees(sm.Trees)
 	SetResourceForBuildings(sm.Resources)
+	SetTransportForBuildings(sm.Transport)
 	sm.Trees.SetResources(sm.Resources)
 	sm.Resources.SetTrees(sm.Trees)
 	sm.Parking.GenerateRoadsideSpots(sm.Roads)
@@ -144,6 +146,16 @@ func (sm *SimulationManager) initScheduler() {
 		Priority: SchedPriorityHigh,
 		BudgetMs: 2,
 		Callback: func(dt float64) { sm.Transport.Update(sm.Roads, sm.Districts, sm.Heightmap) },
+	})
+	sm.scheduler.Register(GroupMedium, UpdateTask{
+		Name:     "cargo",
+		Priority: SchedPriorityMedium,
+		BudgetMs: 1,
+		Callback: func(dt float64) {
+			if sm.Transport.Cargo != nil {
+				sm.Transport.Cargo.Update(sm.Transport.Rails)
+			}
+		},
 	})
 	sm.scheduler.Register(GroupFast, UpdateTask{
 		Name:     "parking",
@@ -591,6 +603,18 @@ func (sm *SimulationManager) PlaceTramDepot(x, z float32) bool {
 		return false
 	}
 	slot := sm.Parking.PlaceTramDepot(x, z)
+	if slot >= 0 {
+		sm.Money -= 5000
+		return true
+	}
+	return false
+}
+
+func (sm *SimulationManager) PlaceMetroDepot(x, z float32) bool {
+	if sm.Money < 5000 {
+		return false
+	}
+	slot := sm.Parking.PlaceMetroDepot(x, z)
 	if slot >= 0 {
 		sm.Money -= 5000
 		return true
