@@ -130,6 +130,7 @@ func main() {
 		gameUI.SyncView(ui.ViewStateFromSim(sim, worldX, worldZ, mouseOnTerrain))
 
 		// Snap to build grid / zone cells
+		gameUI.SetRoadChain(roadActive, roadStartNode)
 		previewX, previewZ := worldX, worldZ
 		if mouseOnTerrain {
 			previewX, previewZ = gameUI.SnapPlacementCoords(sim, worldX, worldZ)
@@ -349,7 +350,7 @@ func main() {
 		if mouseOnTerrain {
 			gameUI.DrawWorldPreview()
 		}
-		rl.DrawGrid(100, 4.0)
+		gameUI.DrawBuildGuides(cam.Position.X, cam.Position.Z)
 		rl.EndMode3D()
 
 		gameUI.Draw()

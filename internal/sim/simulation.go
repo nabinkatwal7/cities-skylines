@@ -43,13 +43,16 @@ type SimulationManager struct {
 }
 
 func NewSimulationManager(seed int64) *SimulationManager {
+	terrain.FlatTestMap = true // ponytail: flat test map; set false for procedural terrain
 	gen := terrain.NewGenerator(seed)
 	h := gen.Generate()
 	water := terrain.NewWaterSystem()
 	water.Init(h)
 	trees := terrain.NewTreeSystem(seed)
 	res := terrain.NewResourceSystem(seed, h)
-	trees.Generate(h, water)
+	if !terrain.FlatTestMap {
+		trees.Generate(h, water)
+	}
 	roads := road.NewRoadManager()
 	roads.LoadAssets()
 	conn := terrain.NewConnectionSystem()

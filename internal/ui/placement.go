@@ -4,17 +4,31 @@ import (
 	"math"
 
 	"github.com/katwate/js-skylines/internal/sim"
+
+	rl "github.com/gen2brain/raylib-go/raylib"
 )
 
-const roadGrid = 4.0
+const (
+	roadGrid      = 4.0
+	roadAngleSnap = math.Pi / 12.0 // 15° like Cities: Skylines
+	nodeSnapDist  = 6.0
+)
 
-// SnapRoadXZ aligns placement to the visible 4m build grid.
+type SnapContext struct {
+	Sim           *sim.SimulationManager
+	Tool          GameTool
+	Mode          ToolMode
+	RoadActive    bool
+	RoadStartNode uint32
+	PreviewX      float32
+	PreviewZ      float32
+}
+
 func SnapRoadXZ(x, z float32) (float32, float32) {
 	return float32(math.Round(float64(x/roadGrid))) * roadGrid,
 		float32(math.Round(float64(z/roadGrid))) * roadGrid
 }
 
-// SnapZoneXZ aligns placement to the center of the zone cell under the cursor.
 func SnapZoneXZ(sm *sim.SimulationManager, x, z float32) (float32, float32) {
 	if sm == nil || sm.Zones == nil {
 		return x, z
@@ -24,16 +38,74 @@ func SnapZoneXZ(sm *sim.SimulationManager, x, z float32) (float32, float32) {
 	return sm.Zones.CellCenter(cx, cz)
 }
 
-// SnapPlacement returns snapped preview coordinates for the active tool.
-func SnapPlacement(sm *sim.SimulationManager, tool GameTool, mode ToolMode, x, z float32) (float32, float32) {
+func SnapPlacement(ctx SnapContext, x, z float32) (float32, float32) {
 	switch {
-	case tool == ToolRoad || (mode == ModePlace && tool == ToolRoad):
-		return SnapRoadXZ(x, z)
-	case tool == ToolZone || mode == ModePaint:
-		return SnapZoneXZ(sm, x, z)
-	case tool == ToolTransport:
+	case ctx.Tool == ToolRoad || (ctx.Mode == ModePlace && ctx.Tool == ToolRoad):
+		return snapRoad(ctx, x, z)
+	case ctx.Tool == ToolZone || ctx.Mode == ModePaint:
+		return SnapZoneXZ(ctx.Sim, x, z)
+	case ctx.Tool == ToolTransport:
 		return SnapRoadXZ(x, z)
 	default:
 		return x, z
+	}
+}
+
+func snapRoad(ctx SnapContext, x, z float32) (float32, float32) {
+	sx, sz := SnapRoadXZ(x, z)
+	sm := ctx.Sim
+	if sm == nil || sm.Roads == nil {
+		return sx, sz
+	}
+	if idx, ok := sm.Roads.NearestNode(sx, sz); ok {
+		n := &sm.Roads.Nodes[idx]
+		dx := n.X - sx
+		dz := n.Z - sz
+		if dx*dx+dz*dz < nodeSnapDist*nodeSnapDist {
+			return n.X, n.Z
+		}
+	}
+	if ctx.RoadActive && int(ctx.RoadStartNode) < len(sm.Roads.Nodes) {
+		sn := &sm.Roads.Nodes[ctx.RoadStartNode]
+		return snapRoadFromNode(sn.X, sn.Z, sx, sz)
+	}
+	return sx, sz
+}
+
+func snapRoadFromNode(ax, az, x, z float32) (float32, float32) {
+	dx := x - ax
+	dz := z - az
+	dist := float32(math.Hypot(float64(dx), float64(dz)))
+	if dist < roadGrid*0.5 {
+		return ax, az
+	}
+	angle := math.Atan2(float64(dz), float64(dx))
+	angle = math.Round(angle/roadAngleSnap) * roadAngleSnap
+	dist = float32(math.Round(float64(dist/roadGrid))) * roadGrid
+	if dist < roadGrid {
+		dist = roadGrid
+	}
+	return ax + float32(math.Cos(angle))*dist, az + float32(math.Sin(angle))*dist
+}
+
+func DrawBuildGrid(ctx SnapContext, camX, camZ float32) {
+	switch {
+	case ctx.Tool == ToolRoad:
+		rl.DrawGrid(100, roadGrid)
+		drawRoadNodeHints(ctx)
+	case ctx.Tool == ToolZone || ctx.Mode == ModePaint:
+		drawZonePlacementGrid(ctx, camX, camZ)
+	}
+}
+
+func drawRoadNodeHints(ctx SnapContext) {
+	sm := ctx.Sim
+	if sm == nil || sm.Roads == nil {
+		return
+	}
+	for i := range sm.Roads.Nodes {
+		n := &sm.Roads.Nodes[i]
+		h := sm.Heightmap.WorldHeight(n.X, n.Z)
+		rl.DrawSphere(rl.NewVector3(n.X, h+0.15, n.Z), 0.35, rl.NewColor(255, 255, 255, 90))
 	}
 }

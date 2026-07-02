@@ -76,7 +76,7 @@ func (h *Heightmap) WorldHeight(worldX, worldZ float32) float32 {
 }
 
 func (h *Heightmap) IsUnderwater(worldX, worldZ float32) bool {
-	return h.GetInterpolated(worldX, worldZ) < SeaLevel
+	return h.GetInterpolated(worldX, worldZ) < ActiveSeaLevel()
 }
 
 func lerp(a, b, t float32) float32 {

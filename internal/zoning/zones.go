@@ -203,6 +203,30 @@ func (zm *ZoneManager) CellCenter(x, z int) (float32, float32) {
 		float32(z)*cs - terrain.WorldSize/2 + cs*0.5
 }
 
+func (zm *ZoneManager) CellSize() float32 { return zm.cellSize() }
+
+func (zm *ZoneManager) CanZoneCell(cx, cz int) bool {
+	if cx < 0 || cx >= zm.width || cz < 0 || cz >= zm.height {
+		return false
+	}
+	wx, wz := zm.CellCenter(cx, cz)
+	return zm.CanZone(wx, wz)
+}
+
+// HasRoadInfluence is true when a cell is within zoning range of any road (for grid overlay).
+func (zm *ZoneManager) HasRoadInfluence(worldX, worldZ float32) bool {
+	if zm.roads == nil {
+		return false
+	}
+	_, dist, ok := zm.roads.NearestRoad(worldX, worldZ)
+	if !ok {
+		return false
+	}
+	cs := zm.cellSize()
+	maxDepth := 8
+	return dist <= cs*float32(maxDepth+1)
+}
+
 func (zm *ZoneManager) CanZone(worldX, worldZ float32) bool {
 	if zm.buildability != nil {
 		info := zm.buildability.GetBuildability(worldX, worldZ)

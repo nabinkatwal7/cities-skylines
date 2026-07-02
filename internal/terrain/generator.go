@@ -17,6 +17,9 @@ func NewGenerator(seed int64) *Generator {
 }
 
 func (g *Generator) Generate() *Heightmap {
+	if FlatTestMap {
+		return g.generateFlatTest()
+	}
 	g.applyBaseNoise()
 	g.applyMountainPass()
 	g.applyErosion()
@@ -27,6 +30,44 @@ func (g *Generator) Generate() *Heightmap {
 }
 
 func (g *Generator) Heightmap() *Heightmap {
+	return g.heightmap
+}
+
+// generateFlatTest builds a flat playfield with low river channels for zoning/road tests.
+func (g *Generator) generateFlatTest() *Heightmap {
+	land := TestLandNorm()
+	river := TestRiverNorm()
+	for z := 0; z < HeightmapSize; z++ {
+		for x := 0; x < HeightmapSize; x++ {
+			g.heightmap.Set(x, z, land)
+		}
+	}
+	carveChannel := func(x0, z0, x1, z1, halfW int) {
+		dx := x1 - x0
+		dz := z1 - z0
+		steps := int(math.Hypot(float64(dx), float64(dz)))
+		if steps < 1 {
+			steps = 1
+		}
+		for i := 0; i <= steps; i++ {
+			t := float64(i) / float64(steps)
+			cx := int(float64(x0) + float64(dx)*t)
+			cz := int(float64(z0) + float64(dz)*t)
+			for dz2 := -halfW; dz2 <= halfW; dz2++ {
+				for dx2 := -halfW; dx2 <= halfW; dx2++ {
+					px := cx + dx2
+					pz := cz + dz2
+					if px >= 0 && px < HeightmapSize && pz >= 0 && pz < HeightmapSize {
+						g.heightmap.Set(px, pz, river)
+					}
+				}
+			}
+		}
+	}
+	mid := HeightmapSize / 2
+	carveChannel(mid, 80, mid, HeightmapSize-80, 12)
+	carveChannel(120, mid, HeightmapSize-120, mid, 10)
+	carveChannel(200, 200, HeightmapSize-200, HeightmapSize-250, 8)
 	return g.heightmap
 }
 

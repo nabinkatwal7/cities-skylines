@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"image/png"
 	"math"
+	"math/rand"
 	"os"
 )
 
@@ -15,23 +16,30 @@ func main() {
 }
 
 func writeGrass(path string) {
-	size := 1024
+	const size = 1024
+	rng := rand.New(rand.NewSource(42))
 	img := image.NewNRGBA(image.Rect(0, 0, size, size))
 	for y := 0; y < size; y++ {
 		for x := 0; x < size; x++ {
 			ux := float64(x) / float64(size)
 			uy := float64(y) / float64(size)
-			n := seamlessNoise(ux, uy, 4)
-			detail := seamlessNoise(ux*8, uy*8, 2)
-			r := 0.18 + n*0.08 + detail*0.03
-			g := 0.42 + n*0.18 + detail*0.06
-			b := 0.12 + n*0.05
+			n := hashNoise(x, y, 91) * 0.55
+			n += hashNoise(x*3, y*3, 17) * 0.25
+			n += hashNoise(x*7, y*7, 53) * 0.12
+			n += hashNoise(x*13, y*13, 29) * 0.08
+			patch := hashNoise(x/24, y/24, 7)
+			dry := hashNoise(x/64+int(rng.Intn(3)), y/64, 3)
+			r := 0.14 + n*0.10 + patch*0.04 + dry*0.03
+			g := 0.34 + n*0.22 + patch*0.10 + dry*0.02
+			b := 0.10 + n*0.06 + patch*0.02
 			img.SetNRGBA(x, y, color.NRGBA{
 				R: uint8(clamp01(r) * 255),
 				G: uint8(clamp01(g) * 255),
 				B: uint8(clamp01(b) * 255),
 				A: 255,
 			})
+			_ = ux
+			_ = uy
 		}
 	}
 	f, err := os.Create(path)
@@ -104,21 +112,10 @@ func writeWater(path string) {
 	png.Encode(f, img)
 }
 
-func seamlessNoise(ux, uy float64, octaves int) float64 {
-	angle := ux * 2 * math.Pi
-	theta := uy * math.Pi
-	sx := math.Sin(theta) * math.Cos(angle)
-	sy := math.Sin(theta) * math.Sin(angle)
-	sz := math.Cos(theta)
-	n, amp, freq, maxAmp := 0.0, 1.0, 1.0, 0.0
-	for i := 0; i < octaves; i++ {
-		wave := math.Sin(sx*freq*3.1+sy*freq*2.7+sz*freq*1.9)*0.5 + 0.5
-		n += wave * amp
-		maxAmp += amp
-		amp *= 0.5
-		freq *= 2.0
-	}
-	return n / maxAmp
+func hashNoise(x, y, seed int) float64 {
+	h := uint32(x*374761393 + y*668265263 + seed*1274126177)
+	h = (h ^ (h >> 13)) * 1274126177
+	return float64(h&0xffff) / 65535.0
 }
 
 func clamp01(v float64) float64 {

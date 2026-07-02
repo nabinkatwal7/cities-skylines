@@ -72,8 +72,8 @@ func (ws *WaterSystem) Init(h *Heightmap) {
 			cell := &ws.Grid[z][x]
 			cell.Base = terrainH
 
-			if terrainH < SeaLevel {
-				cell.Height = SeaLevel - terrainH
+			if terrainH < ActiveSeaLevel() {
+				cell.Height = ActiveSeaLevel() - terrainH
 			} else if terrainH < LakeThreshold {
 				cell.Height = float32(math.Max(0, float64(LakeThreshold-terrainH)*0.3))
 			} else {
