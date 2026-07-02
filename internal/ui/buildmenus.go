@@ -45,6 +45,7 @@ type BuildMenus struct {
 	showRecent bool
 	recent     []string
 	favorites  map[string]bool
+	scrollRow  int
 	unlocks    *UnlockRegistry
 }
 
@@ -236,35 +237,35 @@ func (b *BuildMenus) HandleClick(mx, my int32, ts *ToolSystem) bool {
 	}
 
 	// Filter toggles
-	if my >= y+4 && my < y+24 {
-		if mx >= 230 && mx < 290 {
+	if my >= y+8 && my < y+34 {
+		if mx >= 260 && mx < 324 {
 			b.showFav = !b.showFav
 			b.refilter()
 			return true
 		}
-		if mx >= 296 && mx < 360 {
+		if mx >= 332 && mx < 404 {
 			b.showRecent = !b.showRecent
 			b.refilter()
 			return true
 		}
 	}
 
-	// Asset list
-	listX := int32(8)
-	listY := y + 28
-	cellW := int32(88)
-	cellH := int32(44)
+	// Asset list (matches virtualized draw)
+	listX := int32(10)
+	listY := y + 40
+	cellW := int32(96)
+	cellH := int32(56)
 	cols := 6
-	for fi, ai := range b.filtered {
+	start, end := b.visibleAssetRange()
+	for fi := start; fi < end; fi++ {
 		col := fi % cols
-		row := fi / cols
+		row := fi/cols - b.scrollRow
 		bx := listX + int32(col)*cellW
 		by := listY + int32(row)*cellH
-		if mx >= bx && mx < bx+cellW-4 && my >= by && my < by+cellH-4 {
+		if mx >= bx && mx < bx+cellW-6 && my >= by && my < by+cellH-6 {
 			b.SelectAsset(fi, ts)
 			return true
 		}
-		_ = ai
 	}
 	return true
 }
@@ -272,6 +273,17 @@ func (b *BuildMenus) HandleClick(mx, my int32, ts *ToolSystem) bool {
 func (b *BuildMenus) HandleInput() {
 	if !b.open {
 		return
+	}
+	wheel := rl.GetMouseWheelMove()
+	if wheel != 0 {
+		b.scrollRow -= int(wheel)
+		if b.scrollRow < 0 {
+			b.scrollRow = 0
+		}
+		maxRow := b.maxScrollRow()
+		if b.scrollRow > maxRow {
+			b.scrollRow = maxRow
+		}
 	}
 	ch := rl.GetCharPressed()
 	for ch != 0 {
@@ -286,66 +298,76 @@ func (b *BuildMenus) HandleInput() {
 	}
 }
 
+func (b *BuildMenus) maxScrollRow() int {
+	cols := 6
+	rows := (len(b.filtered) + cols - 1) / cols
+	visibleRows := int((BuildMenuH - 40) / 56)
+	if rows <= visibleRows {
+		return 0
+	}
+	return rows - visibleRows
+}
+
+func (b *BuildMenus) visibleAssetRange() (start, end int) {
+	cols := 6
+	visibleRows := int((BuildMenuH - 40) / 56)
+	if visibleRows < 1 {
+		visibleRows = 1
+	}
+	start = b.scrollRow * cols
+	end = start + visibleRows*cols
+	if end > len(b.filtered) {
+		end = len(b.filtered)
+	}
+	return start, end
+}
+
 func (b *BuildMenus) Draw(ts *ToolSystem) {
 	if !b.open {
 		return
 	}
 	y := b.Y()
-	rl.DrawRectangle(0, y, ScreenW, BuildMenuH, rl.NewColor(0, 0, 0, 175))
+	drawBarBottom(y, BuildMenuH)
 
-	// Search + filters
-	rl.DrawRectangle(8, y+4, 210, 20, rl.NewColor(30, 30, 30, 220))
+	csInputField(10, y+8, 240, 26)
 	searchLabel := b.search
 	if searchLabel == "" {
 		searchLabel = "Search assets..."
 	}
-	DrawUIText(searchLabel, 12, y+7, 13, rl.Gray)
-	favCol := rl.NewColor(50, 50, 50, 200)
-	if b.showFav {
-		favCol = rl.NewColor(80, 70, 40, 220)
-	}
-	uiBtn(230, y+4, 58, 20, "Favs", favCol, rl.White, b.showFav)
-	recCol := rl.NewColor(50, 50, 50, 200)
-	if b.showRecent {
-		recCol = rl.NewColor(40, 70, 80, 220)
-	}
-	uiBtn(296, y+4, 62, 20, "Recent", recCol, rl.White, b.showRecent)
+	drawLabel(searchLabel, 16, y+12, FontMd, csTextDim)
+	csOptionBtn(260, y+8, 64, 26, "Favs", csBtnIdle, b.showFav)
+	csOptionBtn(332, y+8, 72, 26, "Recent", csBtnIdle, b.showRecent)
 
-	// Asset grid
-	listY := y + 28
-	cellW := int32(88)
-	cellH := int32(44)
+	listY := y + 40
+	cellW := int32(96)
+	cellH := int32(56)
 	cols := 6
-	for fi, ai := range b.filtered {
+	start, end := b.visibleAssetRange()
+	for fi := start; fi < end; fi++ {
+		ai := b.filtered[fi]
 		a := b.catalog()[ai]
 		col := fi % cols
-		row := fi / cols
-		bx := int32(8) + int32(col)*cellW
+		row := fi/cols - b.scrollRow
+		bx := int32(10) + int32(col)*cellW
 		by := listY + int32(row)*cellH
-		sel := fi == b.selected
-		colFill := rl.NewColor(45, 45, 50, 220)
-		if b.favorites[a.ID] {
-			colFill = rl.NewColor(55, 50, 35, 220)
-		}
-		uiBtn(bx, by, cellW-4, cellH-4, a.Name, colFill, rl.White, sel)
+		csAssetBtn(bx, by, cellW-6, cellH-6, a.Name, b.favorites[a.ID], fi == b.selected)
 		if a.Flags&AssetDLC != 0 {
-			DrawUIText("DLC", bx+2, by+2, 10, rl.NewColor(255, 200, 80, 220))
+			drawLabel("DLC", bx+4, by+4, FontXs, rl.NewColor(255, 200, 80, 255))
 		}
 	}
 
-	// Preview panel
-	px := int32(ScreenW - 280)
-	rl.DrawRectangle(px, y+4, 272, BuildMenuH-8, rl.NewColor(25, 25, 30, 220))
+	px := int32(ScreenW - 300)
+	drawPanel(px, y+6, 290, BuildMenuH-12)
 	if b.selected < len(b.filtered) {
 		a := b.catalog()[b.filtered[b.selected]]
-		DrawUIText(a.Name, px+8, y+10, 16, rl.White)
-		DrawUIText(a.Preview, px+8, y+30, 12, rl.Gray)
-		DrawUIText(fmtCost(a.Cost), px+8, y+48, 13, rl.NewColor(100, 220, 100, 220))
-		DrawUIText(fmtMaint(a.Maintenance), px+8, y+64, 12, rl.Gray)
-		DrawUIText("Size: "+a.Size, px+8, y+80, 12, rl.Gray)
-		DrawUIText("Req: "+a.Requirements, px+8, y+96, 12, rl.Gray)
+		drawLabel(a.Name, px+12, y+14, FontLg, csText)
+		drawLabel(a.Preview, px+12, y+38, FontSm, csTextDim)
+		drawLabel(fmtCost(a.Cost), px+12, y+58, FontMd, csMoney)
+		drawLabel(fmtMaint(a.Maintenance), px+12, y+78, FontSm, csTextDim)
+		drawLabel("Size: "+a.Size, px+12, y+98, FontSm, csTextDim)
+		drawLabel("Req: "+a.Requirements, px+12, y+118, FontSm, csTextDim)
 		if a.UnlockPop > 0 {
-			DrawUIText(fmtUnlock(a.UnlockPop), px+8, y+112, 12, rl.NewColor(200, 180, 100, 200))
+			drawLabel(fmtUnlock(a.UnlockPop), px+12, y+138, FontSm, rl.NewColor(220, 190, 110, 255))
 		}
 	}
 }

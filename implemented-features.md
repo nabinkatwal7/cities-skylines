@@ -4040,3 +4040,21 @@ Nineteen overlay modes (electricity, water, sewage, heating, garbage, healthcare
 ## 24.24 Localization ✅
 
 `T(key)` with `en`/`es` catalogs; `SetLocale` switches at runtime without restart. HUD, search, advisors, statistics, and options use localized strings.
+
+---
+
+## 24.25 UI Serialization ✅
+
+`PersistentUIState` saved to `ui.prefs` (JSON): panel layout/visibility, build filters, favorites, recent assets, camera pose, info view, UI scale, locale, stats tab. Transient panels (search, advisors) restore only when `persist=true`. Loaded on startup; saved on exit and autosave.
+
+---
+
+## 24.26 Performance Optimization ✅
+
+`UIRefresh` drives event-driven updates: batched notification refresh, incremental statistics/advisors sync when panels are open, lazy init for stats/options/advisors, virtualized build-menu asset grid with scroll, cached statistics graph polylines. `Draw()` skips closed panels.
+
+---
+
+## 24.27 Design Goals ✅
+
+Chapter 24 UI architecture delivers: immediate tool access (toolbar + build menus), rich entity inspection, real-time info-view overlays, responsive camera/time/search controls, scalable layouts (UI scale), accessibility options, efficient visible-only rendering, keyboard/gamepad input, modular `UIManager` subsystems, and full separation from simulation writes.

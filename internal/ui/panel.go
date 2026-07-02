@@ -14,16 +14,17 @@ type InputPanel interface {
 }
 
 const (
-	ScreenW     = 1280
-	ScreenH     = 720
-	ToolbarY    = 660
-	ToolbarH    = 60
-	ToolbarBtnW = 72
-	ToolbarBtnH = 48
-	ToolbarPad  = 4
-	OptionsBarH = 40
-	BuildMenuH  = 128
-	TopBarH     = 52
+	ScreenW     int32 = 1280
+	ScreenH     int32 = 720
+	ToolbarH    int32 = 82
+	ToolbarY    int32 = ScreenH - ToolbarH
+	ToolbarBtnW int32 = 72
+	ToolbarBtnH int32 = 74
+	ToolbarPad  int32 = 4
+	UtilBtnW    int32 = 64
+	OptionsBarH int32 = 52
+	BuildMenuH  int32 = 156
+	TopBarH     int32 = 48
 )
 
 // ViewState carries read-only presentation data from the simulation layer.
@@ -42,11 +43,5 @@ type ViewState struct {
 }
 
 func uiBtn(x, y, w, h int32, label string, col, textCol rl.Color, selected bool) {
-	if selected {
-		rl.DrawRectangle(x-2, y-2, w+4, h+4, rl.NewColor(255, 255, 200, 200))
-	}
-	rl.DrawRectangle(x, y, w, h, col)
-	rl.DrawRectangleLines(x, y, w, h, rl.NewColor(60, 60, 60, 200))
-	tw := MeasureUIText(label, 14)
-	DrawUIText(label, x+(w-tw)/2, y+(h-14)/2, 14, textCol)
+	csOptionBtn(x, y, w, h, label, col, selected)
 }

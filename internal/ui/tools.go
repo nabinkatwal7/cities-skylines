@@ -155,44 +155,44 @@ func (ts *ToolSystem) HandleKeyboard() GameTool {
 }
 
 func (ts *ToolSystem) DrawHelp() {
-	helpY := int32(ToolbarY + ToolbarH + 5)
+	helpY := ToolbarY - 28
 	switch ts.Mode {
 	case ModeInspect:
-		DrawUIText("Click to inspect | I inspect | M measure | 1=Pointer 6=Bulldoze 7=Upgrade", 10, helpY, 14, rl.White)
+		drawLabel("Click to inspect  ·  I inspect  ·  M measure  ·  1 cursor  ·  6 bulldoze  ·  7 upgrade", 12, helpY, FontSm, csText)
 	case ModeMeasure:
 		hint := "Click two points to measure distance"
 		if ts.measureDist > 0 {
-			hint = fmt.Sprintf("Distance: %.1fm", ts.measureDist)
+			hint = fmt.Sprintf("Distance: %.1f m", ts.measureDist)
 		} else if ts.measureASet {
 			hint = "Click second point"
 		}
-		DrawUIText(hint, 10, helpY, 14, rl.White)
+		drawLabel(hint, 12, helpY, FontSm, csText)
 	case ModeMove:
-		DrawUIText("Move tool: select object then click destination (coming soon)", 10, helpY, 14, rl.White)
+		drawLabel("Move tool: select object then click destination (coming soon)", 12, helpY, FontSm, csText)
 	case ModeReplace:
-		DrawUIText("Replace tool: click asset to swap (coming soon)", 10, helpY, 14, rl.White)
+		drawLabel("Replace tool: click asset to swap (coming soon)", 12, helpY, FontSm, csText)
 	case ModeBulldoze:
-		DrawUIText("L-click to bulldoze | Esc cancel", 10, helpY, 14, rl.White)
+		drawLabel("Click to bulldoze  ·  Esc cancel", 12, helpY, FontSm, csText)
 	case ModeUpgrade:
-		DrawUIText(fmt.Sprintf("L-click road to upgrade to %s | R change type", ToolbarItems[1].Options[ToolbarItems[1].OptIndex]), 10, helpY, 14, rl.White)
+		drawLabel(fmt.Sprintf("Click road to upgrade to %s  ·  R change type", ToolbarItems[1].Options[ToolbarItems[1].OptIndex]), 12, helpY, FontSm, csText)
 	case ModePaint:
-		DrawUIText(fmt.Sprintf("L-click paint %s | R cycle type", ToolbarItems[4].Options[ToolbarItems[4].OptIndex]), 10, helpY, 14, rl.White)
+		drawLabel(fmt.Sprintf("Click to paint %s  ·  R cycle type", ToolbarItems[4].Options[ToolbarItems[4].OptIndex]), 12, helpY, FontSm, csText)
 	case ModePlace:
 		switch ts.Selected {
 		case ToolRoad:
-			DrawUIText(fmt.Sprintf("L-click place | R cycle type | PgUp/PgDn elevation | Current: %s", ToolbarItems[1].Options[ToolbarItems[1].OptIndex]), 10, helpY, 14, rl.White)
+			drawLabel(fmt.Sprintf("Click to place  ·  R cycle  ·  PgUp/Dn elevation  ·  %s", ToolbarItems[1].Options[ToolbarItems[1].OptIndex]), 12, helpY, FontSm, csText)
 		case ToolParking:
-			DrawUIText(fmt.Sprintf("L-click place %s | R cycle type", ToolbarItems[2].Options[ToolbarItems[2].OptIndex]), 10, helpY, 14, rl.White)
+			drawLabel(fmt.Sprintf("Click to place %s  ·  R cycle type", ToolbarItems[2].Options[ToolbarItems[2].OptIndex]), 12, helpY, FontSm, csText)
 		case ToolTransport:
 			if ts.CargoMode {
-				DrawUIText("L-click place Cargo Station | R cycle type", 10, helpY, 14, rl.White)
+				drawLabel("Click to place cargo station  ·  R cycle type", 12, helpY, FontSm, csText)
 			} else {
-				DrawUIText(fmt.Sprintf("L-click place %s stop | R cycle type", ToolbarItems[3].Options[ToolbarItems[3].OptIndex]), 10, helpY, 14, rl.White)
+				drawLabel(fmt.Sprintf("Click to place %s stop  ·  R cycle type", ToolbarItems[3].Options[ToolbarItems[3].OptIndex]), 12, helpY, FontSm, csText)
 			}
 		}
 	}
 	if ts.HelpText != "" {
-		DrawUIText(ts.HelpText, 10, helpY+18, 14, rl.NewColor(255, 180, 80, 255))
+		drawLabel(ts.HelpText, 12, helpY+20, FontSm, rl.NewColor(255, 190, 110, 255))
 	}
 }
 

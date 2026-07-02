@@ -37,11 +37,17 @@ type Notification struct {
 
 // Notifications reports simulation events (24.13).
 type Notifications struct {
-	items   []Notification
-	lastPop int
+	items      []Notification
+	lastPop    int
+	pending    int
+	batchEvery int
 }
 
-func NewNotifications() *Notifications { return &Notifications{} }
+func NewNotifications() *Notifications {
+	return &Notifications{batchEvery: 1}
+}
+
+func (n *Notifications) MarkDirty() { n.pending++ }
 
 func (n *Notifications) Subscribe(bus *core.EventBus) []func() {
 	if bus == nil {
@@ -66,6 +72,7 @@ func (n *Notifications) Raise(kind NotificationKind, msg string) {
 		}
 	}
 	n.items = append(n.items, Notification{Kind: kind, Message: msg, CreatedAt: int32(time.Now().Unix())})
+	n.pending++
 }
 
 func (n *Notifications) Resolve(kind NotificationKind) {
@@ -95,10 +102,15 @@ func (n *Notifications) Active() []Notification {
 }
 
 // Refresh evaluates live simulation conditions (presentation only).
-func (n *Notifications) Refresh(sm *sim.SimulationManager, view ViewState) {
+// Batched: skips work unless pending or forced (24.26).
+func (n *Notifications) Refresh(sm *sim.SimulationManager, view ViewState, force bool) {
 	if sm == nil {
 		return
 	}
+	if !force && n.pending == 0 {
+		return
+	}
+	n.pending = 0
 	if sm.Services != nil && !sm.Services.Electricity {
 		n.Raise(NotifNoPower, "No electricity")
 	} else {
@@ -168,7 +180,7 @@ func (n *Notifications) DrawHUD(y int32) {
 	if len(active) == 0 {
 		return
 	}
-	DrawUIText(active[len(active)-1].Message, ScreenW-340, y, 13, rl.NewColor(255, 220, 120, 220))
+	drawLabel(active[len(active)-1].Message, ScreenW-360, y, FontMd, rl.NewColor(255, 210, 120, 255))
 }
 
 func (n *Notifications) Draw() {
@@ -176,17 +188,17 @@ func (n *Notifications) Draw() {
 	if len(active) == 0 {
 		return
 	}
-	x := int32(ScreenW - 300)
-	y := int32(TopBarH + 4)
-	rl.DrawRectangle(x, y, 292, int32(len(active)*22+4), rl.NewColor(0, 0, 0, 160))
+	x := int32(ScreenW - 320)
+	y := int32(TopBarH + 8)
+	drawPanel(x, y, 312, int32(len(active)*26+12))
 	for i, it := range active {
-		rowY := y + int32(i*22) + 2
-		col := rl.NewColor(255, 200, 100, 230)
+		rowY := y + int32(i*26) + 8
+		col := rl.NewColor(255, 200, 110, 255)
 		if strings.Contains(it.Message, "Milestone") {
-			col = rl.NewColor(150, 220, 150, 230)
+			col = csHappy
 		}
-		DrawUIText(it.Message, x+6, rowY, 12, col)
-		DrawUIText("×", x+272, rowY, 14, rl.Gray)
+		drawLabel(it.Message, x+10, rowY, FontMd, col)
+		drawLabel("×", x+286, rowY, FontLg, csTextDim)
 	}
 }
 

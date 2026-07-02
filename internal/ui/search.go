@@ -33,6 +33,7 @@ type SearchResult struct {
 // SearchSystem finds entities and centers the camera (24.16).
 type SearchSystem struct {
 	open     bool
+	persist  bool
 	query    string
 	results  []SearchResult
 	selected int
@@ -171,24 +172,23 @@ func (s *SearchSystem) Draw() {
 	if !s.open {
 		return
 	}
-	w, h := int32(400), int32(220)
+	w, h := int32(440), int32(280)
 	x := int32((ScreenW - w) / 2)
-	y := int32(TopBarH + 40)
-	rl.DrawRectangle(x, y, w, h, rl.NewColor(0, 0, 0, 230))
-	rl.DrawRectangleLines(x, y, w, h, rl.Gray)
-	DrawUIText(T("search.title"), x+10, y+8, 14, rl.White)
-	rl.DrawRectangle(x+10, y+28, w-20, 22, rl.NewColor(30, 30, 35, 220))
+	y := int32(TopBarH + 48)
+	drawPanel(x, y, w, h)
+	drawLabel(T("search.title"), x+14, y+12, FontLg, csText)
+	csInputField(x+14, y+40, w-28, 30)
 	q := s.query
 	if q == "" {
 		q = T("search.placeholder")
 	}
-	DrawUIText(q, x+14, y+32, 13, rl.Gray)
+	drawLabel(q, x+20, y+46, FontMd, csTextDim)
 	for i, r := range s.results {
-		col := rl.LightGray
+		col := csTextDim
 		if i == s.selected {
-			col = rl.NewColor(200, 220, 255, 230)
+			col = csBarLine
 		}
-		DrawUIText(fmt.Sprintf("%s — %s", searchKindName(r.Kind), r.Label), x+10, y+58+int32(i*18), 12, col)
+		drawLabel(fmt.Sprintf("%s — %s", searchKindName(r.Kind), r.Label), x+14, y+82+int32(i*22), FontMd, col)
 	}
 }
 

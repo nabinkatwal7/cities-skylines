@@ -19,7 +19,7 @@ func TestNotificationsResolveOnRecovery(t *testing.T) {
 
 	sm := sim.NewSimulationManager(1)
 	view := ViewState{Money: -100, WeeklyIncome: -1000, Population: 100}
-	n.Refresh(sm, view)
+	n.Refresh(sm, view, true)
 	found := false
 	for _, it := range n.Active() {
 		if it.Kind == NotifBudget {

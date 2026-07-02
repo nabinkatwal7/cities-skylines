@@ -27,22 +27,49 @@ type StatsReport struct {
 	Utilities    float32
 }
 
+type graphLine struct {
+	x1, y1, x2, y2 int32
+}
+
+type statsGraphCache struct {
+	valid bool
+	lines []graphLine
+}
+
 // StatisticsPanel displays city reports with history (24.15).
 type StatisticsPanel struct {
 	open     bool
+	inited   bool
+	dirty    bool
 	view     ViewState
 	report   StatsReport
 	history  [statsHistoryLen]int
 	histIdx  int
 	histFull bool
 	tab      int
+	graph    statsGraphCache
 }
 
 func NewStatisticsPanel() *StatisticsPanel { return &StatisticsPanel{} }
 
-func (s *StatisticsPanel) Sync(view ViewState) { s.view = view }
+func (s *StatisticsPanel) ensureInit() {
+	if s.inited {
+		return
+	}
+	s.inited = true
+}
+
+func (s *StatisticsPanel) MarkDirty() { s.dirty = true; s.graph.valid = false }
+
+func (s *StatisticsPanel) Sync(view ViewState) {
+	s.view = view
+}
 
 func (s *StatisticsPanel) SyncSim(sm *sim.SimulationManager, view ViewState) {
+	if !s.open {
+		return
+	}
+	s.ensureInit()
 	s.view = view
 	s.report = StatsReport{
 		Population:   view.Population,
@@ -51,6 +78,7 @@ func (s *StatisticsPanel) SyncSim(sm *sim.SimulationManager, view ViewState) {
 		Happiness:    view.Happiness,
 	}
 	if sm == nil {
+		s.dirty = false
 		return
 	}
 	if sm.Demand != nil {
@@ -65,10 +93,12 @@ func (s *StatisticsPanel) SyncSim(sm *sim.SimulationManager, view ViewState) {
 		s.report.Utilities = f.ServiceScore
 	}
 	if sm.Transport != nil {
+		s.report.TransitPax = 0
 		for _, net := range sm.Transport.Networks {
 			s.report.TransitPax += net.WeeklyPassengers
 		}
 	}
+	s.dirty = false
 }
 
 func (s *StatisticsPanel) RecordDay(pop int) {
@@ -77,6 +107,7 @@ func (s *StatisticsPanel) RecordDay(pop int) {
 	if s.histIdx == 0 {
 		s.histFull = true
 	}
+	s.graph.valid = false
 }
 
 func (s *StatisticsPanel) Open() bool { return s.open }
@@ -85,25 +116,21 @@ func (s *StatisticsPanel) Draw() {
 	if !s.open {
 		return
 	}
-	w, h := int32(420), int32(300)
+	s.ensureInit()
+	w, h := int32(440), int32(340)
 	x := int32((ScreenW - w) / 2)
-	y := int32(TopBarH + 8)
-	rl.DrawRectangle(x, y, w, h, rl.NewColor(0, 0, 0, 220))
-	rl.DrawRectangleLines(x, y, w, h, rl.Gray)
-	DrawUIText(T("stats.title"), x+10, y+8, 16, rl.White)
+	y := int32(TopBarH + 12)
+	drawPanel(x, y, w, h)
+	drawLabel(T("stats.title"), x+14, y+12, FontLg, csText)
 
 	tabs := []string{"Pop", "Economy", "Traffic", "Industry", "Transit", "Env"}
 	for i, label := range tabs {
-		bx := x + 10 + int32(i*62)
+		bx := x + 14 + int32(i)*68
 		sel := i == s.tab
-		col := rl.NewColor(40, 40, 45, 200)
-		if sel {
-			col = rl.NewColor(60, 70, 90, 220)
-		}
-		uiBtn(bx, y+28, 58, 20, label, col, rl.White, sel)
+		csOptionBtn(bx, y+36, 64, 26, label, csBtnIdle, sel)
 	}
 
-	ly := y + 56
+	ly := y + 72
 	switch s.tab {
 	case 0:
 		s.drawPop(x, ly, w)
@@ -114,42 +141,42 @@ func (s *StatisticsPanel) Draw() {
 	case 3:
 		s.drawLine(x, ly, w, "Industrial demand", s.report.Industrial)
 	case 4:
-		DrawUIText(fmt.Sprintf("Transit passengers/wk: %d", s.report.TransitPax), x+10, ly, 14, rl.LightGray)
+		drawLabel(fmt.Sprintf("Transit passengers/wk: %d", s.report.TransitPax), x+14, ly, FontMd, csText)
 	case 5:
-		DrawUIText(fmt.Sprintf("Pollution: %.0f%%  Crime: %.0f%%", s.report.Pollution*100, s.report.Crime*100), x+10, ly, 14, rl.LightGray)
-		DrawUIText(fmt.Sprintf("Education: %.0f%%  Health: %.0f%%", s.report.Education*100, s.report.Health*100), x+10, ly+18, 14, rl.LightGray)
-		DrawUIText(fmt.Sprintf("Tourism: %.0f%%  Utilities: %.0f%%", s.report.Tourism*100, s.report.Utilities*100), x+10, ly+36, 14, rl.LightGray)
+		drawLabel(fmt.Sprintf("Pollution: %.0f%%  Crime: %.0f%%", s.report.Pollution*100, s.report.Crime*100), x+14, ly, FontMd, csTextDim)
+		drawLabel(fmt.Sprintf("Education: %.0f%%  Health: %.0f%%", s.report.Education*100, s.report.Health*100), x+14, ly+22, FontMd, csTextDim)
+		drawLabel(fmt.Sprintf("Tourism: %.0f%%  Utilities: %.0f%%", s.report.Tourism*100, s.report.Utilities*100), x+14, ly+44, FontMd, csTextDim)
 	}
-	s.drawHistoryGraph(x+w-160, y+h-70, 150, 60)
+	s.drawHistoryGraph(x+w-170, y+h-80, 160, 68)
 }
 
 func (s *StatisticsPanel) drawPop(x, ly, w int32) {
-	DrawUIText(fmt.Sprintf("Population: %d", s.report.Population), x+10, ly, 14, rl.LightGray)
-	DrawUIText(fmt.Sprintf("Happiness: %.0f%%", s.report.Happiness*100), x+10, ly+18, 14, rl.LightGray)
-	DrawUIText("Milestone: "+s.view.Milestone, x+10, ly+36, 14, rl.LightGray)
+	drawLabel(fmt.Sprintf("Population: %d", s.report.Population), x+14, ly, FontMd, csText)
+	drawLabel(fmt.Sprintf("Happiness: %.0f%%", s.report.Happiness*100), x+14, ly+22, FontMd, csTextDim)
+	drawLabel("Milestone: "+s.view.Milestone, x+14, ly+44, FontMd, csTextDim)
 }
 
 func (s *StatisticsPanel) drawEconomy(x, ly int32) {
-	DrawUIText(fmt.Sprintf("Treasury: $%.0f", s.report.Money), x+10, ly, 14, rl.LightGray)
-	DrawUIText(fmt.Sprintf("Weekly income: %+0.f", s.report.WeeklyIncome), x+10, ly+18, 14, rl.LightGray)
+	drawLabel(fmt.Sprintf("Treasury: $%.0f", s.report.Money), x+14, ly, FontMd, csMoney)
+	drawLabel(fmt.Sprintf("Weekly income: %+0.f", s.report.WeeklyIncome), x+14, ly+22, FontMd, csTextDim)
 }
 
 func (s *StatisticsPanel) drawLine(x, ly, w int32, label string, val float32) {
-	DrawUIText(fmt.Sprintf("%s: %.0f%%", label, val*100), x+10, ly, 14, rl.LightGray)
-	barW := w - 30
+	drawLabel(fmt.Sprintf("%s: %.0f%%", label, val*100), x+14, ly, FontMd, csText)
+	barW := w - 36
 	fill := int32(float32(barW) * clamp01(val))
-	rl.DrawRectangle(x+10, ly+22, barW, 10, rl.NewColor(30, 30, 30, 200))
-	rl.DrawRectangle(x+10, ly+22, fill, 10, rl.NewColor(100, 180, 220, 200))
+	rl.DrawRectangle(x+14, ly+26, barW, 12, csInputBg)
+	rl.DrawRectangle(x+14, ly+26, fill, 12, csBarLine)
 }
 
-func (s *StatisticsPanel) drawHistoryGraph(x, y, w, h int32) {
-	rl.DrawRectangle(x, y, w, h, rl.NewColor(20, 20, 25, 200))
-	DrawUIText("Population", x+4, y+2, 10, rl.Gray)
+func (s *StatisticsPanel) rebuildGraphCache(x, y, w, h int32) {
 	n := statsHistoryLen
 	if !s.histFull {
 		n = s.histIdx
 	}
 	if n < 2 {
+		s.graph.valid = true
+		s.graph.lines = nil
 		return
 	}
 	maxP := 1
@@ -161,12 +188,27 @@ func (s *StatisticsPanel) drawHistoryGraph(x, y, w, h int32) {
 			maxP = vals[i]
 		}
 	}
+	lines := make([]graphLine, 0, n-1)
 	for i := 1; i < n; i++ {
-		x1 := x + int32(i-1)*w/int32(n-1)
-		x2 := x + int32(i)*w/int32(n-1)
-		y1 := y + h - int32(float32(h)*float32(vals[i-1])/float32(maxP))
-		y2 := y + h - int32(float32(h)*float32(vals[i])/float32(maxP))
-		rl.DrawLine(x1, y1, x2, y2, rl.SkyBlue)
+		lines = append(lines, graphLine{
+			x1: x + int32(i-1)*w/int32(n-1),
+			y1: y + h - int32(float32(h)*float32(vals[i-1])/float32(maxP)),
+			x2: x + int32(i)*w/int32(n-1),
+			y2: y + h - int32(float32(h)*float32(vals[i])/float32(maxP)),
+		})
+	}
+	s.graph.lines = lines
+	s.graph.valid = true
+}
+
+func (s *StatisticsPanel) drawHistoryGraph(x, y, w, h int32) {
+	rl.DrawRectangle(x, y, w, h, csInputBg)
+	drawLabel("Population", x+6, y+4, FontXs, csTextDim)
+	if !s.graph.valid {
+		s.rebuildGraphCache(x, y, w, h)
+	}
+	for _, ln := range s.graph.lines {
+		rl.DrawLine(ln.x1, ln.y1, ln.x2, ln.y2, csBarLine)
 	}
 }
 
@@ -174,14 +216,15 @@ func (s *StatisticsPanel) HandleClick(mx, my int32) bool {
 	if !s.open {
 		return false
 	}
-	w, h := int32(420), int32(300)
+	s.ensureInit()
+	w, h := int32(440), int32(340)
 	x := int32((ScreenW - w) / 2)
-	y := int32(TopBarH + 8)
+	y := int32(TopBarH + 12)
 	if mx < x || mx >= x+w || my < y || my >= y+h {
 		return false
 	}
-	if my >= y+28 && my < y+48 {
-		tab := int((mx - x - 10) / 62)
+	if my >= y+36 && my < y+64 {
+		tab := int((mx - x - 14) / 68)
 		if tab >= 0 && tab < 6 {
 			s.tab = tab
 		}

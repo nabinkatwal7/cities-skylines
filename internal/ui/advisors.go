@@ -28,13 +28,28 @@ type AdvisorTip struct {
 
 // Advisors surfaces city guidance from live simulation data (24.14).
 type Advisors struct {
-	tips []AdvisorTip
-	open bool
+	tips    []AdvisorTip
+	open    bool
+	persist bool
+	inited  bool
 }
 
 func NewAdvisors() *Advisors { return &Advisors{} }
 
+func (a *Advisors) Toggle() { a.open = !a.open; a.ensureInit() }
+
+func (a *Advisors) ensureInit() {
+	if a.inited {
+		return
+	}
+	a.inited = true
+}
+
 func (a *Advisors) Refresh(sm *sim.SimulationManager, view ViewState) {
+	if !a.open {
+		return
+	}
+	a.ensureInit()
 	a.tips = a.tips[:0]
 	if sm == nil {
 		return
@@ -81,21 +96,18 @@ func (a *Advisors) add(cat AdvisorCategory, msg string) {
 	}
 }
 
-func (a *Advisors) Toggle() { a.open = !a.open }
-
 func (a *Advisors) Draw() {
 	if !a.open || len(a.tips) == 0 {
 		return
 	}
-	w, h := int32(360), int32(28+int32(len(a.tips))*36)
-	x := int32(8)
-	y := int32(TopBarH + 60)
-	rl.DrawRectangle(x, y, w, h, rl.NewColor(0, 0, 0, 210))
-	rl.DrawRectangleLines(x, y, w, h, rl.NewColor(180, 160, 100, 200))
-	DrawUIText(T("advisors.title"), x+10, y+8, 15, rl.NewColor(255, 220, 150, 230))
+	w, h := int32(400), int32(36+int32(len(a.tips))*40)
+	x := int32(10)
+	y := int32(TopBarH + 64)
+	drawPanel(x, y, w, h)
+	drawLabel(T("advisors.title"), x+14, y+10, FontLg, rl.NewColor(255, 220, 150, 255))
 	for i, tip := range a.tips {
-		DrawUIText(advisorNames[tip.Category]+":", x+10, y+28+int32(i*36), 13, rl.NewColor(180, 200, 255, 220))
-		DrawUIText(tip.Message, x+10, y+44+int32(i*36), 12, rl.LightGray)
+		drawLabel(advisorNames[tip.Category]+":", x+14, y+36+int32(i*40), FontMd, csBarLine)
+		drawLabel(tip.Message, x+14, y+54+int32(i*40), FontSm, csTextDim)
 	}
 }
 

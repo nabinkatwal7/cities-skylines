@@ -50,6 +50,7 @@ func main() {
 
 	gameUI := ui.NewManager()
 	gameUI.Attach(sim.EventBus)
+	_ = gameUI.LoadPreferences(ui.DefaultUIStateFile)
 
 	uploaded := false
 	roadActive := false
@@ -82,6 +83,7 @@ func main() {
 		if saveTimer > 3600 {
 			saveTimer = 0
 			save.SaveGame(saveFilename, sim, sim.Money, int32(sim.Time.TotalTime))
+			_ = gameUI.SavePreferences(ui.DefaultUIStateFile)
 		}
 
 		dt := float32(rl.GetFrameTime())
@@ -350,6 +352,7 @@ func main() {
 	}
 
 	t.Unload()
+	_ = gameUI.SavePreferences(ui.DefaultUIStateFile)
 }
 
 func clamp(v, min, max float32) float32 {

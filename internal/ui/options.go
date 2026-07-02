@@ -9,18 +9,27 @@ import (
 
 // OptionsPanel exposes bindings, accessibility, and locale (24.21, 24.23, 24.24).
 type OptionsPanel struct {
-	open bool
-	tab  int
+	open   bool
+	tab    int
+	inited bool
 }
 
 func NewOptionsPanel() *OptionsPanel { return &OptionsPanel{} }
 
 func (o *OptionsPanel) Open() bool { return o.open }
 
+func (o *OptionsPanel) ensureInit() {
+	if o.inited {
+		return
+	}
+	o.inited = true
+}
+
 func (o *OptionsPanel) Draw(settings *PlayerSettings) {
 	if !o.open || settings == nil {
 		return
 	}
+	o.ensureInit()
 	scale := settings.UIScale()
 	w := ScaleSize(440, scale)
 	h := ScaleSize(320, scale)

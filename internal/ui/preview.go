@@ -284,20 +284,20 @@ func drawMeasurePreview(ctx WorldContext) {
 // DrawPreviewHUD shows cost and warnings on screen (24.6).
 func DrawPreviewHUD(p PlacementPreview, y int32) {
 	if p.Cost > 0 {
-		col := rl.NewColor(100, 220, 100, 220)
+		col := csMoney
 		if !p.Valid {
-			col = rl.NewColor(220, 120, 120, 220)
+			col = csMoneyNeg
 		}
-		DrawUIText(fmt.Sprintf("Cost $%.0f", p.Cost), 10, y, 14, col)
-		y += 16
+		drawLabel(fmt.Sprintf("Cost $%.0f", p.Cost), 12, y, FontMd, col)
+		y += 20
 	}
 	if p.Elevation != 0 {
-		DrawUIText(fmt.Sprintf("Elevation %+d", p.Elevation), 10, y, 13, rl.Gray)
-		y += 15
+		drawLabel(fmt.Sprintf("Elevation %+d", p.Elevation), 12, y, FontSm, csTextDim)
+		y += 18
 	}
 	for _, msg := range p.Messages {
-		DrawUIText(msg, 10, y, 13, rl.NewColor(255, 160, 100, 220))
-		y += 15
+		drawLabel(msg, 12, y, FontSm, rl.NewColor(255, 190, 110, 255))
+		y += 18
 	}
 	flags := ""
 	if !p.TerrainOK {
@@ -313,7 +313,7 @@ func DrawPreviewHUD(p PlacementPreview, y int32) {
 		flags += " collision"
 	}
 	if flags != "" {
-		DrawUIText("Conflict:"+flags, 10, y, 12, rl.NewColor(255, 100, 100, 200))
+		drawLabel("Conflict:"+flags, 12, y, FontSm, csMoneyNeg)
 	}
 }
 

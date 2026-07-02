@@ -77,9 +77,9 @@ func (v *InfoViews) Draw() {
 	if v.active == ViewNone {
 		return
 	}
-	rl.DrawRectangle(8, TopBarH+4, 160, 22, rl.NewColor(0, 0, 0, 180))
-	DrawUIText("View: "+v.Name(), 12, TopBarH+7, 13, rl.NewColor(180, 220, 255, 230))
-	DrawUIText("F4 cycle F5 off", 12, TopBarH+26, 11, rl.Gray)
+	drawPanel(8, TopBarH+6, 200, 52)
+	drawLabel("Info View", 16, TopBarH+12, FontSm, csTextDim)
+	drawLabel(v.Name(), 16, TopBarH+30, FontMd, csBarLine)
 }
 
 // DrawWorld renders the active overlay on the terrain (24.11).

@@ -39,23 +39,23 @@ type CategoryDef struct {
 }
 
 var AllCategories = []CategoryDef{
-	{CatRoads, "Roads", rl.NewColor(180, 160, 120, 255), rl.KeyTwo},
-	{CatZoning, "Zones", rl.NewColor(120, 200, 120, 255), rl.KeyThree},
-	{CatDistricts, "Districts", rl.NewColor(160, 140, 200, 255), 0},
-	{CatElectricity, "Power", rl.NewColor(255, 220, 80, 255), 0},
-	{CatWater, "Water", rl.NewColor(80, 160, 255, 255), 0},
-	{CatGarbage, "Garbage", rl.NewColor(120, 100, 80, 255), 0},
-	{CatHealthcare, "Health", rl.NewColor(255, 120, 120, 255), 0},
-	{CatFireRescue, "Fire", rl.NewColor(255, 100, 50, 255), 0},
-	{CatPolice, "Police", rl.NewColor(80, 120, 220, 255), 0},
-	{CatEducation, "Education", rl.NewColor(100, 180, 255, 255), 0},
-	{CatPublicTransport, "Transit", rl.NewColor(50, 150, 200, 255), rl.KeyFour},
-	{CatLandscaping, "Landscape", rl.NewColor(100, 160, 80, 255), 0},
-	{CatParks, "Parks", rl.NewColor(80, 200, 100, 255), 0},
-	{CatEconomy, "Economy", rl.NewColor(200, 180, 60, 255), 0},
-	{CatPolicies, "Policies", rl.NewColor(180, 120, 200, 255), 0},
-	{CatStatistics, "Stats", rl.NewColor(160, 160, 200, 255), 0},
-	{CatOptions, "Options", rl.NewColor(140, 140, 140, 255), 0},
+	{CatRoads, "Roads", rl.NewColor(145, 125, 95, 255), rl.KeyTwo},
+	{CatZoning, "Zoning", rl.NewColor(95, 175, 110, 255), rl.KeyThree},
+	{CatDistricts, "Districts", rl.NewColor(130, 115, 175, 255), 0},
+	{CatElectricity, "Electricity", rl.NewColor(235, 200, 75, 255), 0},
+	{CatWater, "Water & Sewage", rl.NewColor(70, 145, 220, 255), 0},
+	{CatGarbage, "Garbage", rl.NewColor(110, 95, 75, 255), 0},
+	{CatHealthcare, "Healthcare", rl.NewColor(235, 105, 105, 255), 0},
+	{CatFireRescue, "Fire Dept", rl.NewColor(235, 95, 55, 255), 0},
+	{CatPolice, "Police", rl.NewColor(75, 115, 210, 255), 0},
+	{CatEducation, "Education", rl.NewColor(95, 165, 235, 255), 0},
+	{CatPublicTransport, "Transport", rl.NewColor(55, 140, 185, 255), rl.KeyFour},
+	{CatLandscaping, "Landscaping", rl.NewColor(95, 150, 80, 255), 0},
+	{CatParks, "Parks", rl.NewColor(75, 185, 95, 255), 0},
+	{CatEconomy, "Economy", rl.NewColor(190, 170, 55, 255), 0},
+	{CatPolicies, "Policies", rl.NewColor(170, 110, 190, 255), 0},
+	{CatStatistics, "Statistics", rl.NewColor(140, 150, 190, 255), 0},
+	{CatOptions, "Options", rl.NewColor(120, 125, 130, 255), 0},
 }
 
 // MainToolbar is the primary build-category selector (24.3).
@@ -116,18 +116,23 @@ func (tb *MainToolbar) HandleKeyboard(ts *ToolSystem, menus *BuildMenus) {
 	}
 }
 
-const utilBtnW int32 = 58
+func (tb *MainToolbar) utilStripX() int32 { return 8 }
+
+func (tb *MainToolbar) categoryStripX(visible int, btnW int32) int32 {
+	totalW := int32(visible)*int32(btnW+ToolbarPad) - ToolbarPad
+	return (ScreenW - totalW) / 2
+}
 
 func (tb *MainToolbar) HandleClick(ts *ToolSystem, menus *BuildMenus) GameTool {
 	mPos := rl.GetMousePosition()
 	mx := int32(mPos.X)
 	my := int32(mPos.Y)
 
-	if my >= ToolbarY && my < ToolbarY+ToolbarBtnH {
+	if my >= ToolbarY && my < ToolbarY+ToolbarH {
 		utils := []GameTool{ToolPointer, ToolInspect, ToolMeasure, ToolRemove, ToolUpgrade}
 		for i, tool := range utils {
-			bx := int32(4 + i*(int(utilBtnW)+int(ToolbarPad)))
-			if mx >= bx && mx < bx+utilBtnW {
+			bx := tb.utilStripX() + int32(i)*(UtilBtnW+ToolbarPad)
+			if mx >= bx && mx < bx+UtilBtnW {
 				ts.Activate(tool)
 				return ts.Selected
 			}
@@ -136,11 +141,10 @@ func (tb *MainToolbar) HandleClick(ts *ToolSystem, menus *BuildMenus) GameTool {
 
 	visible := tb.VisibleCategories()
 	btnW := int32(ToolbarBtnW)
-	totalW := len(visible)*int(btnW+ToolbarPad) - int(ToolbarPad)
-	startX := (ScreenW - totalW) / 2
+	startX := tb.categoryStripX(len(visible), btnW)
 	for i, c := range visible {
-		bx := int32(startX + i*int(btnW+ToolbarPad))
-		by := int32(ToolbarY)
+		bx := startX + int32(i)*(btnW+ToolbarPad)
+		by := ToolbarY + 2
 		if mx >= bx && mx < bx+btnW && my >= by && my < by+ToolbarBtnH {
 			tb.Select(c.Cat, ts, menus)
 			return ts.Selected
@@ -150,48 +154,32 @@ func (tb *MainToolbar) HandleClick(ts *ToolSystem, menus *BuildMenus) GameTool {
 }
 
 func (tb *MainToolbar) Draw(ts *ToolSystem) {
-	rl.DrawRectangle(0, ToolbarY, ScreenW, ToolbarH, rl.NewColor(0, 0, 0, 200))
+	drawBarBottom(ToolbarY, ToolbarH)
 
-	// Utility strip
 	utils := []struct {
 		tool  GameTool
-		label string
 		col   rl.Color
 	}{
-		{ToolPointer, "Ptr", rl.NewColor(200, 200, 200, 255)},
-		{ToolInspect, "Insp", rl.NewColor(160, 200, 255, 255)},
-		{ToolMeasure, "Meas", rl.NewColor(200, 180, 120, 255)},
-		{ToolRemove, "Del", rl.NewColor(200, 80, 80, 255)},
-		{ToolUpgrade, "Upg", rl.NewColor(200, 200, 80, 255)},
+		{ToolPointer, rl.NewColor(140, 145, 150, 255)},
+		{ToolInspect, rl.NewColor(100, 155, 200, 255)},
+		{ToolMeasure, rl.NewColor(170, 150, 100, 255)},
+		{ToolRemove, rl.NewColor(190, 75, 75, 255)},
+		{ToolUpgrade, rl.NewColor(190, 185, 75, 255)},
 	}
 	for i, u := range utils {
-		bx := int32(4 + i*(int(utilBtnW)+int(ToolbarPad)))
-		by := int32(ToolbarY + (ToolbarH-ToolbarBtnH)/2)
-		sel := ts.Selected == u.tool
-		textCol := rl.White
-		if sel {
-			textCol = rl.NewColor(255, 255, 200, 255)
-		}
-		uiBtn(bx, by, utilBtnW, ToolbarBtnH, u.label, u.col, textCol, sel)
+		bx := tb.utilStripX() + int32(i)*(UtilBtnW+ToolbarPad)
+		by := ToolbarY + 2
+		csToolBtn(bx, by, UtilBtnW, u.tool, u.col, ts.Selected == u.tool)
 	}
 
 	visible := tb.VisibleCategories()
 	btnW := int32(ToolbarBtnW)
-	totalW := len(visible)*int(btnW+ToolbarPad) - int(ToolbarPad)
-	startX := (ScreenW - totalW) / 2
+	startX := tb.categoryStripX(len(visible), btnW)
 	for i, c := range visible {
-		bx := int32(startX + i*int(btnW+ToolbarPad))
-		by := int32(ToolbarY + (ToolbarH-ToolbarBtnH)/2)
+		bx := startX + int32(i)*(btnW+ToolbarPad)
+		by := ToolbarY + 2
 		sel := (tb.Selected == c.Cat && ts.Mode == ModePlace) || (ts.Mode == ModePaint && c.Cat == CatZoning)
-		textCol := rl.White
-		if sel {
-			textCol = rl.NewColor(255, 255, 200, 255)
-		}
-		label := c.Label
-		if len(label) > 8 {
-			label = label[:7] + "…"
-		}
-		uiBtn(bx, by, btnW, ToolbarBtnH, label, c.Color, textCol, sel)
+		csCategoryBtn(bx, by, btnW, c.Cat, c, sel)
 	}
 }
 
@@ -200,7 +188,7 @@ func (tb *MainToolbar) drawLegacyOptions(ts *ToolSystem) {
 		return
 	}
 	y := tb.optionsY()
-	rl.DrawRectangle(0, y, ScreenW, OptionsBarH, rl.NewColor(0, 0, 0, 160))
+	drawBarBottom(y, OptionsBarH)
 
 	mPos := rl.GetMousePosition()
 	mx := int32(mPos.X)
@@ -235,10 +223,10 @@ func (tb *MainToolbar) drawLegacyOptions(ts *ToolSystem) {
 		drawOptionRowColored(item, y, mx, my, func(oi int) rl.Color {
 			if oi < 6 {
 				c := zoning.ZoneColor(zoning.ZoneType(oi + 1))
-				c.A = 200
+				c.A = 220
 				return c
 			}
-			return rl.NewColor(40, 40, 40, 200)
+			return csBtnIdle
 		}, func(oi int) {
 			item.OptIndex = oi
 			ts.ZoneType = oi
@@ -256,20 +244,20 @@ func (tb *MainToolbar) DrawOptions(ts *ToolSystem) {
 
 func drawOptionRow(item *ToolbarItem, y int32, mx, my int32, onSelect func(int)) {
 	drawOptionRowColored(item, y, mx, my, func(int) rl.Color {
-		return rl.NewColor(40, 40, 40, 200)
+		return csBtnIdle
 	}, onSelect)
 }
 
 func drawOptionRowColored(item *ToolbarItem, y int32, mx, my int32, colFn func(int) rl.Color, onSelect func(int)) {
-	optW := int32(80)
-	total := len(item.Options) * int(optW+ToolbarPad)
+	optW := int32(100)
+	total := int32(len(item.Options)) * int32(optW+ToolbarPad)
 	sx := (ScreenW - total) / 2
 	for oi, opt := range item.Options {
-		bx := int32(sx + oi*(int(optW)+int(ToolbarPad)))
-		by := y + 4
+		bx := sx + int32(oi)*int32(optW+ToolbarPad)
+		by := y + 6
 		sel := oi == item.OptIndex
-		uiBtn(bx, by, optW, OptionsBarH-8, opt, colFn(oi), rl.White, sel)
-		if rl.IsMouseButtonPressed(rl.MouseButtonLeft) && mx >= bx && mx < bx+optW && my >= by && my < by+OptionsBarH-8 {
+		csOptionBtn(bx, by, optW, OptionsBarH-12, opt, colFn(oi), sel)
+		if rl.IsMouseButtonPressed(rl.MouseButtonLeft) && mx >= bx && mx < bx+optW && my >= by && my < by+OptionsBarH-12 {
 			onSelect(oi)
 		}
 	}

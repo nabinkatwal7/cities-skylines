@@ -29,6 +29,7 @@ type UIManager struct {
 	Gamepad       *GamepadInput
 	Options       *OptionsPanel
 	Shortcuts     *GlobalShortcuts
+	refresh       *UIRefresh
 	unlocks       *UnlockRegistry
 
 	Money         float32
@@ -68,6 +69,7 @@ func NewManager() *UIManager {
 		Gamepad:       NewGamepadInput(),
 		Options:       NewOptionsPanel(),
 		Shortcuts:     NewGlobalShortcuts(),
+		refresh:       NewUIRefresh(),
 		unlocks:       unlocks,
 	}
 	m.Input = NewInputManager(m)
@@ -86,13 +88,16 @@ func (m *UIManager) Attach(bus *core.EventBus) {
 	m.unsubs = append(m.unsubs, m.HUD.Subscribe(bus)...)
 	m.unsubs = append(m.unsubs, m.Notifications.Subscribe(bus)...)
 	m.unsubs = append(m.unsubs,
-		bus.On(string(core.EventZonePlaced), func(any) { m.HUD.MarkDirty() }),
-		bus.On(string(core.EventZoneRemoved), func(any) { m.HUD.MarkDirty() }),
-		bus.On(string(core.EventRoadPlaced), func(any) { m.HUD.MarkDirty() }),
-		bus.On(string(core.EventRoadRemoved), func(any) { m.HUD.MarkDirty() }),
+		bus.On(string(core.EventZonePlaced), func(any) { m.HUD.MarkDirty(); m.refresh.MarkSimDirty() }),
+		bus.On(string(core.EventZoneRemoved), func(any) { m.HUD.MarkDirty(); m.refresh.MarkSimDirty() }),
+		bus.On(string(core.EventRoadPlaced), func(any) { m.HUD.MarkDirty(); m.refresh.MarkSimDirty() }),
+		bus.On(string(core.EventRoadRemoved), func(any) { m.HUD.MarkDirty(); m.refresh.MarkSimDirty() }),
 		bus.On(string(core.EventTimeDay), func(any) {
 			m.Statistics.RecordDay(m.lastView.Population)
+			m.refresh.MarkSimDirty()
 		}),
+		bus.On(string(core.EventFloodStarted), func(any) { m.Notifications.MarkDirty() }),
+		bus.On(string(core.EventFloodReceded), func(any) { m.Notifications.MarkDirty() }),
 	)
 }
 
@@ -104,6 +109,7 @@ func (m *UIManager) Detach() {
 }
 
 func (m *UIManager) SyncView(view ViewState) {
+	m.refresh.Tick()
 	m.lastView = view
 	m.Money = view.Money
 	m.TimeStr = view.TimeStr
@@ -112,15 +118,27 @@ func (m *UIManager) SyncView(view ViewState) {
 	m.MouseOnGround = view.MouseOnGround
 	m.HUD.Sync(view)
 	m.unlocks.SyncPopulation(view.Population)
-	m.Statistics.Sync(view)
 	m.Statistics.open = m.Toolbar.Selected == CatStatistics
 	m.Options.open = m.Toolbar.Selected == CatOptions
-	if m.lastSim != nil {
-		m.Notifications.Refresh(m.lastSim, view)
-		m.Advisors.Refresh(m.lastSim, view)
-		m.Statistics.SyncSim(m.lastSim, view)
-		m.Search.Update(m.lastSim)
+
+	if m.Statistics.open {
+		m.Statistics.Sync(view)
 	}
+	if m.lastSim != nil {
+		if m.refresh.ShouldRefreshNotifications() {
+			m.Notifications.Refresh(m.lastSim, view, true)
+		}
+		if m.refresh.ShouldRefreshAdvisors(m.Advisors.open) {
+			m.Advisors.Refresh(m.lastSim, view)
+		}
+		if m.refresh.ShouldRefreshStats(m.Statistics.open) {
+			m.Statistics.SyncSim(m.lastSim, view)
+		}
+		if m.Search.IsOpen() {
+			m.Search.Update(m.lastSim)
+		}
+	}
+	m.refresh.ClearSimDirty()
 }
 
 func (m *UIManager) UpdateWorld(ctx WorldContext) {
@@ -129,7 +147,7 @@ func (m *UIManager) UpdateWorld(ctx WorldContext) {
 	m.lastSim = ctx.Sim
 	m.preview = EvalPlacement(ctx)
 	if ctx.Sim != nil {
-		m.Notifications.Refresh(ctx.Sim, m.lastView)
+		m.refresh.MarkNotificationsDirty()
 	}
 }
 
@@ -237,17 +255,32 @@ func (m *UIManager) Unlocks() *UnlockRegistry { return m.unlocks }
 
 func (m *UIManager) Draw() {
 	m.HUD.Draw(m.Notifications, m.Settings)
-	m.TimeControls.DrawHUD(300, 28, m.lastView, m.Settings.A11y)
-	m.Notifications.Draw()
-	m.Statistics.Draw()
-	m.Options.Draw(m.Settings)
-	m.Search.Draw()
+	if len(m.Notifications.Active()) > 0 {
+		m.Notifications.Draw()
+	}
+	if m.Statistics.open {
+		m.Statistics.Draw()
+	}
+	if m.Options.open {
+		m.Options.Draw(m.Settings)
+	}
+	if m.Search.IsOpen() {
+		m.Search.Draw()
+	}
 	m.Overlays.Draw()
-	m.BuildMenus.Draw(&m.ToolSystem)
+	if m.BuildMenus.Visible() {
+		m.BuildMenus.Draw(&m.ToolSystem)
+	}
 	m.Toolbar.DrawOptions(&m.ToolSystem)
-	m.InfoViews.Draw()
-	m.Inspector.Draw()
-	m.Advisors.Draw()
+	if m.InfoViews.Active() != ViewNone {
+		m.InfoViews.Draw()
+	}
+	if m.Inspector.Visible() {
+		m.Inspector.Draw()
+	}
+	if m.Advisors.open {
+		m.Advisors.Draw()
+	}
 	m.Toolbar.Draw(&m.ToolSystem)
 	m.ToolSystem.DrawHelp()
 	m.Gamepad.DrawHint(TopBarH+32, m.Settings.A11y)

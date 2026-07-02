@@ -18,6 +18,8 @@ type InspectorPanel struct {
 	visible   bool
 	selection Selection
 	following bool
+	posX      int32
+	posY      int32
 }
 
 func NewInspectorPanel() *InspectorPanel { return &InspectorPanel{} }
@@ -92,21 +94,24 @@ func (p *InspectorPanel) HandleAction(id string, sm *sim.SimulationManager, tool
 	}
 }
 
+func (p *InspectorPanel) panelPos() (x, y int32) {
+	return panelXY(PanelLayout{X: p.posX, Y: p.posY}, PanelInspector)
+}
+
 func (p *InspectorPanel) HandleClick(mx, my int32, sm *sim.SimulationManager, tools *ToolSystem) bool {
 	if !p.visible {
 		return false
 	}
-	w := int32(300)
-	x := int32(ScreenW - w - 8)
-	y := int32(TopBarH + 8)
+	w := int32(320)
+	x, y := p.panelPos()
 	h := p.panelHeight()
 	if mx < x || mx >= x+w || my < y || my >= y+h {
 		return false
 	}
-	btnY := y + h - 28
+	btnY := y + h - 32
 	for i, act := range p.selection.Actions {
-		bx := x + 8 + int32(i*72)
-		if mx >= bx && mx < bx+68 && my >= btnY && my < btnY+22 {
+		bx := x + 10 + int32(i*76)
+		if mx >= bx && mx < bx+72 && my >= btnY && my < btnY+26 {
 			p.HandleAction(act.ID, sm, tools)
 			return true
 		}
@@ -116,15 +121,15 @@ func (p *InspectorPanel) HandleClick(mx, my int32, sm *sim.SimulationManager, to
 
 func (p *InspectorPanel) panelHeight() int32 {
 	n := len(p.selection.Lines)
-	h := int32(36 + n*16)
+	h := int32(44 + n*20)
 	if len(p.selection.Actions) > 0 {
-		h += 32
+		h += 40
 	}
-	if h < 100 {
-		h = 100
+	if h < 120 {
+		h = 120
 	}
-	if h > 340 {
-		h = 340
+	if h > 380 {
+		h = 380
 	}
 	return h
 }
@@ -133,38 +138,37 @@ func (p *InspectorPanel) Draw() {
 	if !p.visible || p.selection.Kind == InspNone {
 		return
 	}
-	w := int32(300)
+	w := int32(320)
 	h := p.panelHeight()
-	x := int32(ScreenW - w - 8)
-	y := int32(TopBarH + 8)
-	rl.DrawRectangle(x, y, w, h, rl.NewColor(0, 0, 0, 220))
-	border := rl.NewColor(120, 160, 220, 200)
+	x, y := p.panelPos()
+	drawPanel(x, y, w, h)
+	border := csBarLine
 	switch p.selection.Kind {
 	case InspBuilding:
-		border = rl.NewColor(120, 200, 140, 200)
+		border = rl.NewColor(100, 200, 130, 220)
 	case InspCitizen:
-		border = rl.NewColor(200, 180, 120, 200)
+		border = rl.NewColor(200, 180, 110, 220)
 	case InspVehicle:
-		border = rl.NewColor(120, 180, 220, 200)
+		border = rl.NewColor(100, 175, 220, 220)
 	}
 	rl.DrawRectangleLines(x, y, w, h, border)
-	DrawUIText(p.selection.Title, x+10, y+8, 15, rl.White)
+	drawLabel(p.selection.Title, x+12, y+10, FontLg, csText)
 	for i, line := range p.selection.Lines {
-		col := rl.LightGray
+		col := csTextDim
 		if strings.HasPrefix(line, "⚠") {
-			col = rl.NewColor(255, 180, 100, 230)
+			col = rl.NewColor(255, 190, 110, 255)
 		}
-		DrawUIText(line, x+10, y+28+int32(i*16), 13, col)
+		drawLabel(line, x+12, y+34+int32(i*20), FontMd, col)
 	}
 	if len(p.selection.Actions) > 0 {
-		btnY := y + h - 28
+		btnY := y + h - 32
 		for i, act := range p.selection.Actions {
-			bx := x + 8 + int32(i*72)
-			uiBtn(bx, btnY, 68, 22, act.Label, rl.NewColor(50, 55, 65, 220), rl.White, false)
+			bx := x + 10 + int32(i*76)
+			csOptionBtn(bx, btnY, 72, 26, act.Label, csBtnIdle, false)
 		}
 	}
 	if p.following {
-		DrawUIText("Following", x+10, y+h-44, 12, rl.NewColor(255, 220, 120, 220))
+		drawLabel("Following", x+12, y+h-52, FontSm, csBarLine)
 	}
 }
 
