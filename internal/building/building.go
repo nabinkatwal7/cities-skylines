@@ -1,6 +1,7 @@
 package building
 
 import (
+	"github.com/katwate/js-skylines/internal/gameassets"
 	"github.com/katwate/js-skylines/internal/terrain"
 	"github.com/katwate/js-skylines/internal/zoning"
 
@@ -76,6 +77,7 @@ type Manager struct {
 	recentSpawns int
 	lvTick       int
 	aiCursor     int
+	assets       *gameassets.Catalog
 }
 
 func NewManager(zm *zoning.ZoneManager, demand *zoning.DemandEngine, services zoning.ServiceCoverage) *Manager {
@@ -346,6 +348,10 @@ func levelCapacity(b *Building) int {
 	return base * b.Level * b.Width * b.Height
 }
 
+func (m *Manager) SetAssets(c *gameassets.Catalog) {
+	m.assets = c
+}
+
 func (m *Manager) Draw(h *terrain.Heightmap) {
 	if m == nil {
 		return
@@ -358,10 +364,28 @@ func (m *Manager) Draw(h *terrain.Heightmap) {
 		if b.State == StateConstructing {
 			hgt = constructionHeight(b, fullHgt)
 		}
-		hy := h.WorldHeight(b.WorldX, b.WorldZ) + hgt*0.5
 		w := cs * float32(b.Width) * 0.85
 		d := cs * float32(b.Height) * 0.85
 		col := buildingColor(b)
+		ground := h.WorldHeight(b.WorldX, b.WorldZ)
+
+		if m.assets != nil {
+			if model, ok := m.assets.BuildingModel(buildingAssetSet(b.Type), b.ID); ok && model.MeshCount > 0 {
+				scale := gameassets.FitScale(model, w, d)
+				if b.State == StateConstructing {
+					scale *= constructionHeight(b, fullHgt) / fullHgt
+				}
+				yOff := gameassets.GroundOffset(model, scale)
+				pos := rl.NewVector3(b.WorldX, ground+yOff, b.WorldZ)
+				tint := col
+				if b.State != StateAbandoned {
+					tint = rl.White
+				}
+				rl.DrawModelEx(model, pos, rl.NewVector3(0, 1, 0), float32(int(b.ID)%4)*90, rl.NewVector3(scale, scale, scale), tint)
+				continue
+			}
+		}
+		hy := ground + hgt*0.5
 		rl.DrawCube(rl.NewVector3(b.WorldX, hy, b.WorldZ), w, hgt, d, col)
 	}
 }
@@ -413,4 +437,23 @@ func clampf(v, lo, hi float32) float32 {
 		return hi
 	}
 	return v
+}
+
+func buildingAssetSet(zt zoning.ZoneType) string {
+	switch zt {
+	case zoning.ZoneResidentialLow:
+		return "residential_low"
+	case zoning.ZoneResidentialHigh:
+		return "residential_high"
+	case zoning.ZoneCommercialLow:
+		return "commercial_low"
+	case zoning.ZoneCommercialHigh:
+		return "commercial_high"
+	case zoning.ZoneIndustrial:
+		return "industrial"
+	case zoning.ZoneOffice:
+		return "office"
+	default:
+		return ""
+	}
 }

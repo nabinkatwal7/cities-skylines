@@ -2,10 +2,11 @@ package sim
 
 import (
 	"fmt"
-
-	"github.com/katwate/js-skylines/internal/terrain"
 	"math"
 	"unsafe"
+
+	"github.com/katwate/js-skylines/internal/gameassets"
+	"github.com/katwate/js-skylines/internal/terrain"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
@@ -21,6 +22,7 @@ type Manager struct {
 	Models     [terrain.NumLODs][]rl.Model
 	terrainTex rl.Texture2D
 	uploadIdx  int
+	Assets     *gameassets.Catalog
 }
 
 func NewManager(sim *SimulationManager) *Manager {
@@ -35,23 +37,33 @@ func (m *Manager) InitChunks() {
 }
 
 func (m *Manager) LoadAssets() error {
-	model := rl.LoadModel("assets/tree/leaftree.obj")
-	if rl.IsModelValid(model) {
-		m.Sim.Trees.Model = model
-	} else {
-		rl.UnloadModel(model)
-		return fmt.Errorf("failed to load tree model")
+	cat, err := gameassets.Load()
+	if err != nil {
+		return err
 	}
-
-	grassTex := rl.LoadTexture("assets/grass.png")
-	if grassTex.ID != 0 {
-		m.terrainTex = grassTex
+	m.Assets = cat
+	if m.Sim.Trees != nil {
+		m.Sim.Trees.Models = cat.Trees
+	}
+	if m.Sim.Buildings != nil {
+		m.Sim.Buildings.SetAssets(cat)
+	}
+	if m.Sim.Vehicles != nil {
+		m.Sim.Vehicles.SetAssets(cat)
+	}
+	if cat.Road.ID != 0 && m.Sim.Roads != nil {
+		m.Sim.Roads.SetRoadTexture(cat.Road)
+	}
+	if cat.Grass.ID != 0 {
+		m.terrainTex = cat.Grass
+	}
+	if !m.Sim.Trees.HasModels() {
+		return fmt.Errorf("no tree models loaded")
 	}
 	return nil
 }
 
-func (m *Manager) LoadBuildingAssets() {
-}
+func (m *Manager) LoadBuildingAssets() {}
 
 func (m *Manager) PrepareUpload() {
 	if m.terrainTex.ID == 0 {
@@ -164,8 +176,15 @@ func (m *Manager) Unload() {
 		}
 		m.Models[lod] = nil
 	}
-	if m.Sim.Trees.Model.MeshCount > 0 {
-		rl.UnloadModel(m.Sim.Trees.Model)
+	if m.Sim.Trees != nil {
+		m.Sim.Trees.Models = [5]rl.Model{}
+	}
+	if m.Assets != nil {
+		m.Assets.Unload()
+		m.Assets = nil
+		m.terrainTex = rl.Texture2D{}
+	} else if m.terrainTex.ID != 0 {
+		rl.UnloadTexture(m.terrainTex)
 	}
 	if m.Sim.Vehicles != nil {
 		m.Sim.Vehicles.Unload()
@@ -175,8 +194,8 @@ func (m *Manager) Unload() {
 	}
 	if m.Sim.Roads != nil {
 		m.Sim.Roads.Unload()
+		m.Sim.Roads.ClearRoadTexture()
 	}
-	rl.UnloadTexture(m.terrainTex)
 }
 
 func chunkCenter(c *terrain.Chunk) (float32, float32) {

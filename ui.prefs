@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "panels": {
+    "advisors": {
+      "x": 0,
+      "y": 0,
+      "visible": false,
+      "persist": false
+    },
+    "inspector": {
+      "x": 0,
+      "y": 0,
+      "visible": false,
+      "persist": true
+    },
+    "options": {
+      "x": 0,
+      "y": 0,
+      "visible": false,
+      "persist": true
+    },
+    "search": {
+      "x": 0,
+      "y": 0,
+      "visible": false,
+      "persist": false
+    },
+    "stats": {
+      "x": 0,
+      "y": 0,
+      "visible": false,
+      "persist": true
+    }
+  },
+  "show_fav_filter": false,
+  "show_recent_filter": false,
+  "favorites": null,
+  "recent": null,
+  "camera_yaw": -2.3561945,
+  "camera_pitch": 0.43633232,
+  "camera_dist": 154.99991,
+  "camera_tx": 61.793713,
+  "camera_ty": 0,
+  "camera_tz": -216.32875,
+  "info_view": 0,
+  "ui_scale": 1,
+  "locale": "en",
+  "stats_tab": 0,
+  "build_scroll": 0
+}

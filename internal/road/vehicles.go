@@ -4,6 +4,7 @@ import (
 	"math"
 
 	"github.com/katwate/js-skylines/internal/core"
+	"github.com/katwate/js-skylines/internal/gameassets"
 	"github.com/katwate/js-skylines/internal/terrain"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
@@ -68,6 +69,7 @@ type VehicleManager struct {
 	Count    int32
 	NextID   uint32
 	Timer    int32
+	assets   *gameassets.Catalog
 }
 
 func NewVehicleManager() *VehicleManager {
@@ -760,14 +762,34 @@ func (vm *VehicleManager) processRemovals() {
 	}
 }
 
+func (vm *VehicleManager) SetAssets(c *gameassets.Catalog) {
+	vm.assets = c
+}
+
 func (vm *VehicleManager) Draw(h *terrain.Heightmap) {
 	vm.ForEach(func(v *Vehicle, _ int32) {
+		hy := h.WorldHeight(v.Position.X, v.Position.Z)
+		if vm.assets != nil {
+			if model, ok := vm.assets.VehicleModel(int(v.Type)); ok {
+				scale := float32(0.35)
+				if v.Type == VehicleTruck || v.Type == VehicleBus {
+					scale = 0.42
+				}
+				if v.HasFlag(core.FlagParked) {
+					scale *= 0.9
+				}
+				yOff := gameassets.GroundOffset(model, scale)
+				pos := rl.NewVector3(v.Position.X, hy+yOff, v.Position.Z)
+				rl.DrawModelEx(model, pos, rl.NewVector3(0, 1, 0), 0, rl.NewVector3(scale, scale, scale), rl.White)
+				return
+			}
+		}
 		if v.HasFlag(core.FlagParked) {
-			hy := h.WorldHeight(v.Position.X, v.Position.Z) + 0.2
+			hy += 0.2
 			rl.DrawCube(rl.NewVector3(v.Position.X, hy, v.Position.Z), 1.5, 0.4, 1, v.Color)
 			return
 		}
-		hy := h.WorldHeight(v.Position.X, v.Position.Z) + 0.5
+		hy += 0.5
 		rl.DrawCube(rl.NewVector3(v.Position.X, hy, v.Position.Z), 1.5, 0.5, 1, v.Color)
 		rl.DrawCube(rl.NewVector3(v.Position.X, hy+0.4, v.Position.Z+0.6), 0.8, 0.3, 0.1, rl.NewColor(200, 50, 50, 255))
 		rl.DrawCube(rl.NewVector3(v.Position.X, hy+0.4, v.Position.Z-0.6), 0.8, 0.3, 0.1, rl.NewColor(200, 50, 50, 255))

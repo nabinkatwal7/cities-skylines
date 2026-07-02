@@ -623,10 +623,21 @@ func (rm *RoadManager) InitOutsideConnections(cs *terrain.ConnectionSystem) {
 }
 
 func (rm *RoadManager) LoadAssets() {
-	tex := rl.LoadTexture("assets/road.jpg")
+	tex := rl.LoadTexture("assets/textures/road.png")
 	if tex.ID != 0 {
 		rm.roadTex = tex
 	}
+}
+
+func (rm *RoadManager) SetRoadTexture(tex rl.Texture2D) {
+	if rm.roadTex.ID != 0 && rm.roadTex.ID != tex.ID {
+		rl.UnloadTexture(rm.roadTex)
+	}
+	rm.roadTex = tex
+}
+
+func (rm *RoadManager) ClearRoadTexture() {
+	rm.roadTex = rl.Texture2D{}
 }
 
 func (rm *RoadManager) AddNode(x, y, z float32) uint32 {
@@ -2360,9 +2371,6 @@ func (rm *RoadManager) Unload() {
 		}
 	}
 	rm.Models = nil
-	if rm.roadTex.ID != 0 {
-		rl.UnloadTexture(rm.roadTex)
-	}
 }
 
 func clearModelMeshData(model *rl.Model) {

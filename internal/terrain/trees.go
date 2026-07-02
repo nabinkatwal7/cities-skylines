@@ -46,7 +46,7 @@ type TreeSystem struct {
 	FreeList      []int32
 	activeCount   int32
 	seed          int64
-	Model         rl.Model
+	Models        [5]rl.Model // oak, pine, birch, palm, dead
 	colorMap      map[TreeSpecies]rl.Color
 	RemovedCount  int
 	forestTimer   int32
@@ -255,9 +255,37 @@ func (ts *TreeSystem) RemoveNear(x, z, radius float32) int {
 	return removed
 }
 
+func (ts *TreeSystem) HasModels() bool {
+	for i := range ts.Models {
+		if ts.Models[i].MeshCount > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func (ts *TreeSystem) pickModel(t *Tree, state TreeState) rl.Model {
+	if state == TreeDead && ts.Models[4].MeshCount > 0 {
+		return ts.Models[4]
+	}
+	idx := int(t.Species)
+	if idx < 0 || idx >= 4 {
+		idx = 0
+	}
+	if ts.Models[idx].MeshCount > 0 {
+		return ts.Models[idx]
+	}
+	for i := range ts.Models {
+		if ts.Models[i].MeshCount > 0 {
+			return ts.Models[i]
+		}
+	}
+	return rl.Model{}
+}
+
 func (ts *TreeSystem) Draw(h *Heightmap, camX, camZ float32) {
 	maxDist := float32(400)
-	if ts.Model.MeshCount == 0 {
+	if !ts.HasModels() {
 		ts.drawFallback(h, camX, camZ, maxDist)
 		return
 	}
@@ -268,27 +296,22 @@ func (ts *TreeSystem) Draw(h *Heightmap, camX, camZ float32) {
 		if dx*dx+dz*dz > maxDist*maxDist {
 			return
 		}
-		if state == TreeDead {
-			ts.drawDeadMesh(t, h)
+		model := ts.pickModel(t, state)
+		if model.MeshCount == 0 {
 			return
 		}
 		height := h.WorldHeight(t.X, t.Z)
 		stageScale := ts.growthScale(state)
 		col := ts.stageColor(t.Species, state)
-		scale := t.Scale * 0.4 * stageScale
-		pos := rl.NewVector3(t.X, height+scale*0.5, t.Z)
+		if state != TreeDead {
+			col = rl.White
+		}
+		scale := t.Scale * 0.55 * stageScale
+		yOff := -rl.GetModelBoundingBox(model).Min.Y * scale
+		pos := rl.NewVector3(t.X, height+yOff, t.Z)
 		axis := rl.NewVector3(0, 1, 0)
-		rl.DrawModelEx(ts.Model, pos, axis, t.Yaw*57.3, rl.NewVector3(scale, scale, scale), col)
+		rl.DrawModelEx(model, pos, axis, t.Yaw*57.3, rl.NewVector3(scale, scale, scale), col)
 	})
-}
-
-func (ts *TreeSystem) drawDeadMesh(t *Tree, h *Heightmap) {
-	height := h.WorldHeight(t.X, t.Z)
-	scale := t.Scale * 0.4 * 0.6
-	pos := rl.NewVector3(t.X, height+scale*0.5, t.Z)
-	axis := rl.NewVector3(0, 1, 0)
-	deadCol := rl.NewColor(80, 60, 40, 255)
-	rl.DrawModelEx(ts.Model, pos, axis, t.Yaw*57.3, rl.NewVector3(scale, scale*0.5, scale), deadCol)
 }
 
 func (ts *TreeSystem) drawFallback(h *Heightmap, camX, camZ, maxDist float32) {
