@@ -168,6 +168,10 @@ func (zm *ZoneManager) CanZone(worldX, worldZ float32) bool {
 	return zm.roadConnected(worldX, worldZ)
 }
 
+func (zm *ZoneManager) RoadConnected(worldX, worldZ float32) bool {
+	return zm.roadConnected(worldX, worldZ)
+}
+
 func (zm *ZoneManager) roadConnected(worldX, worldZ float32) bool {
 	if zm.roads == nil {
 		return false

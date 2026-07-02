@@ -26,22 +26,19 @@ func TestDemandUpdate_rciBalance(t *testing.T) {
 func TestDemandUpdate_officeDerived(t *testing.T) {
 	zm := NewZoneManager(8, 8, nil, nil)
 	zm.SetZoneCell(0, 0, ZoneResidentialLow)
+	zm.SetZoneCell(1, 0, ZoneIndustrial)
 	d := NewDemandEngine()
 	for i := 0; i < 300; i++ {
 		d.Update(1, zm)
 	}
-	want := d.Industrial * d.Education
-	if want < 0 {
-		want = 0
-	}
-	if want > 1 {
-		want = 1
-	}
-	if d.Office != want {
-		t.Fatalf("office=%v want industrial×education=%v", d.Office, want)
+	if d.Office < 0 || d.Office > 1 {
+		t.Fatalf("office demand out of range: %v", d.Office)
 	}
 	if d.Education <= 0 {
 		t.Fatal("education should rise over time")
+	}
+	if d.Industrial > 0 && d.Education > 0 && d.Office <= 0 {
+		t.Fatal("office demand should be positive with industrial demand and education")
 	}
 }
 
@@ -315,5 +312,63 @@ func TestIndustrialDemand_highTax(t *testing.T) {
 	}
 	if highTax.Industrial >= lowTax.Industrial {
 		t.Fatalf("high industrial tax should lower demand: low=%v high=%v", lowTax.Industrial, highTax.Industrial)
+	}
+}
+
+func TestOfficeDemand_educationAndPolicy(t *testing.T) {
+	zm := NewZoneManager(8, 8, nil, nil)
+	for x := 0; x < 4; x++ {
+		zm.SetZoneCell(x, 0, ZoneResidentialLow)
+	}
+	zm.SetZoneCell(0, 1, ZoneIndustrial)
+
+	low := NewDemandEngine()
+	low.Education = 0.1
+	low.Factors.OfficePolicy = 0.2
+	for i := 0; i < 60; i++ {
+		low.Update(1, zm)
+	}
+
+	high := NewDemandEngine()
+	high.Education = 0.7
+	high.Factors.OfficePolicy = 0.9
+	for i := 0; i < 60; i++ {
+		high.Update(1, zm)
+	}
+	if high.Office <= low.Office {
+		t.Fatalf("education/policy should raise office demand: low=%v high=%v", low.Office, high.Office)
+	}
+}
+
+func TestOfficeDemand_lowIndustrialBoost(t *testing.T) {
+	d := NewDemandEngine()
+	d.Education = 0.6
+	d.Industrial = 0.15
+	d.Factors.EducatedWorkers = 0.4
+	d.Factors.HighTechEconomy = 0.45
+	d.Factors.OfficePolicy = 0.5
+
+	withBoost := d.officeTarget()
+	baseOnly := clampf(d.Industrial*d.Education, 0, 1)
+	if withBoost <= baseOnly {
+		t.Fatalf("low industrial demand modifier should boost office: base=%v target=%v", baseOnly, withBoost)
+	}
+}
+
+func TestOfficeDemand_educationConsumption(t *testing.T) {
+	zm := NewZoneManager(8, 8, nil, nil)
+	for x := 0; x < 4; x++ {
+		for z := 0; z < 4; z++ {
+			zm.SetZoneCell(x, z, ZoneOffice)
+		}
+	}
+
+	d := NewDemandEngine()
+	d.Education = 0.8
+	for i := 0; i < 100; i++ {
+		d.Update(1, zm)
+	}
+	if d.Education >= 0.79 {
+		t.Fatalf("office zones should consume education: got %v", d.Education)
 	}
 }

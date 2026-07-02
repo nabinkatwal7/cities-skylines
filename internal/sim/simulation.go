@@ -3,6 +3,7 @@ package sim
 import (
 	"math"
 
+	"github.com/katwate/js-skylines/internal/building"
 	"github.com/katwate/js-skylines/internal/core"
 	"github.com/katwate/js-skylines/internal/road"
 	"github.com/katwate/js-skylines/internal/services"
@@ -23,6 +24,7 @@ type SimulationManager struct {
 	Vehicles     *road.VehicleManager
 	Transport    *transport.TransportManager
 	Zones        *zoning.ZoneManager
+	Buildings    *building.Manager
 	Demand       *zoning.DemandEngine
 	Services     *services.CityServices
 	Buildability *terrain.BuildabilityChecker
@@ -87,6 +89,7 @@ func NewSimulationManager(seed int64) *SimulationManager {
 	sm.Demand = zoning.NewDemandEngine()
 	sm.Demand.Factors.ServiceScore = zoning.ServiceScore(sm.Services)
 	sm.Zones.SetDevelopmentDeps(sm.Services, sm.Demand, zoning.Catalog{})
+	sm.Buildings = building.NewManager(sm.Zones, sm.Demand, sm.Services)
 	sm.Trees.SetResources(sm.Resources)
 	sm.Resources.SetTrees(sm.Trees)
 	sm.Parking.GenerateRoadsideSpots(sm.Roads)
@@ -157,6 +160,9 @@ func (sm *SimulationManager) initScheduler() {
 					sm.Demand.Factors.ExportOpportunity = float32(n) * 0.2
 				}
 				sm.Demand.Update(dt, sm.Zones)
+			}
+			if sm.Buildings != nil {
+				sm.Buildings.Update(dt)
 			}
 		},
 	})

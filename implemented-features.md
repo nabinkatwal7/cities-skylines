@@ -3488,3 +3488,254 @@ Industrial demand decreases when:
 - High taxes
 
 ---
+
+## 5.10 Office Demand ✅
+
+Office demand depends upon:
+
+- Educated workers
+- High-tech economy
+- Low industrial demand
+- Office policies
+
+Offices consume education instead of raw materials.
+
+---
+
+## 5.11 Building Spawn Process ✅
+
+```text
+Zone
+
+↓
+
+Demand
+
+↓
+
+Select Lot
+
+↓
+
+Choose Building
+
+↓
+
+Construction
+
+↓
+
+Occupied
+```
+
+Buildings never appear instantly.
+
+Construction takes simulation time.
+
+---
+
+## 5.12 Building Levels ✅
+
+Buildings evolve over time.
+
+Example
+
+Residential
+
+```text
+Level 1
+
+↓
+
+Level 2
+
+↓
+
+Level 3
+
+↓
+
+Level 4
+
+↓
+
+Level 5
+```
+
+Higher levels provide:
+
+- More residents
+- Higher taxes
+- Better appearance
+- Greater service demand
+
+---
+
+## 5.13 Upgrade Requirements ✅
+
+Buildings evaluate:
+
+- Land Value
+- Education
+- Fire Coverage
+- Police Coverage
+- Health
+- Parks
+- Transport
+- Happiness
+
+Failure delays upgrading.
+
+---
+
+## 5.14 Land Value ✅
+
+Land value is continuously calculated.
+
+Positive factors:
+
+- Parks
+- Trees
+- Waterfront
+- Public Transport
+- Education
+- Healthcare
+
+Negative factors:
+
+- Pollution
+- Noise
+- Crime
+- Heavy Industry
+- Garbage
+
+Land value directly influences building level.
+
+---
+
+## 5.15 Abandonment ✅
+
+Buildings become abandoned if requirements remain unmet.
+
+Reasons:
+
+Residential
+
+- No Power
+- No Water
+- High Pollution
+- High Crime
+- High Taxes
+
+Commercial
+
+- No Customers
+- No Goods
+- No Workers
+
+Industrial
+
+- No Workers
+- No Freight
+- No Resources
+
+Office
+
+- No Educated Workers
+
+---
+
+## 5.16 Demolition
+
+Abandoned buildings may eventually be demolished.
+
+Demolition frees the lot.
+
+The zone remains.
+
+New development may occur later.
+
+---
+
+## 5.17 Household Simulation
+
+Residential buildings contain households.
+
+Households store:
+
+- Family Members
+- Wealth
+- Education
+- Vehicles
+- Happiness
+
+Citizens belong to households rather than buildings directly.
+
+---
+
+## 5.18 Business Simulation
+
+Commercial and industrial buildings maintain:
+
+- Employee Count
+- Production
+- Storage
+- Freight
+- Profitability
+
+Businesses continuously evaluate profitability.
+
+---
+
+## 5.19 Building Occupancy
+
+Every building tracks:
+
+Residential
+
+- Residents
+- Vacancies
+
+Commercial
+
+- Workers
+- Customers
+
+Industrial
+
+- Workers
+- Production
+
+Office
+
+- Employees
+
+---
+
+## 5.20 Construction
+
+Construction stages:
+
+```text
+Empty Lot
+
+↓
+
+Foundation
+
+↓
+
+Framework
+
+↓
+
+Completed
+
+↓
+
+Occupied
+```
+
+Construction consumes time.
+
+---

@@ -43,6 +43,10 @@ type CityFactors struct {
 	WorkerShortage     float32 // 0..1
 	FreightCongestion  float32 // 0..1 ponytail: until freight sim
 	ResourceShortage   float32 // 0..1 ponytail: until resource economy hooks in
+
+	EducatedWorkers float32 // 0..1
+	HighTechEconomy float32 // 0..1
+	OfficePolicy    float32 // 0..1 district policy boost
 }
 
 func DefaultCityFactors() CityFactors {
@@ -56,6 +60,7 @@ func DefaultCityFactors() CityFactors {
 		Tourism:           0.2,
 		ShoppingDemand:    0.5,
 		IndustrialTax:     0.10,
+		OfficePolicy:      0.5,
 	}
 }
 
@@ -119,7 +124,10 @@ func (d *DemandEngine) Update(dt float64, zm *ZoneManager) {
 
 	eduGrowth := float32(dt) * 0.00005 * (1 + resCap*0.1)
 	d.Education = clampf(d.Education+eduGrowth, 0, 1)
-	d.Office = clampf(d.Industrial*d.Education, 0, 1)
+	offCap := float32(offCells) * 0.2
+	d.refreshOfficeFactors(offCells, offCap, float32(dt))
+	officeTarget := d.officeTarget()
+	d.Office = lerp(d.Office, officeTarget, rate)
 }
 
 func (d *DemandEngine) refreshResidentialFactors(zm *ZoneManager, res, com, ind, off int, dt float32) {
@@ -229,6 +237,36 @@ func (d *DemandEngine) industrialModifier(indCap float32) float32 {
 	_ = indCap
 
 	return clampf(mod, -0.6, 0.6)
+}
+
+func (d *DemandEngine) refreshOfficeFactors(offCells int, offCap, dt float32) {
+	d.Factors.EducatedWorkers = clampf(d.Education*d.Population*0.2, 0, 1)
+	d.Factors.HighTechEconomy = clampf(
+		d.Education*0.45+float32(offCells)*0.03+d.Factors.HouseholdIncome*0.25,
+		0, 1,
+	)
+	if offCap > 0 {
+		d.Education = clampf(d.Education-offCap*0.012*dt, 0, 1)
+	}
+}
+
+func (d *DemandEngine) officeModifier() float32 {
+	f := d.Factors
+	mod := float32(0)
+
+	mod += (f.EducatedWorkers - 0.25) * 0.35
+	mod += (f.HighTechEconomy - 0.35) * 0.3
+	if d.Industrial < 0.35 {
+		mod += (0.35 - d.Industrial) * 0.35
+	}
+	mod += (f.OfficePolicy - 0.5) * 0.4
+
+	return clampf(mod, -0.4, 0.5)
+}
+
+func (d *DemandEngine) officeTarget() float32 {
+	base := clampf(d.Industrial*d.Education, 0, 1)
+	return clampf(base+d.officeModifier()*0.5, 0, 1)
 }
 
 func ServiceScore(s ServiceCoverage) float32 {
