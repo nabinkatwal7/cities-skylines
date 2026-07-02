@@ -71,12 +71,28 @@ type Citizen struct {
 	Lifecycle  LifecycleState
 }
 
+const routeCacheSize = 64
+
+type routeCacheKey struct {
+	fromX, fromZ, toX, toZ int16
+}
+
+type routeCacheEntry struct {
+	key   routeCacheKey
+	legs  [][]JourneyLeg
+	tick  int32
+}
+
 type CitizenManager struct {
 	Pool     [CitizenPoolSize]Citizen
 	FreeList []int32
 	Count    int32
 	NextID   uint32
 	Timer    int32
+
+	routeCache     [routeCacheSize]routeCacheEntry
+	routeCacheNext int
+	cacheTick      int32
 }
 
 func NewCitizenManager() *CitizenManager {
@@ -229,6 +245,29 @@ func generalizedCost(legs []JourneyLeg, wealth int32, tm *TransportManager) floa
 }
 
 func (cm *CitizenManager) findRoutes(fromX, fromZ, toX, toZ float32, tm *TransportManager) [][]JourneyLeg {
+	key := routeCacheKey{
+		fromX: int16(fromX), fromZ: int16(fromZ),
+		toX: int16(toX), toZ: int16(toZ),
+	}
+	for i := range cm.routeCache {
+		e := &cm.routeCache[i]
+		if e.key == key && cm.cacheTick-e.tick < 120 {
+			return e.legs
+		}
+	}
+
+	routes := cm.buildRoutes(fromX, fromZ, toX, toZ, tm)
+
+	entry := &cm.routeCache[cm.routeCacheNext]
+	entry.key = key
+	entry.legs = routes
+	entry.tick = cm.cacheTick
+	cm.routeCacheNext = (cm.routeCacheNext + 1) % routeCacheSize
+
+	return routes
+}
+
+func (cm *CitizenManager) buildRoutes(fromX, fromZ, toX, toZ float32, tm *TransportManager) [][]JourneyLeg {
 	var routes [][]JourneyLeg
 
 	walkOnly := JourneyLeg{
@@ -486,6 +525,7 @@ func (cm *CitizenManager) Update(tm *TransportManager, h *Heightmap, buildings *
 			return
 		}
 	})
+	cm.cacheTick++
 }
 
 func (cm *CitizenManager) Draw(h *Heightmap) {

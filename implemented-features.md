@@ -3254,3 +3254,20 @@ The transport system uses:
 Only modified routes recalculate passenger paths.
 
 ---
+
+## 4.29 Design Goals
+
+The transportation system is designed to provide:
+
+- Realistic passenger movement
+- Seamless multimodal travel
+- Dynamic traffic reduction
+- Efficient public service
+- Scalable transport networks
+- Accurate economic integration
+- Support for tourism and external connections
+- High-performance simulation
+- Flexible route management
+- Independent simulation of every transport mode
+
+Together with the road system, public transportation forms the complete mobility network of the city, enabling efficient movement of citizens, tourists, goods, and services while directly influencing traffic congestion, land value, economic activity, and overall city development.

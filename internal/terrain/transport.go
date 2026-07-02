@@ -7,6 +7,31 @@ import (
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
 
+const stopGridSize = 32
+const stopCellSize = WorldSize / stopGridSize
+
+type StopCell struct {
+	Stops []int
+}
+
+func stopGridCell(x, z float32) (int, int) {
+	cx := int((x + WorldSize/2) / stopCellSize)
+	cz := int((z + WorldSize/2) / stopCellSize)
+	if cx < 0 {
+		cx = 0
+	}
+	if cx >= stopGridSize {
+		cx = stopGridSize - 1
+	}
+	if cz < 0 {
+		cz = 0
+	}
+	if cz >= stopGridSize {
+		cz = stopGridSize - 1
+	}
+	return cx, cz
+}
+
 type TransportType uint8
 
 const (
@@ -187,6 +212,9 @@ type TransportManager struct {
 	TransferNextID   uint32
 
 	RoadCongestion float32
+
+	StopGrid [stopGridSize][stopGridSize]StopCell
+	stopGridDirty bool
 }
 
 type CableConnection struct {
@@ -477,7 +505,55 @@ func (tm *TransportManager) AddStop(x, z float32, tt TransportType) uint32 {
 		}
 	}
 
+	tm.stopGridDirty = true
 	return id
+}
+
+func (tm *TransportManager) rebuildStopGrid() {
+	for cz := 0; cz < stopGridSize; cz++ {
+		for cx := 0; cx < stopGridSize; cx++ {
+			tm.StopGrid[cz][cx].Stops = tm.StopGrid[cz][cx].Stops[:0]
+		}
+	}
+	for i := range tm.Stops {
+		s := &tm.Stops[i]
+		cx, cz := stopGridCell(s.X, s.Z)
+		tm.StopGrid[cz][cx].Stops = append(tm.StopGrid[cz][cx].Stops, i)
+	}
+	tm.stopGridDirty = false
+}
+
+func (tm *TransportManager) nearestStopInGrid(x, z float32, maxDist float32, filterType TransportType, filter bool) *TransportStop {
+	if tm.stopGridDirty {
+		tm.rebuildStopGrid()
+	}
+	best := float32(maxDist)
+	var found *TransportStop
+	cx, cz := stopGridCell(x, z)
+	searchRadius := int(maxDist/stopCellSize) + 1
+	for dz := -searchRadius; dz <= searchRadius; dz++ {
+		for dx := -searchRadius; dx <= searchRadius; dx++ {
+			gx := cx + dx
+			gz := cz + dz
+			if gx < 0 || gx >= stopGridSize || gz < 0 || gz >= stopGridSize {
+				continue
+			}
+			for _, si := range tm.StopGrid[gz][gx].Stops {
+				s := &tm.Stops[si]
+				if filter && s.TransType != filterType {
+					continue
+				}
+				dx2 := s.X - x
+				dz2 := s.Z - z
+				d := dx2*dx2 + dz2*dz2
+				if d < best {
+					best = d
+					found = s
+				}
+			}
+		}
+	}
+	return found
 }
 
 func (tm *TransportManager) linkStops(stopA, stopB uint32) {
@@ -1792,38 +1868,11 @@ func (tm *TransportManager) SetLineBudget(lineID uint32, budget float32) {
 }
 
 func (tm *TransportManager) NearestStop(x, z float32, maxDist float32) *TransportStop {
-	best := float32(maxDist)
-	var found *TransportStop
-	for i := range tm.Stops {
-		s := &tm.Stops[i]
-		dx := s.X - x
-		dz := s.Z - z
-		d := dx*dx + dz*dz
-		if d < best {
-			best = d
-			found = s
-		}
-	}
-	return found
+	return tm.nearestStopInGrid(x, z, maxDist, 0, false)
 }
 
 func (tm *TransportManager) NearestStopOfType(x, z float32, tt TransportType, maxDist float32) *TransportStop {
-	best := float32(maxDist)
-	var found *TransportStop
-	for i := range tm.Stops {
-		s := &tm.Stops[i]
-		if s.TransType != tt {
-			continue
-		}
-		dx := s.X - x
-		dz := s.Z - z
-		d := dx*dx + dz*dz
-		if d < best {
-			best = d
-			found = s
-		}
-	}
-	return found
+	return tm.nearestStopInGrid(x, z, maxDist, tt, true)
 }
 
 func (tm *TransportManager) HasLineBetween(tt TransportType, stopA, stopB uint32) bool {

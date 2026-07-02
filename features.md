@@ -1,20 +1,3 @@
-## 4.29 Design Goals
-
-The transportation system is designed to provide:
-
-- Realistic passenger movement
-- Seamless multimodal travel
-- Dynamic traffic reduction
-- Efficient public service
-- Scalable transport networks
-- Accurate economic integration
-- Support for tourism and external connections
-- High-performance simulation
-- Flexible route management
-- Independent simulation of every transport mode
-
-Together with the road system, public transportation forms the complete mobility network of the city, enabling efficient movement of citizens, tourists, goods, and services while directly influencing traffic congestion, land value, economic activity, and overall city development.
-
 # 5. Zoning System & City Growth Simulation
 
 The zoning system governs how land is developed over time. Unlike traditional city builders where zoning immediately creates buildings, zones represent **development opportunities**. Buildings are constructed only when demand, services, accessibility, and economic conditions satisfy growth requirements.
