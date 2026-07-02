@@ -2,6 +2,7 @@ package terrain
 
 import (
 	"math"
+	"math/rand"
 
 	rl "github.com/gen2brain/raylib-go/raylib"
 )
@@ -160,6 +161,7 @@ type TransportManager struct {
 	Tracks  *TrackManager
 	Rails   *RailManager
 	Cargo   *CargoManager
+	Citizens *CitizenManager
 
 	CableConnections []CableConnection
 }
@@ -1314,6 +1316,26 @@ func (tm *TransportManager) arriveAtStop(v *TransportVehicle, currentStop, nextS
 		tm.Networks[netIdx].PassengersPerDay += boarded
 		tm.Networks[netIdx].TotalIncome += income
 	}
+
+	if tm.Citizens == nil {
+		return
+	}
+	currentStopID := line.Stops[nextIdx]
+	tm.Citizens.ForEach(func(c *Citizen, slot int32) {
+		if c.State == CivWaiting && c.Journey.LegIndex < len(c.Journey.Legs) {
+			leg := &c.Journey.Legs[c.Journey.LegIndex]
+			if leg.LegType != LegWalk && leg.Mode == v.TransType && leg.FromStopID == currentStopID {
+				leg.VehicleID = v.ID
+			}
+		}
+		if c.State == CivRiding && c.Journey.LegIndex < len(c.Journey.Legs) {
+			leg := &c.Journey.Legs[c.Journey.LegIndex]
+			if leg.VehicleID == v.ID && leg.ToStopID == currentStopID {
+				leg.Complete = true
+				c.Patience = 30 + int32(rand.Intn(60))
+			}
+		}
+	})
 }
 
 func (tm *TransportManager) StopByID(id uint32) *TransportStop {
@@ -1515,6 +1537,47 @@ func (tm *TransportManager) NearestStop(x, z float32, maxDist float32) *Transpor
 		}
 	}
 	return found
+}
+
+func (tm *TransportManager) NearestStopOfType(x, z float32, tt TransportType, maxDist float32) *TransportStop {
+	best := float32(maxDist)
+	var found *TransportStop
+	for i := range tm.Stops {
+		s := &tm.Stops[i]
+		if s.TransType != tt {
+			continue
+		}
+		dx := s.X - x
+		dz := s.Z - z
+		d := dx*dx + dz*dz
+		if d < best {
+			best = d
+			found = s
+		}
+	}
+	return found
+}
+
+func (tm *TransportManager) HasLineBetween(tt TransportType, stopA, stopB uint32) bool {
+	for li := range tm.Lines {
+		line := &tm.Lines[li]
+		if line.TransType != tt || !line.Active {
+			continue
+		}
+		hasA, hasB := false, false
+		for _, sid := range line.Stops {
+			if sid == stopA {
+				hasA = true
+			}
+			if sid == stopB {
+				hasB = true
+			}
+		}
+		if hasA && hasB {
+			return true
+		}
+	}
+	return false
 }
 
 func (tm *TransportManager) NearestLine(x, z float32, maxDist float32) *TransportLine {

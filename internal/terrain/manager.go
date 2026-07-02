@@ -153,6 +153,9 @@ func (m *Manager) Draw(camX, camZ float32) {
 	if sim.Transport != nil {
 		sim.Transport.Draw(sim.Heightmap)
 	}
+	if sim.Citizens != nil {
+		sim.Citizens.Draw(sim.Heightmap)
+	}
 	if sim.Districts != nil {
 		sim.Districts.Draw(sim.Heightmap)
 	}

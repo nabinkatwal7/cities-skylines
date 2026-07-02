@@ -44,6 +44,7 @@ type SimulationManager struct {
 	Districts   *DistrictManager
 	Buildability *BuildabilityChecker
 	Parking     *ParkingManager
+	Citizens    *CitizenManager
 
 	Seed      int64
 	Night     bool
@@ -96,6 +97,8 @@ func NewSimulationManager(seed int64) *SimulationManager {
 		Jobs:        NewJobQueue(),
 	}
 	sm.Transport.Parking = parking
+	sm.Citizens = NewCitizenManager()
+	sm.Transport.Citizens = sm.Citizens
 	sm.Transport.Rails.InitOutsideConnections(conn)
 
 	sm.initScheduler()
@@ -162,6 +165,12 @@ func (sm *SimulationManager) initScheduler() {
 		Priority: SchedPriorityLow,
 		BudgetMs: 0.5,
 		Callback: func(dt float64) { sm.Parking.Update() },
+	})
+	sm.scheduler.Register(GroupMedium, UpdateTask{
+		Name:     "citizens",
+		Priority: SchedPriorityMedium,
+		BudgetMs: 2,
+		Callback: func(dt float64) { sm.Citizens.Update(sm.Transport, sm.Heightmap, sm.Buildings) },
 	})
 	sm.scheduler.Register(GroupSlow, UpdateTask{
 		Name:     "buildings",

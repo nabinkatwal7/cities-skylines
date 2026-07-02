@@ -2998,3 +2998,47 @@ Supported cargo:
 Passenger ships transport tourists.
 
 ---
+
+## 4.16 Passenger AI
+
+Citizens evaluate every available transportation option.
+
+The decision considers:
+
+- Total travel time
+- Walking distance
+- Waiting time
+- Ticket cost
+- Traffic
+- Transfers
+- Personal preferences
+
+Example:
+
+```text
+Home
+
+↓
+
+Walk
+
+↓
+
+Bus
+
+↓
+
+Metro
+
+↓
+
+Walk
+
+↓
+
+Office
+```
+
+Every leg is independently simulated.
+
+---
