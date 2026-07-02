@@ -731,6 +731,20 @@ func (tm *TransportManager) SpawnVehicle(lineIdx int) {
 			spawnZ = tm.Parking.TaxiDepots[slot].Z
 		}
 	}
+	if line.TransType == TransAir && tm.Parking != nil {
+		slot, _ := tm.Parking.NearestAirportDepot(spawnX, spawnZ, 5000)
+		if slot >= 0 {
+			spawnX = tm.Parking.AirportDepots[slot].X
+			spawnZ = tm.Parking.AirportDepots[slot].Z
+		}
+	}
+	if line.TransType == TransShip && tm.Parking != nil {
+		slot, _ := tm.Parking.NearestPortDepot(spawnX, spawnZ, 5000)
+		if slot >= 0 {
+			spawnX = tm.Parking.PortDepots[slot].X
+			spawnZ = tm.Parking.PortDepots[slot].Z
+		}
+	}
 	cap := cfg.Capacity
 	spd := cfg.Speed
 

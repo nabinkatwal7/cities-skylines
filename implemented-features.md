@@ -2961,3 +2961,40 @@ Taxi availability depends on:
 - Distance
 
 ---
+
+## 4.14 Air Transport
+
+Airports provide:
+
+- Passenger Flights
+- Cargo Flights
+
+Airport components:
+
+- Runway
+- Taxiway
+- Terminal
+- Gate
+- Control Tower
+
+Aircraft operate independently of road traffic.
+
+Passengers use pedestrian connections to enter terminals.
+
+---
+
+## 4.15 Ship Transport
+
+Ships connect ports with outside regions.
+
+Supported cargo:
+
+- Goods
+- Oil
+- Ore
+- Forestry
+- Farming Products
+
+Passenger ships transport tourists.
+
+---

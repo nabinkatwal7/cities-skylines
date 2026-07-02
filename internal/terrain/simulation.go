@@ -670,6 +670,32 @@ func (sm *SimulationManager) PlaceTaxiDepot(x, z float32) bool {
 	return false
 }
 
+func (sm *SimulationManager) PlaceAirportDepot(x, z float32) bool {
+	if sm.Money < 10000 {
+		return false
+	}
+	slot := sm.Parking.PlaceAirportDepot(x, z)
+	if slot >= 0 {
+		sm.Money -= 10000
+		sm.Transport.AddStop(x, z, TransAir)
+		return true
+	}
+	return false
+}
+
+func (sm *SimulationManager) PlacePortDepot(x, z float32) bool {
+	if sm.Money < 8000 {
+		return false
+	}
+	slot := sm.Parking.PlacePortDepot(x, z)
+	if slot >= 0 {
+		sm.Money -= 8000
+		sm.Transport.AddStop(x, z, TransShip)
+		return true
+	}
+	return false
+}
+
 func (sm *SimulationManager) RemoveParkingLot(x, z float32) bool {
 	bestSlot := int32(-1)
 	bestDist := float32(100.0)

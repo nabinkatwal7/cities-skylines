@@ -42,6 +42,8 @@ const FerryDepotPoolSize = 50
 const MonorailDepotPoolSize = 50
 const CableCarDepotPoolSize = 50
 const TaxiDepotPoolSize = 50
+const AirportDepotPoolSize = 20
+const PortDepotPoolSize = 20
 
 type BusDepot struct {
 	Entity
@@ -85,6 +87,25 @@ type TaxiDepot struct {
 	CellX, CellZ int
 }
 
+type AirportDepot struct {
+	Entity
+	X, Z   float32
+	CellX, CellZ int
+	RunwayDir float32
+}
+
+type PortDepot struct {
+	Entity
+	X, Z   float32
+	CellX, CellZ int
+	GoodsStored int32
+	OilStored   int32
+	OreStored   int32
+	ForestStored int32
+	FarmStored  int32
+	Capacity    int32
+}
+
 type ParkingManager struct {
 	Spots      []ParkingSpot
 	Lots       [ParkingLotPoolSize]ParkingLot
@@ -121,6 +142,14 @@ type ParkingManager struct {
 	TaxiDepotFreeList []int32
 	TaxiDepotCount  int32
 
+	AirportDepots   [AirportDepotPoolSize]AirportDepot
+	AirportDepotFreeList []int32
+	AirportDepotCount  int32
+
+	PortDepots   [PortDepotPoolSize]PortDepot
+	PortDepotFreeList []int32
+	PortDepotCount  int32
+
 	TaxiFleet []TransportVehicle
 	TaxiRequests []TaxiRequest
 }
@@ -143,6 +172,8 @@ func NewParkingManager() *ParkingManager {
 		MonorailDepotFreeList: make([]int32, MonorailDepotPoolSize),
 		CableCarDepotFreeList: make([]int32, CableCarDepotPoolSize),
 		TaxiDepotFreeList: make([]int32, TaxiDepotPoolSize),
+		AirportDepotFreeList: make([]int32, AirportDepotPoolSize),
+		PortDepotFreeList: make([]int32, PortDepotPoolSize),
 	}
 	for i := 0; i < ParkingLotPoolSize; i++ {
 		pm.Lots[i].Lifecycle = LifecycleUnallocated
@@ -175,6 +206,14 @@ func NewParkingManager() *ParkingManager {
 	for i := 0; i < TaxiDepotPoolSize; i++ {
 		pm.TaxiDepots[i].Lifecycle = LifecycleUnallocated
 		pm.TaxiDepotFreeList[i] = int32(TaxiDepotPoolSize - 1 - i)
+	}
+	for i := 0; i < AirportDepotPoolSize; i++ {
+		pm.AirportDepots[i].Lifecycle = LifecycleUnallocated
+		pm.AirportDepotFreeList[i] = int32(AirportDepotPoolSize - 1 - i)
+	}
+	for i := 0; i < PortDepotPoolSize; i++ {
+		pm.PortDepots[i].Lifecycle = LifecycleUnallocated
+		pm.PortDepotFreeList[i] = int32(PortDepotPoolSize - 1 - i)
 	}
 	return pm
 }
@@ -561,6 +600,114 @@ func (pm *ParkingManager) NearestTaxiDepot(x, z float32, maxDist float32) (int32
 	return bestIdx, best
 }
 
+func (pm *ParkingManager) allocAirportDepot() int32 {
+	if len(pm.AirportDepotFreeList) == 0 {
+		return -1
+	}
+	idx := pm.AirportDepotFreeList[len(pm.AirportDepotFreeList)-1]
+	pm.AirportDepotFreeList = pm.AirportDepotFreeList[:len(pm.AirportDepotFreeList)-1]
+	pm.AirportDepots[idx] = AirportDepot{}
+	pm.AirportDepots[idx].Lifecycle = LifecycleAllocated
+	pm.AirportDepotCount++
+	return int32(idx)
+}
+
+func (pm *ParkingManager) freeAirportDepot(slot int32) {
+	if slot < 0 || int(slot) >= AirportDepotPoolSize {
+		return
+	}
+	pm.AirportDepots[slot].Lifecycle = LifecycleReturnedToPool
+	pm.AirportDepotFreeList = append(pm.AirportDepotFreeList, slot)
+	pm.AirportDepotCount--
+}
+
+func (pm *ParkingManager) PlaceAirportDepot(x, z float32) int32 {
+	slot := pm.allocAirportDepot()
+	if slot < 0 {
+		return -1
+	}
+	d := &pm.AirportDepots[slot]
+	d.X = x
+	d.Z = z
+	d.CellX = int(x) / 8
+	d.CellZ = int(z) / 8
+	d.RunwayDir = 0
+	return slot
+}
+
+func (pm *ParkingManager) NearestAirportDepot(x, z float32, maxDist float32) (int32, float32) {
+	best := maxDist
+	bestIdx := int32(-1)
+	for i := 0; i < AirportDepotPoolSize; i++ {
+		if pm.AirportDepots[i].Lifecycle != LifecycleAllocated {
+			continue
+		}
+		d := &pm.AirportDepots[i]
+		dx := d.X - x
+		dz := d.Z - z
+		dist := dx*dx + dz*dz
+		if dist < best {
+			best = dist
+			bestIdx = int32(i)
+		}
+	}
+	return bestIdx, best
+}
+
+func (pm *ParkingManager) allocPortDepot() int32 {
+	if len(pm.PortDepotFreeList) == 0 {
+		return -1
+	}
+	idx := pm.PortDepotFreeList[len(pm.PortDepotFreeList)-1]
+	pm.PortDepotFreeList = pm.PortDepotFreeList[:len(pm.PortDepotFreeList)-1]
+	pm.PortDepots[idx] = PortDepot{}
+	pm.PortDepots[idx].Lifecycle = LifecycleAllocated
+	pm.PortDepotCount++
+	return int32(idx)
+}
+
+func (pm *ParkingManager) freePortDepot(slot int32) {
+	if slot < 0 || int(slot) >= PortDepotPoolSize {
+		return
+	}
+	pm.PortDepots[slot].Lifecycle = LifecycleReturnedToPool
+	pm.PortDepotFreeList = append(pm.PortDepotFreeList, slot)
+	pm.PortDepotCount--
+}
+
+func (pm *ParkingManager) PlacePortDepot(x, z float32) int32 {
+	slot := pm.allocPortDepot()
+	if slot < 0 {
+		return -1
+	}
+	d := &pm.PortDepots[slot]
+	d.X = x
+	d.Z = z
+	d.CellX = int(x) / 8
+	d.CellZ = int(z) / 8
+	d.Capacity = 200
+	return slot
+}
+
+func (pm *ParkingManager) NearestPortDepot(x, z float32, maxDist float32) (int32, float32) {
+	best := maxDist
+	bestIdx := int32(-1)
+	for i := 0; i < PortDepotPoolSize; i++ {
+		if pm.PortDepots[i].Lifecycle != LifecycleAllocated {
+			continue
+		}
+		d := &pm.PortDepots[i]
+		dx := d.X - x
+		dz := d.Z - z
+		dist := dx*dx + dz*dz
+		if dist < best {
+			best = dist
+			bestIdx = int32(i)
+		}
+	}
+	return bestIdx, best
+}
+
 func (pm *ParkingManager) freeLot(slot int32) {
 	if slot < 0 || int(slot) >= ParkingLotPoolSize {
 		return
@@ -869,6 +1016,30 @@ func (pm *ParkingManager) Draw(h *Heightmap) {
 		rl.DrawCubeWires(rl.NewVector3(d.X, hy, d.Z), 5, 1, 4, rl.NewColor(200, 200, 50, 255))
 	}
 
+	for i := 0; i < AirportDepotPoolSize; i++ {
+		d := &pm.AirportDepots[i]
+		if d.Lifecycle != LifecycleAllocated {
+			continue
+		}
+		hy := h.WorldHeight(d.X, d.Z) + 0.3
+		rl.DrawCube(rl.NewVector3(d.X, hy, d.Z), 12, 0.3, 8, rl.NewColor(180, 180, 180, 180))
+		rl.DrawCubeWires(rl.NewVector3(d.X, hy, d.Z), 12, 0.3, 8, rl.NewColor(180, 180, 180, 255))
+		rl.DrawCube(rl.NewVector3(d.X+4, hy+1.5, d.Z), 4, 3, 3, rl.NewColor(200, 200, 220, 180))
+		rl.DrawCube(rl.NewVector3(d.X-5, hy+0.2, d.Z), 20, 0.1, 2, rl.NewColor(160, 160, 160, 150))
+		rl.DrawCube(rl.NewVector3(d.X-5, hy+0.2, d.Z+3), 20, 0.1, 2, rl.NewColor(160, 160, 160, 150))
+	}
+
+	for i := 0; i < PortDepotPoolSize; i++ {
+		d := &pm.PortDepots[i]
+		if d.Lifecycle != LifecycleAllocated {
+			continue
+		}
+		hy := h.WorldHeight(d.X, d.Z) + 0.3
+		rl.DrawCube(rl.NewVector3(d.X, hy, d.Z), 8, 0.5, 10, rl.NewColor(139, 90, 43, 180))
+		rl.DrawCubeWires(rl.NewVector3(d.X, hy, d.Z), 8, 0.5, 10, rl.NewColor(139, 90, 43, 255))
+		rl.DrawCube(rl.NewVector3(d.X, hy+0.5, d.Z+5), 6, 0.3, 4, rl.NewColor(100, 100, 100, 180))
+	}
+
 	for _, v := range pm.TaxiFleet {
 		hy := h.WorldHeight(v.X, v.Z) + 0.5
 		rl.DrawCube(rl.NewVector3(v.X, hy, v.Z), 1.5, 0.5, 1, rl.NewColor(255, 200, 50, 220))
@@ -877,6 +1048,29 @@ func (pm *ParkingManager) Draw(h *Heightmap) {
 
 func (pm *ParkingManager) Update() {
 	pm.Timer++
+
+	for i := 0; i < PortDepotPoolSize; i++ {
+		d := &pm.PortDepots[i]
+		if d.Lifecycle != LifecycleAllocated {
+			continue
+		}
+		if d.GoodsStored < d.Capacity {
+			d.GoodsStored++
+		}
+		if d.OilStored < d.Capacity {
+			d.OilStored++
+		}
+		if d.OreStored < d.Capacity {
+			d.OreStored++
+		}
+		if d.ForestStored < d.Capacity {
+			d.ForestStored++
+		}
+		if d.FarmStored < d.Capacity {
+			d.FarmStored++
+		}
+	}
+
 	for vi := len(pm.TaxiFleet) - 1; vi >= 0; vi-- {
 		taxi := &pm.TaxiFleet[vi]
 		if taxi.Moving {

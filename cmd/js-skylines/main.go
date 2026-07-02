@@ -309,6 +309,12 @@ func main() {
 				if ui.BusDepotMode || ui.TramDepotMode || ui.MetroDepotMode || ui.FerryDepotMode || ui.MonorailDepotMode || ui.CableCarDepotMode || ui.TaxiDepotMode {
 					cost = 5000
 				}
+				if ui.AirportMode {
+					cost = 10000
+				}
+				if ui.PortMode {
+					cost = 8000
+				}
 				if sim.Money >= cost && !sim.Heightmap.IsUnderwater(worldX, worldZ) {
 					switch {
 					case ui.BusDepotMode:
@@ -325,6 +331,10 @@ func main() {
 						sim.PlaceCableCarDepot(worldX, worldZ)
 					case ui.TaxiDepotMode:
 						sim.PlaceTaxiDepot(worldX, worldZ)
+					case ui.AirportMode:
+						sim.PlaceAirportDepot(worldX, worldZ)
+					case ui.PortMode:
+						sim.PlacePortDepot(worldX, worldZ)
 					default:
 						sim.PlaceParkingLot(worldX, worldZ, ui.ParkingGarage)
 					}
@@ -414,7 +424,17 @@ func main() {
 			case terrain.ToolPark:
 				rl.DrawCube(rl.NewVector3(worldX, h+0.3, worldZ), 3, 0.2, 3, rl.NewColor(80, 200, 80, 120))
 			case terrain.ToolParking:
-				if ui.FerryDepotMode {
+				if ui.AirportMode {
+					rl.DrawCube(rl.NewVector3(worldX, h+0.3, worldZ), 12, 0.3, 8, rl.NewColor(180, 180, 180, 120))
+					rl.DrawCubeWires(rl.NewVector3(worldX, h+0.3, worldZ), 12, 0.3, 8, rl.NewColor(180, 180, 180, 200))
+					rl.DrawCube(rl.NewVector3(worldX+4, h+1.5, worldZ), 4, 3, 3, rl.NewColor(200, 200, 220, 120))
+					rl.DrawCube(rl.NewVector3(worldX-5, h+0.2, worldZ), 20, 0.1, 2, rl.NewColor(160, 160, 160, 150))
+					rl.DrawCube(rl.NewVector3(worldX-5, h+0.2, worldZ+3), 20, 0.1, 2, rl.NewColor(160, 160, 160, 150))
+				} else if ui.PortMode {
+					rl.DrawCube(rl.NewVector3(worldX, h+0.3, worldZ), 8, 0.5, 10, rl.NewColor(139, 90, 43, 120))
+					rl.DrawCubeWires(rl.NewVector3(worldX, h+0.3, worldZ), 8, 0.5, 10, rl.NewColor(139, 90, 43, 200))
+					rl.DrawCube(rl.NewVector3(worldX, h+0.5, worldZ+5), 6, 0.3, 4, rl.NewColor(100, 100, 100, 120))
+				} else if ui.FerryDepotMode {
 					rl.DrawCube(rl.NewVector3(worldX, h+0.3, worldZ), 5, 0.5, 5, rl.NewColor(50, 150, 200, 120))
 					rl.DrawCubeWires(rl.NewVector3(worldX, h+0.3, worldZ), 5, 0.5, 5, rl.NewColor(50, 150, 200, 200))
 				} else if ui.MonorailDepotMode {

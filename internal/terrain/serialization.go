@@ -56,6 +56,8 @@ type SaveData struct {
 	MonorailDepots  []DepotData
 	CableCarDepots  []DepotData
 	TaxiDepots      []DepotData
+	AirportDepots   []DepotData
+	PortDepots      []DepotData
 
 	CableConnections []CableConnectionData
 	CargoStations    []CargoStationData
@@ -795,6 +797,18 @@ func SaveGame(filename string, m *SimulationManager, money float32, timeOfDay in
 				data.TaxiDepots = append(data.TaxiDepots, DepotData{X: d.X, Z: d.Z, CellX: d.CellX, CellZ: d.CellZ})
 			}
 		}
+		for i := 0; i < AirportDepotPoolSize; i++ {
+			if m.Parking.AirportDepots[i].Lifecycle == LifecycleAllocated {
+				d := &m.Parking.AirportDepots[i]
+				data.AirportDepots = append(data.AirportDepots, DepotData{X: d.X, Z: d.Z, CellX: d.CellX, CellZ: d.CellZ})
+			}
+		}
+		for i := 0; i < PortDepotPoolSize; i++ {
+			if m.Parking.PortDepots[i].Lifecycle == LifecycleAllocated {
+				d := &m.Parking.PortDepots[i]
+				data.PortDepots = append(data.PortDepots, DepotData{X: d.X, Z: d.Z, CellX: d.CellX, CellZ: d.CellZ})
+			}
+		}
 		for _, tv := range m.Parking.TaxiFleet {
 			data.TaxiFleet = append(data.TaxiFleet, TransportVehicleData{
 				X: tv.X, Z: tv.Z, Speed: tv.Speed,
@@ -1325,6 +1339,40 @@ func LoadGame(filename string, m *SimulationManager) (money float32, timeOfDay i
 				if slot >= 0 {
 					m.Parking.TaxiDepots[slot].CellX = dd.CellX
 					m.Parking.TaxiDepots[slot].CellZ = dd.CellZ
+				}
+			}
+		}
+		if len(data.AirportDepots) > 0 {
+			for i := range m.Parking.AirportDepots {
+				m.Parking.AirportDepots[i].Lifecycle = LifecycleUnallocated
+			}
+			m.Parking.AirportDepotFreeList = make([]int32, AirportDepotPoolSize)
+			for i := 0; i < AirportDepotPoolSize; i++ {
+				m.Parking.AirportDepotFreeList[i] = int32(AirportDepotPoolSize - 1 - i)
+			}
+			m.Parking.AirportDepotCount = 0
+			for _, dd := range data.AirportDepots {
+				slot := m.Parking.PlaceAirportDepot(dd.X, dd.Z)
+				if slot >= 0 {
+					m.Parking.AirportDepots[slot].CellX = dd.CellX
+					m.Parking.AirportDepots[slot].CellZ = dd.CellZ
+				}
+			}
+		}
+		if len(data.PortDepots) > 0 {
+			for i := range m.Parking.PortDepots {
+				m.Parking.PortDepots[i].Lifecycle = LifecycleUnallocated
+			}
+			m.Parking.PortDepotFreeList = make([]int32, PortDepotPoolSize)
+			for i := 0; i < PortDepotPoolSize; i++ {
+				m.Parking.PortDepotFreeList[i] = int32(PortDepotPoolSize - 1 - i)
+			}
+			m.Parking.PortDepotCount = 0
+			for _, dd := range data.PortDepots {
+				slot := m.Parking.PlacePortDepot(dd.X, dd.Z)
+				if slot >= 0 {
+					m.Parking.PortDepots[slot].CellX = dd.CellX
+					m.Parking.PortDepots[slot].CellZ = dd.CellZ
 				}
 			}
 		}
