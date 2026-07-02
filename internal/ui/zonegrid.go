@@ -14,18 +14,22 @@ func drawZonePlacementGrid(ctx SnapContext, camX, camZ float32) {
 	if cs <= 0 {
 		return
 	}
-	const maxDist float32 = 280
+	const maxDist float32 = 120
+	const hoverRadius = 5 // cells around cursor
 	maxDistSq := maxDist * maxDist
 	hoverCX := zm.CellX(ctx.PreviewX)
 	hoverCZ := zm.CellZ(ctx.PreviewZ)
 
-	validCol := rl.NewColor(240, 250, 255, 42)
-	invalidCol := rl.NewColor(80, 80, 90, 22)
-	hoverCol := rl.NewColor(120, 220, 255, 120)
-	lineCol := rl.NewColor(255, 255, 255, 60)
+	validCol := rl.NewColor(240, 250, 255, 36)
+	invalidCol := rl.NewColor(80, 80, 90, 18)
+	hoverCol := rl.NewColor(120, 220, 255, 100)
+	lineCol := rl.NewColor(255, 255, 255, 45)
 
-	for cz := 0; cz < zm.Height(); cz++ {
-		for cx := 0; cx < zm.Width(); cx++ {
+	for cz := hoverCZ - hoverRadius; cz <= hoverCZ+hoverRadius; cz++ {
+		for cx := hoverCX - hoverRadius; cx <= hoverCX+hoverRadius; cx++ {
+			if cx < 0 || cz < 0 || cx >= zm.Width() || cz >= zm.Height() {
+				continue
+			}
 			wx, wz := zm.CellCenter(cx, cz)
 			dx := wx - camX
 			dz := wz - camZ

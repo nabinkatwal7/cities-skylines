@@ -55,7 +55,8 @@ func main() {
 
 	uploaded := false
 	roadActive := false
-	roadStartNode := uint32(0)
+	roadStartX := float32(0)
+	roadStartZ := float32(0)
 	roadElevation := int32(0)
 	transportActive := false
 	transportStartStopID := uint32(0)
@@ -131,11 +132,7 @@ func main() {
 		gameUI.SyncView(ui.ViewStateFromSim(sim, worldX, worldZ, mouseOnTerrain))
 
 		// Snap to build grid / zone cells
-		if roadActive && !sim.Roads.ValidNodeIndex(roadStartNode) {
-			roadActive = false
-			roadStartNode = 0
-		}
-		gameUI.SetRoadChain(roadActive, roadStartNode)
+		gameUI.SetRoadDraft(roadActive, roadStartX, roadStartZ)
 		previewX, previewZ := worldX, worldZ
 		if mouseOnTerrain {
 			previewX, previewZ = gameUI.SnapPlacementCoords(sim, worldX, worldZ)
@@ -168,7 +165,8 @@ func main() {
 			PreviewZ:           previewZ,
 			OnGround:           mouseOnTerrain,
 			RoadActive:         roadActive,
-			RoadStartNode:      roadStartNode,
+			RoadStartX:         roadStartX,
+			RoadStartZ:         roadStartZ,
 			RoadElevation:      roadElevation,
 			TransportActive:    transportActive,
 			TransportStartStop: transportStartStopID,
@@ -185,7 +183,7 @@ func main() {
 			mx := int32(mPos.X)
 			my := int32(mPos.Y)
 			if gameUI.PointerOverUI(mx, my) {
-				if placeClick {
+		if placeClick {
 					gameUI.HandleClick()
 					if gameUI.ClickResetsRoadChain(mx, my) {
 						roadActive = false
@@ -203,7 +201,7 @@ func main() {
 						if !pv.TerrainOK || sim.Money < pv.Cost {
 							break
 						}
-						roadStartNode = sim.PlaceRoadNode(px, pz)
+						roadStartX, roadStartZ = px, pz
 						roadActive = true
 					} else {
 						if !pv.Valid {
@@ -215,11 +213,12 @@ func main() {
 							break
 						}
 						moneyBefore := sim.Money
-						newNode, segID, ok := sim.PlaceRoadSegment(roadStartNode, px, pz, gameUI.RoadType, roadElevation)
+						startNode := sim.PlaceRoadStartNode(roadStartX, roadStartZ)
+						_, segID, ok := sim.PlaceRoadSegment(startNode, px, pz, gameUI.RoadType, roadElevation)
 						if ok {
-							roadStartNode = newNode
 							sim.PushRoadPlace(segID, moneyBefore-sim.Money)
 							gameUI.HelpText = ""
+							roadActive = false
 						}
 					}
 				case ui.ToolParking:

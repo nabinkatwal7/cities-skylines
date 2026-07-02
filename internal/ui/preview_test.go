@@ -46,22 +46,23 @@ func TestEvalPlacementRejectsBrokeTransport(t *testing.T) {
 	}
 }
 
-func TestEvalPlacementInvalidRoadChain(t *testing.T) {
+func TestEvalPlacementRejectsShortRoadSegment(t *testing.T) {
 	sm := sim.NewSimulationManager(1)
 	sm.Money = 10_000
 	ts := NewToolSystem()
 	ts.Activate(ToolRoad)
 	ctx := WorldContext{
-		Sim:           sm,
-		OnGround:      true,
-		PreviewX:      120,
-		PreviewZ:      136,
-		RoadActive:    true,
-		RoadStartNode: 999,
-		Tools:         ts,
+		Sim:        sm,
+		OnGround:   true,
+		PreviewX:   120,
+		PreviewZ:   120,
+		RoadActive: true,
+		RoadStartX: 120,
+		RoadStartZ: 120,
+		Tools:      ts,
 	}
 	p := EvalPlacement(ctx)
 	if p.Valid {
-		t.Fatal("invalid road chain should invalidate preview")
+		t.Fatal("zero-length road segment should invalidate preview")
 	}
 }

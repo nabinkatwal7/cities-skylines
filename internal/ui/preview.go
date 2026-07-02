@@ -33,7 +33,8 @@ type WorldContext struct {
 	PreviewX, PreviewZ  float32
 	OnGround            bool
 	RoadActive          bool
-	RoadStartNode       uint32
+	RoadStartX          float32
+	RoadStartZ          float32
 	RoadElevation       int32
 	TransportActive     bool
 	TransportStartStop  uint32
@@ -70,12 +71,8 @@ func EvalPlacement(ctx WorldContext) PlacementPreview {
 				p.TerrainOK = false
 				p.Messages = append(p.Messages, "Underwater")
 			}
-			if ctx.RoadActive && !sm.Roads.ValidNodeIndex(ctx.RoadStartNode) {
-				p.Valid = false
-				p.Messages = append(p.Messages, "Road chain invalid")
-			} else if ctx.RoadActive && sm.Roads.ValidNodeIndex(ctx.RoadStartNode) {
-				sn := &sm.Roads.Nodes[ctx.RoadStartNode]
-				if reason := sm.CanPlaceRoad(sn.X, sn.Z, px, pz, ts.RoadType, ctx.RoadElevation, math.MaxUint32); reason != "" {
+			if ctx.RoadActive {
+				if reason := sm.CanPlaceRoad(ctx.RoadStartX, ctx.RoadStartZ, px, pz, ts.RoadType, ctx.RoadElevation, math.MaxUint32); reason != "" {
 					p.Valid = false
 					p.Collision = true
 					p.Messages = append(p.Messages, reason)
@@ -211,14 +208,13 @@ func DrawPreview3D(ctx WorldContext, p PlacementPreview) {
 		switch ts.Selected {
 		case ToolRoad:
 			rl.DrawSphere(rl.NewVector3(px, h+0.5, pz), 0.8, col)
-			if ctx.RoadActive && sm.Roads.ValidNodeIndex(ctx.RoadStartNode) {
-				sn := &sm.Roads.Nodes[ctx.RoadStartNode]
-				sh := sm.Heightmap.WorldHeight(sn.X, sn.Z)
+			if ctx.RoadActive {
+				sh := sm.Heightmap.WorldHeight(ctx.RoadStartX, ctx.RoadStartZ)
 				lineCol := wire
 				if !p.Valid {
 					lineCol = rl.Red
 				}
-				rl.DrawLine3D(rl.NewVector3(sn.X, sh+0.2, sn.Z), rl.NewVector3(px, h+0.2, pz), lineCol)
+				rl.DrawLine3D(rl.NewVector3(ctx.RoadStartX, sh+0.2, ctx.RoadStartZ), rl.NewVector3(px, h+0.2, pz), lineCol)
 			}
 		case ToolZone:
 			drawFootprint(px, h, pz, zmCellSize(sm), 0.2, zmCellSize(sm), col, wire)

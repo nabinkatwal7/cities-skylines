@@ -1202,7 +1202,8 @@ func (rm *RoadManager) buildSurfaceMesh(h *terrain.Heightmap, seg RoadSegment) r
 
 	for si := 0; si < stripSteps; si++ {
 		base := uint16(si * 2)
-		indices = append(indices, base, base+2, base+1, base+1, base+2, base+3)
+		// Both triangles must wind CCW from above (+Y); raylib culls back faces.
+		indices = append(indices, base, base+1, base+2, base+1, base+3, base+2)
 	}
 
 	mesh := rl.Mesh{
@@ -1379,10 +1380,13 @@ func (rm *RoadManager) Draw(h *terrain.Heightmap) {
 		}
 		rm.drawMarkings(h)
 	}
+	rm.drawJunctionPads(h)
 	rm.drawJunctionMarkings(h)
 	rm.drawOutsideConnections(h)
-	rm.drawCurbs(h)
-	rm.drawSidewalks(h)
+	if rm.roadTex.ID == 0 {
+		rm.drawCurbs(h)
+		rm.drawSidewalks(h)
+	}
 	rm.drawStreetLights(h)
 	rm.drawRoadsideTrees(h)
 	rm.drawBridgePillars(h)
@@ -1453,8 +1457,8 @@ func (rm *RoadManager) drawFallback(h *terrain.Heightmap) {
 				h0 = float32(seg.Elevation) * 5
 				h1 = float32(seg.Elevation) * 5
 			} else {
-				h0 = h.WorldHeight(x0, z0) + 0.15
-				h1 = h.WorldHeight(x1, z1) + 0.15
+				h0 = h.WorldHeight(x0, z0) + 0.17
+				h1 = h.WorldHeight(x1, z1) + 0.17
 			}
 
 			al := rl.NewVector3(x0-perX*half, h0, z0-perZ*half)
@@ -1468,8 +1472,50 @@ func (rm *RoadManager) drawFallback(h *terrain.Heightmap) {
 }
 
 func drawQuad(a, b, c, d rl.Vector3, col rl.Color) {
-	rl.DrawTriangle3D(a, b, c, col)
-	rl.DrawTriangle3D(c, b, d, col)
+	rl.DrawTriangle3D(a, c, b, col)
+	rl.DrawTriangle3D(b, c, d, col)
+}
+
+// drawJunctionPads fills gaps where straight segment meshes meet at an angle.
+func (rm *RoadManager) drawJunctionPads(h *terrain.Heightmap) {
+	for i := range rm.Nodes {
+		n := &rm.Nodes[i]
+		if len(n.Connected) < 2 {
+			continue
+		}
+		var maxHalf float32
+		var elev int32
+		for _, sid := range n.Connected {
+			seg := rm.SegmentByID(sid)
+			if seg == nil {
+				continue
+			}
+			lanes := seg.LaneCount
+			if lanes < 1 {
+				lanes = int32(roadLanes(seg.RoadType))
+			}
+			half := float32(lanes) * laneW * 0.5
+			if half > maxHalf {
+				maxHalf = half
+			}
+			if seg.Elevation > elev {
+				elev = seg.Elevation
+			}
+		}
+		if maxHalf < 0.5 {
+			maxHalf = 4
+		}
+		hy := h.WorldHeight(n.X, n.Z) + 0.13
+		if elev > 0 {
+			hy = float32(elev)*5 + 0.13
+		}
+		pad := maxHalf * 2.2
+		if rm.roadTex.ID != 0 {
+			rl.DrawCube(rl.NewVector3(n.X, hy, n.Z), pad, 0.14, pad, rl.NewColor(72, 72, 76, 255))
+		} else {
+			rl.DrawCube(rl.NewVector3(n.X, hy, n.Z), pad, 0.14, pad, rl.NewColor(80, 80, 80, 255))
+		}
+	}
 }
 
 func (rm *RoadManager) drawMarkings(h *terrain.Heightmap) {
@@ -1510,8 +1556,8 @@ func (rm *RoadManager) drawMarkings(h *terrain.Heightmap) {
 				h0 = float32(seg.Elevation) * 5
 				h1 = float32(seg.Elevation) * 5
 			} else {
-				h0 = h.WorldHeight(x0, z0) + 0.15
-				h1 = h.WorldHeight(x1, z1) + 0.15
+				h0 = h.WorldHeight(x0, z0) + 0.17
+				h1 = h.WorldHeight(x1, z1) + 0.17
 			}
 
 			for li := 0; li < lanes-1; li++ {
@@ -1554,107 +1600,6 @@ func (rm *RoadManager) drawJunctionMarkings(h *terrain.Heightmap) {
 			if seg.Elevation > 0 {
 				hy = float32(seg.Elevation) * 5
 				break
-			}
-		}
-
-		juncCol := rl.NewColor(200, 100, 100, 200)
-		if n.JunctionType == 2 {
-			juncCol = rl.NewColor(100, 100, 200, 200)
-		}
-		rl.DrawCube(rl.NewVector3(n.X, hy, n.Z), 2, 0.1, 2, juncCol)
-
-		routes := rm.JunctionLaneRoutes(uint32(i))
-		routesBySeg := make(map[int][]LaneConnection)
-		for _, rc := range routes {
-			routesBySeg[int(rc.FromSegIdx)] = append(routesBySeg[int(rc.FromSegIdx)], rc)
-		}
-
-		for _, sid := range n.Connected {
-			seg := rm.SegmentByID(sid)
-			if seg == nil {
-				continue
-			}
-			other := seg.NodeA
-			if other == uint32(i) {
-				other = seg.NodeB
-			}
-			on := &rm.Nodes[other]
-			dx := on.X - n.X
-			dz := on.Z - n.Z
-			l := float32(math.Sqrt(float64(dx*dx + dz*dz)))
-			if l < 0.01 {
-				continue
-			}
-
-			perX := -dz / l
-			perZ := dx / l
-
-			lanes := int(seg.LaneCount)
-			total := float32(lanes) * laneW
-			half := total * 0.5
-
-			stopX := n.X + dx/l*1.5
-			stopZ := n.Z + dz/l*1.5
-			rl.DrawCube(rl.NewVector3(stopX, hy, stopZ), 0.3, 0.05, total*0.8, rl.NewColor(255, 255, 255, 200))
-
-			crossX := n.X + dx/l*3
-			crossZ := n.Z + dz/l*3
-			for ci := 0; ci < 3; ci++ {
-				off := float32(ci)*0.5 - 0.5
-				rl.DrawCube(rl.NewVector3(crossX+perX*half*off, hy, crossZ+perZ*half*off), 0.2, 0.05, total*0.3, rl.NewColor(255, 255, 255, 180))
-			}
-
-			segRoutes := routesBySeg[int(sid)]
-			for _, rc := range segRoutes {
-				li := int(rc.FromLane)
-				laneOff := (float32(li) - float32(lanes-1)*0.5) * laneW
-				arrowX := n.X + dx/l*2.0 + perX*laneOff
-				arrowZ := n.Z + dz/l*2.0 + perZ*laneOff
-				var arrowCol rl.Color
-				switch rc.Turn {
-				case LaneTurnStraight:
-					arrowCol = rl.NewColor(100, 255, 100, 200)
-				case LaneTurnLeft:
-					arrowCol = rl.NewColor(255, 200, 100, 200)
-				case LaneTurnRight:
-					arrowCol = rl.NewColor(100, 200, 255, 200)
-				case LaneTurnUTurn:
-					arrowCol = rl.NewColor(255, 100, 100, 200)
-				}
-				rl.DrawCube(rl.NewVector3(arrowX, hy+0.05, arrowZ), 0.5, 0.05, 0.3, arrowCol)
-			}
-		}
-
-		if n.JunctionType == 2 {
-			for _, sid := range n.Connected {
-				seg := rm.SegmentByID(sid)
-				if seg == nil {
-					continue
-				}
-				other := seg.NodeA
-				if other == uint32(i) {
-					other = seg.NodeB
-				}
-				on := &rm.Nodes[other]
-				dx := on.X - n.X
-				dz := on.Z - n.Z
-				l := float32(math.Sqrt(float64(dx*dx + dz*dz)))
-				if l < 0.01 {
-					continue
-				}
-				perX := -dz / l
-				perZ := dx / l
-				total := float32(seg.LaneCount) * laneW
-				half := total * 0.5
-				yx := n.X + dx/l*4.0 + perX*half
-				yz := n.Z + dz/l*4.0 + perZ*half
-
-				rl.DrawTriangle3D(
-					rl.NewVector3(yx, hy+0.1, yz),
-					rl.NewVector3(yx-dx/l*1.5+perX*half*0.5, hy+0.1, yz-dz/l*1.5+perZ*half*0.5),
-					rl.NewVector3(yx-dx/l*1.5-perX*half*0.5, hy+0.1, yz-dz/l*1.5-perZ*half*0.5),
-					rl.NewColor(255, 200, 0, 200),
-				)
 			}
 		}
 

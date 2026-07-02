@@ -18,8 +18,9 @@ type SnapContext struct {
 	Sim           *sim.SimulationManager
 	Tool          GameTool
 	Mode          ToolMode
-	RoadActive    bool
-	RoadStartNode uint32
+	RoadActive bool
+	RoadStartX float32
+	RoadStartZ float32
 	PreviewX      float32
 	PreviewZ      float32
 }
@@ -57,17 +58,16 @@ func snapRoad(ctx SnapContext, x, z float32) (float32, float32) {
 	if sm == nil || sm.Roads == nil {
 		return sx, sz
 	}
-	if idx, ok := sm.Roads.NearestNode(sx, sz); ok {
-		n := &sm.Roads.Nodes[idx]
-		dx := n.X - sx
-		dz := n.Z - sz
-		if dx*dx+dz*dz < nodeSnapDist*nodeSnapDist {
-			return n.X, n.Z
+	if ctx.RoadActive {
+		if idx, ok := sm.Roads.NearestNode(sx, sz); ok {
+			n := &sm.Roads.Nodes[idx]
+			dx := n.X - sx
+			dz := n.Z - sz
+			if dx*dx+dz*dz < nodeSnapDist*nodeSnapDist {
+				return n.X, n.Z
+			}
 		}
-	}
-	if ctx.RoadActive && sm.Roads.ValidNodeIndex(ctx.RoadStartNode) {
-		sn := &sm.Roads.Nodes[ctx.RoadStartNode]
-		return snapRoadFromNode(sn.X, sn.Z, sx, sz)
+		return snapRoadFromNode(ctx.RoadStartX, ctx.RoadStartZ, sx, sz)
 	}
 	return sx, sz
 }

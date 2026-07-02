@@ -32,27 +32,43 @@ func TestSnapRoadFromNodeAngleAndDistance(t *testing.T) {
 	}
 }
 
-func TestSnapRoadReusesNearbyNode(t *testing.T) {
+func TestSnapRoadStartUsesGridNotNearbyNode(t *testing.T) {
 	sm := sim.NewSimulationManager(1)
-	n := sm.Roads.AddNode(40, 0, 40)
+	sm.Roads.AddNode(40, 0, 40)
 	ctx := SnapContext{
 		Sim:  sm,
 		Tool: ToolRoad,
 	}
+	x, z := snapRoad(ctx, 47.5, 47.5)
+	if x != 48 || z != 48 {
+		t.Fatalf("start snap=(%v,%v) want grid (48,48)", x, z)
+	}
+}
+
+func TestSnapRoadEndSnapsToNearbyNode(t *testing.T) {
+	sm := sim.NewSimulationManager(1)
+	sm.Roads.AddNode(40, 0, 40)
+	ctx := SnapContext{
+		Sim:        sm,
+		Tool:       ToolRoad,
+		RoadActive: true,
+		RoadStartX: 0,
+		RoadStartZ: 0,
+	}
 	x, z := snapRoad(ctx, 41.5, 40.5)
 	if x != 40 || z != 40 {
-		t.Fatalf("snap=(%v,%v) want existing node (40,40) idx=%d", x, z, n)
+		t.Fatalf("end snap=(%v,%v) want existing node (40,40)", x, z)
 	}
 }
 
 func TestSnapRoadChainsFromStartNode(t *testing.T) {
 	sm := sim.NewSimulationManager(1)
-	start := sm.Roads.AddNode(0, 0, 0)
 	ctx := SnapContext{
 		Sim:           sm,
 		Tool:          ToolRoad,
 		RoadActive:    true,
-		RoadStartNode: start,
+		RoadStartX:    0,
+		RoadStartZ:    0,
 	}
 	x, z := snapRoad(ctx, 11, 3)
 	dx := x

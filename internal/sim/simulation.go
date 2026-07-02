@@ -389,24 +389,32 @@ func isNearNode(sm *SimulationManager, x, z float32) bool {
 	return false
 }
 
-func (sm *SimulationManager) PlaceRoadNode(x, z float32) uint32 {
-	if sm.Connections != nil {
-		for _, c := range sm.Connections.GetByType(terrain.ConnHighway) {
-			dx := c.WorldX - x
-			dz := c.WorldZ - z
-			if dx*dx+dz*dz < 64 {
-				for idx := range sm.Roads.Nodes {
-					n := &sm.Roads.Nodes[idx]
-					if n.Flags&road.RoadFlagOutsideConn != 0 {
-						nx := n.X - c.WorldX
-						nz := n.Z - c.WorldZ
-						if nx*nx+nz*nz < 0.01 {
-							return uint32(idx)
-						}
+func (sm *SimulationManager) roadOutsideConnNode(x, z float32) (uint32, bool) {
+	if sm.Connections == nil {
+		return 0, false
+	}
+	for _, c := range sm.Connections.GetByType(terrain.ConnHighway) {
+		dx := c.WorldX - x
+		dz := c.WorldZ - z
+		if dx*dx+dz*dz < 64 {
+			for idx := range sm.Roads.Nodes {
+				n := &sm.Roads.Nodes[idx]
+				if n.Flags&road.RoadFlagOutsideConn != 0 {
+					nx := n.X - c.WorldX
+					nz := n.Z - c.WorldZ
+					if nx*nx+nz*nz < 0.01 {
+						return uint32(idx), true
 					}
 				}
 			}
 		}
+	}
+	return 0, false
+}
+
+func (sm *SimulationManager) PlaceRoadNode(x, z float32) uint32 {
+	if idx, ok := sm.roadOutsideConnNode(x, z); ok {
+		return idx
 	}
 	for i := range sm.Roads.Nodes {
 		n := &sm.Roads.Nodes[i]
@@ -415,6 +423,14 @@ func (sm *SimulationManager) PlaceRoadNode(x, z float32) uint32 {
 		if dx*dx+dz*dz < RoadProximityDist*RoadProximityDist {
 			return uint32(i)
 		}
+	}
+	return sm.Roads.AddNode(x, 0, z)
+}
+
+// PlaceRoadStartNode creates the start of a new segment without snapping to nearby junctions.
+func (sm *SimulationManager) PlaceRoadStartNode(x, z float32) uint32 {
+	if idx, ok := sm.roadOutsideConnNode(x, z); ok {
+		return idx
 	}
 	return sm.Roads.AddNode(x, 0, z)
 }

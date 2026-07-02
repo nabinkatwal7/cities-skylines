@@ -6,6 +6,19 @@ import (
 	"github.com/katwate/js-skylines/internal/road"
 )
 
+func TestPlaceRoadStartNodeDoesNotReuseNearby(t *testing.T) {
+	sm := NewSimulationManager(1)
+	existing := sm.Roads.AddNode(120, 0, 120)
+	before := len(sm.Roads.Nodes)
+	got := sm.PlaceRoadStartNode(121.5, 119.5)
+	if got == existing {
+		t.Fatalf("PlaceRoadStartNode should not reuse nearby node %d", existing)
+	}
+	if len(sm.Roads.Nodes) != before+1 {
+		t.Fatalf("nodes=%d want %d", len(sm.Roads.Nodes), before+1)
+	}
+}
+
 func TestPlaceRoadNodeReusesNearbyNode(t *testing.T) {
 	sm := NewSimulationManager(1)
 	before := len(sm.Roads.Nodes)

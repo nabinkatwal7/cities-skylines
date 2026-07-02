@@ -175,9 +175,10 @@ func (m *UIManager) DrawWorldOverlays(sm *sim.SimulationManager) {
 	m.Overlays.DrawWorld(sm, m.InfoViews, m.Selection)
 }
 
-func (m *UIManager) SetRoadChain(active bool, startNode uint32) {
+func (m *UIManager) SetRoadDraft(active bool, startX, startZ float32) {
 	m.worldCtx.RoadActive = active
-	m.worldCtx.RoadStartNode = startNode
+	m.worldCtx.RoadStartX = startX
+	m.worldCtx.RoadStartZ = startZ
 }
 
 func (m *UIManager) SnapPlacementCoords(sm *sim.SimulationManager, x, z float32) (float32, float32) {
@@ -189,8 +190,9 @@ func (m *UIManager) snapContext(sm *sim.SimulationManager, previewX, previewZ fl
 		Sim:           sm,
 		Tool:          m.Selected,
 		Mode:          m.Mode,
-		RoadActive:    m.worldCtx.RoadActive,
-		RoadStartNode: m.worldCtx.RoadStartNode,
+		RoadActive: m.worldCtx.RoadActive,
+		RoadStartX: m.worldCtx.RoadStartX,
+		RoadStartZ: m.worldCtx.RoadStartZ,
 		PreviewX:      previewX,
 		PreviewZ:      previewZ,
 	}
