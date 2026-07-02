@@ -1,20 +1,3 @@
-## 5.9 Industrial Demand
-
-Industrial demand increases with:
-
-- Population growth
-- Goods shortages
-- Export opportunities
-
-Industrial demand decreases when:
-
-- Workers unavailable
-- Freight congestion
-- Resource shortages
-- High taxes
-
----
-
 ## 5.10 Office Demand
 
 Office demand depends upon:

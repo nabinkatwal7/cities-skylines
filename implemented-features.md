@@ -3458,7 +3458,7 @@ Residential demand decreases when:
 
 ---
 
-## 5.8 Commercial Demand ✅
+## 5.8 Commercial Demand
 
 Commercial demand depends on:
 
@@ -3469,5 +3469,22 @@ Commercial demand depends on:
 - Shopping demand
 
 Too much commercial zoning causes business failure.
+
+---
+
+## 5.9 Industrial Demand ✅
+
+Industrial demand increases with:
+
+- Population growth
+- Goods shortages
+- Export opportunities
+
+Industrial demand decreases when:
+
+- Workers unavailable
+- Freight congestion
+- Resource shortages
+- High taxes
 
 ---

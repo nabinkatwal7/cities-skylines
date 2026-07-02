@@ -210,3 +210,110 @@ func TestCommercialDemand_incomeAndTourism(t *testing.T) {
 		t.Fatalf("income/tourism should raise commercial demand: low=%v high=%v", low.Commercial, high.Commercial)
 	}
 }
+
+func TestIndustrialDemand_populationGrowth(t *testing.T) {
+	growing := NewDemandEngine()
+	zm := NewZoneManager(8, 8, nil, nil)
+	for step := 0; step < 25; step++ {
+		x, z := step%6, step/6
+		zm.SetZoneCell(x, z, ZoneResidentialLow)
+		growing.Update(1, zm)
+	}
+
+	static := NewDemandEngine()
+	staticZM := NewZoneManager(8, 8, nil, nil)
+	staticZM.SetZoneCell(0, 0, ZoneResidentialLow)
+	for i := 0; i < 25; i++ {
+		static.Update(1, staticZM)
+	}
+	if growing.Industrial <= static.Industrial {
+		t.Fatalf("population growth should lift industrial demand: growing=%v static=%v", growing.Industrial, static.Industrial)
+	}
+}
+
+func TestIndustrialDemand_goodsShortage(t *testing.T) {
+	shortageZM := NewZoneManager(8, 8, nil, nil)
+	for x := 0; x < 6; x++ {
+		for z := 0; z < 6; z++ {
+			shortageZM.SetZoneCell(x, z, ZoneResidentialLow)
+		}
+	}
+	shortageZM.SetZoneCell(0, 6, ZoneIndustrial)
+
+	surplusZM := NewZoneManager(8, 8, nil, nil)
+	for x := 0; x < 6; x++ {
+		for z := 0; z < 6; z++ {
+			surplusZM.SetZoneCell(x, z, ZoneResidentialLow)
+		}
+	}
+	for x := 0; x < 6; x++ {
+		surplusZM.SetZoneCell(x, 6, ZoneIndustrial)
+	}
+
+	shortage := NewDemandEngine()
+	for i := 0; i < 50; i++ {
+		shortage.Update(1, shortageZM)
+	}
+
+	surplus := NewDemandEngine()
+	for i := 0; i < 50; i++ {
+		surplus.Update(1, surplusZM)
+	}
+	if shortage.Industrial <= surplus.Industrial {
+		t.Fatalf("goods shortage should raise industrial demand: shortage=%v surplus=%v", shortage.Industrial, surplus.Industrial)
+	}
+}
+
+func TestIndustrialDemand_workerShortage(t *testing.T) {
+	workers := NewZoneManager(8, 8, nil, nil)
+	for x := 0; x < 5; x++ {
+		for z := 0; z < 5; z++ {
+			workers.SetZoneCell(x, z, ZoneResidentialLow)
+		}
+	}
+	for x := 0; x < 2; x++ {
+		workers.SetZoneCell(x, 5, ZoneIndustrial)
+	}
+
+	noWorkers := NewZoneManager(8, 8, nil, nil)
+	for x := 0; x < 8; x++ {
+		for z := 0; z < 6; z++ {
+			noWorkers.SetZoneCell(x, z, ZoneIndustrial)
+		}
+	}
+
+	dWorkers := NewDemandEngine()
+	dNoWorkers := NewDemandEngine()
+	for i := 0; i < 50; i++ {
+		dWorkers.Update(1, workers)
+		dNoWorkers.Update(1, noWorkers)
+	}
+	if dNoWorkers.Industrial >= dWorkers.Industrial {
+		t.Fatalf("worker shortage should lower industrial demand: workers=%v none=%v", dWorkers.Industrial, dNoWorkers.Industrial)
+	}
+}
+
+func TestIndustrialDemand_highTax(t *testing.T) {
+	zm := NewZoneManager(8, 8, nil, nil)
+	for x := 0; x < 4; x++ {
+		zm.SetZoneCell(x, 0, ZoneResidentialLow)
+	}
+	for x := 0; x < 2; x++ {
+		zm.SetZoneCell(x, 1, ZoneIndustrial)
+	}
+
+	lowTax := NewDemandEngine()
+	lowTax.Factors.IndustrialTax = 0.04
+	for i := 0; i < 40; i++ {
+		lowTax.Update(1, zm)
+	}
+
+	highTax := NewDemandEngine()
+	highTax.Factors.IndustrialTax = 0.22
+	for i := 0; i < 40; i++ {
+		highTax.Update(1, zm)
+	}
+	if highTax.Industrial >= lowTax.Industrial {
+		t.Fatalf("high industrial tax should lower demand: low=%v high=%v", lowTax.Industrial, highTax.Industrial)
+	}
+}

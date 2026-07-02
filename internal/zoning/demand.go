@@ -15,6 +15,8 @@ type DemandEngine struct {
 	Population float32 // ponytail: zone proxy until household sim exists
 	Jobs       float32 // ponytail: zone proxy until business sim exists
 	Factors    CityFactors
+
+	prevPopulation float32
 }
 
 // CityFactors tune residential demand; ponytail: derived fields refresh in Update until dedicated sims exist.
@@ -33,6 +35,14 @@ type CityFactors struct {
 	GoodsAvailability float32 // 0..1
 	Tourism           float32 // 0..1
 	ShoppingDemand    float32 // 0..1
+
+	IndustrialTax      float32 // 0..1
+	PopulationGrowth   float32 // change rate proxy
+	GoodsShortage      float32 // 0..1
+	ExportOpportunity  float32 // 0..1
+	WorkerShortage     float32 // 0..1
+	FreightCongestion  float32 // 0..1 ponytail: until freight sim
+	ResourceShortage   float32 // 0..1 ponytail: until resource economy hooks in
 }
 
 func DefaultCityFactors() CityFactors {
@@ -45,6 +55,7 @@ func DefaultCityFactors() CityFactors {
 		GoodsAvailability: 0.6,
 		Tourism:           0.2,
 		ShoppingDemand:    0.5,
+		IndustrialTax:     0.10,
 	}
 }
 
@@ -95,10 +106,11 @@ func (d *DemandEngine) Update(dt float64, zm *ZoneManager) {
 	d.Jobs = jobCap
 	d.refreshResidentialFactors(zm, resCells, comCells, indCells, offCells, float32(dt))
 	d.refreshCommercialFactors(resCells, comCells, indCells, float32(dt))
+	d.refreshIndustrialFactors(indCap, float32(dt))
 
 	resTarget := clampf((jobCap-resCap)*0.15+d.residentialModifier(), -1, 1)
 	comTarget := clampf((resCap*0.8-comCap)*0.15+d.commercialModifier(comCap), -1, 1)
-	indTarget := clampf((resCap*0.4-indCap)*0.12, -1, 1)
+	indTarget := clampf((resCap*0.4-indCap)*0.12+d.industrialModifier(indCap), -1, 1)
 
 	rate := float32(dt) * 0.35
 	d.Residential = lerp(d.Residential, resTarget, rate)
@@ -176,6 +188,45 @@ func (d *DemandEngine) commercialModifier(comCap float32) float32 {
 	} else if comCap > 0 {
 		mod -= 0.35
 	}
+
+	return clampf(mod, -0.6, 0.6)
+}
+
+func (d *DemandEngine) refreshIndustrialFactors(indCap, dt float32) {
+	growth := d.Population - d.prevPopulation
+	d.Factors.PopulationGrowth = clampf(growth, -0.5, 0.5)
+	d.prevPopulation = d.Population
+
+	d.Factors.GoodsShortage = clampf(1-d.Factors.GoodsAvailability, 0, 1)
+
+	workersNeeded := indCap * 0.85
+	if workersNeeded > 0 && d.Population < workersNeeded {
+		d.Factors.WorkerShortage = clampf((workersNeeded-d.Population)/workersNeeded, 0, 1)
+	} else {
+		d.Factors.WorkerShortage = 0
+	}
+
+	_ = dt
+}
+
+func (d *DemandEngine) industrialModifier(indCap float32) float32 {
+	f := d.Factors
+	mod := float32(0)
+
+	if f.PopulationGrowth > 0 {
+		mod += clampf(f.PopulationGrowth*0.5, 0, 0.25)
+	}
+	mod += f.GoodsShortage * 0.3
+	mod += f.ExportOpportunity * 0.25
+	mod -= f.WorkerShortage * 0.35
+	mod -= f.FreightCongestion * 0.25
+	mod -= f.ResourceShortage * 0.3
+	mod += (0.12 - f.IndustrialTax) * 0.9
+
+	if f.PopulationGrowth < 0 {
+		mod += f.PopulationGrowth * 0.15
+	}
+	_ = indCap
 
 	return clampf(mod, -0.6, 0.6)
 }

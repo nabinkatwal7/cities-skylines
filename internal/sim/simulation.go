@@ -149,6 +149,13 @@ func (sm *SimulationManager) initScheduler() {
 				if sm.Services != nil {
 					sm.Demand.Factors.ServiceScore = zoning.ServiceScore(sm.Services)
 				}
+				if sm.Connections != nil {
+					n := len(sm.Connections.Connections)
+					if n > 4 {
+						n = 4
+					}
+					sm.Demand.Factors.ExportOpportunity = float32(n) * 0.2
+				}
 				sm.Demand.Update(dt, sm.Zones)
 			}
 		},
